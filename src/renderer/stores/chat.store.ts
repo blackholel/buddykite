@@ -49,7 +49,7 @@ import type {
 } from '../types'
 import { canvasLifecycle } from '../services/canvas-lifecycle'
 import { buildParallelGroups, getThoughtKey } from '../utils/thought-utils'
-import i18n from '../i18n'
+import i18n, { getCurrentLanguage } from '../i18n'
 import type { InvocationContext } from '../../shared/resource-access'
 
 // LRU cache size limit
@@ -722,7 +722,7 @@ async function ensureConversationLoadedImpl(
 
   if (warmSession) {
     try {
-      api.ensureSessionWarm(spaceId, conversationId)
+      api.ensureSessionWarm(spaceId, conversationId, getCurrentLanguage())
         .catch((error) => console.error('[ChatStore] Session warm up failed:', error))
     } catch (error) {
       console.error('[ChatStore] Failed to trigger session warm up:', error)
@@ -1367,6 +1367,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         spaceId: currentSpaceId,
         conversationId,
         message: content,
+        responseLanguage: getCurrentLanguage(),
         images: images,  // Pass images to API
         aiBrowserEnabled,  // Pass AI Browser state to API
         thinkingEnabled,  // Pass thinking mode to API
@@ -1475,6 +1476,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         spaceId,
         conversationId,
         message: content,
+        responseLanguage: getCurrentLanguage(),
         images: images,
         aiBrowserEnabled: aiBrowserEnabled ?? false,
         thinkingEnabled,

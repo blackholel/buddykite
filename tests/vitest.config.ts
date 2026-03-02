@@ -33,6 +33,7 @@ export default defineConfig({
       '../src/main/services/__tests__/resource-metadata.service.test.ts',
       '../src/renderer/api/__tests__/transport.process.test.ts',
       '../src/renderer/api/__tests__/api.process.test.ts',
+      '../src/renderer/api/__tests__/index.agent-language.test.ts',
       '../src/renderer/services/__tests__/canvas-lifecycle.template-library.test.ts',
       '../src/renderer/components/resources/__tests__/resource-action-mode.test.ts',
       '../src/renderer/components/resources/__tests__/resource-content-loading.test.ts',
@@ -41,6 +42,7 @@ export default defineConfig({
       '../src/renderer/components/chat/__tests__/message-list.thought-priority.test.ts',
       '../src/renderer/components/chat/__tests__/thought-process.visibility.test.ts',
       '../src/renderer/stores/__tests__/chat.store.ask-user-question.test.ts',
+      '../src/renderer/stores/__tests__/chat.store.response-language.test.ts',
       '../src/renderer/stores/__tests__/workflows.store.validation.test.ts',
       '../src/renderer/stores/__tests__/composer-mru.store.test.ts',
       '../src/renderer/utils/__tests__/composer-suggestion-ranking.test.ts'

@@ -12,11 +12,13 @@ import {
 } from '../services/workflow.service'
 import { sendMessage } from '../services/agent'
 import type { InvocationContext } from '../../shared/resource-access'
+import type { LocaleCode } from '../../shared/i18n/locale'
 
 interface WorkflowStepSendRequest {
   spaceId: string
   conversationId: string
   message: string
+  responseLanguage?: LocaleCode | string
   resumeSessionId?: string
   modelOverride?: string
   model?: string

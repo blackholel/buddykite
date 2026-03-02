@@ -13,6 +13,11 @@
 
 import i18n from 'i18next'
 import { initReactI18next, useTranslation as useI18nTranslation } from 'react-i18next'
+import {
+  SUPPORTED_LOCALES,
+  normalizeLocale,
+  type LocaleCode
+} from '../../shared/i18n/locale'
 
 // Import all locale files
 import en from './locales/en.json'
@@ -23,19 +28,7 @@ import es from './locales/es.json'
 import fr from './locales/fr.json'
 import de from './locales/de.json'
 
-// Supported locales with native language names
-export const SUPPORTED_LOCALES = {
-  'de': 'Deutsch',
-  'en': 'English',
-  'es': 'Español',
-  'fr': 'Français',
-  'ja': '日本語',
-  'zh-CN': '简体中文',
-  'zh-TW': '繁體中文',
-
-} as const
-
-export type LocaleCode = keyof typeof SUPPORTED_LOCALES
+export { SUPPORTED_LOCALES, type LocaleCode }
 
 // Storage key for persisting language preference
 const LOCALE_STORAGE_KEY = 'kite-locale'
@@ -129,7 +122,7 @@ export function setLanguage(locale: LocaleCode): void {
  * Get current language code
  */
 export function getCurrentLanguage(): LocaleCode {
-  return i18n.language as LocaleCode
+  return normalizeLocale(i18n.language)
 }
 
 /**

@@ -4,6 +4,7 @@
 
 import { contextBridge, ipcRenderer } from 'electron'
 import type { InvocationContext, ResourceListView } from '../shared/resource-access'
+import type { LocaleCode } from '../shared/i18n/locale'
 
 interface AskUserQuestionAnswerPayload {
   toolCallId: string
@@ -84,6 +85,7 @@ export interface KiteAPI {
     spaceId: string
     conversationId: string
     message: string
+    responseLanguage?: LocaleCode | string
     resumeSessionId?: string
     modelOverride?: string
     model?: string
@@ -134,6 +136,7 @@ export interface KiteAPI {
     spaceId: string
     conversationId: string
     message: string
+    responseLanguage?: LocaleCode | string
     resumeSessionId?: string
     modelOverride?: string
     model?: string
@@ -181,7 +184,11 @@ export interface KiteAPI {
     answer: string | AskUserQuestionAnswerPayload
   ) => Promise<IpcResponse>
   getSessionState: (conversationId: string) => Promise<IpcResponse>
-  ensureSessionWarm: (spaceId: string, conversationId: string) => Promise<IpcResponse>
+  ensureSessionWarm: (
+    spaceId: string,
+    conversationId: string,
+    responseLanguage?: LocaleCode | string
+  ) => Promise<IpcResponse>
   getAgentResourceHash: (
     params?: { spaceId?: string; workDir?: string; conversationId?: string }
   ) => Promise<IpcResponse>
@@ -503,7 +510,8 @@ const api: KiteAPI = {
   answerQuestion: (conversationId, answer) =>
     ipcRenderer.invoke('agent:answer-question', conversationId, answer),
   getSessionState: (conversationId) => ipcRenderer.invoke('agent:get-session-state', conversationId),
-  ensureSessionWarm: (spaceId, conversationId) => ipcRenderer.invoke('agent:ensure-session-warm', spaceId, conversationId),
+  ensureSessionWarm: (spaceId, conversationId, responseLanguage) =>
+    ipcRenderer.invoke('agent:ensure-session-warm', spaceId, conversationId, responseLanguage),
   getAgentResourceHash: (params) => ipcRenderer.invoke('agent:get-resource-hash', params),
   testMcpConnections: () => ipcRenderer.invoke('agent:test-mcp'),
   reconnectMcpServer: (conversationId, serverName) => ipcRenderer.invoke('agent:reconnect-mcp', conversationId, serverName),

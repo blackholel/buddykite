@@ -15,6 +15,7 @@ export type {
   ApiProfile,
   ConversationAiConfig
 } from '../../shared/types/ai-profile';
+export type { LocaleCode } from '../../shared/i18n/locale';
 
 // API Provider Configuration
 // - 'anthropic': Official Anthropic API (api.anthropic.com)

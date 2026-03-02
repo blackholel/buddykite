@@ -26,12 +26,14 @@ describe('agent.controller invocation context hardening', () => {
       spaceId: 'space-1',
       conversationId: 'conv-1',
       message: '/skill',
+      responseLanguage: 'zh-CN',
       invocationContext: 'command-dependency'
     } as any)
 
     expect(result.success).toBe(true)
     expect(sendMessageMock).toHaveBeenCalledTimes(1)
     expect(sendMessageMock.mock.calls[0]?.[1]?.invocationContext).toBe('interactive')
+    expect(sendMessageMock.mock.calls[0]?.[1]?.responseLanguage).toBe('zh-CN')
   })
 
   it('uses workflow-step context for workflow step messages', async () => {
@@ -39,12 +41,13 @@ describe('agent.controller invocation context hardening', () => {
       spaceId: 'space-1',
       conversationId: 'conv-1',
       message: '/skill',
+      responseLanguage: 'ja',
       invocationContext: 'interactive'
     } as any)
 
     expect(result.success).toBe(true)
     expect(sendMessageMock).toHaveBeenCalledTimes(1)
     expect(sendMessageMock.mock.calls[0]?.[1]?.invocationContext).toBe('workflow-step')
+    expect(sendMessageMock.mock.calls[0]?.[1]?.responseLanguage).toBe('ja')
   })
 })
-

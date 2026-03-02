@@ -89,6 +89,7 @@ export interface AgentRequest {
   spaceId: string
   conversationId: string
   message: string
+  responseLanguage?: import('../../../shared/i18n/locale').LocaleCode | string
   resumeSessionId?: string
   images?: ImageAttachment[]
   aiBrowserEnabled?: boolean
@@ -293,6 +294,7 @@ export interface V2SDKSession {
 export interface SessionConfig {
   aiBrowserEnabled: boolean
   skillsLazyLoad: boolean
+  responseLanguage?: import('../../../shared/i18n/locale').LocaleCode
   profileId?: string
   providerSignature?: string
   effectiveModel?: string

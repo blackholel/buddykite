@@ -25,6 +25,7 @@ import {
   buildAnthropicCompatEnvDefaults,
   shouldEnableAnthropicCompatEnvDefaults
 } from './provider-resolver'
+import { normalizeLocale, SUPPORTED_LOCALES, type LocaleCode } from '../../../shared/i18n/locale'
 import type { PluginConfig, SettingSource, ToolCall } from './types'
 
 // Re-export types for convenience
@@ -295,10 +296,17 @@ function buildMcpServersConfig(
 /**
  * Build system prompt append.
  */
-export function buildSystemPromptAppend(workDir: string): string {
+export function buildSystemPromptAppend(workDir: string, responseLanguage: LocaleCode = 'en'): string {
+  const normalizedLanguage = normalizeLocale(responseLanguage)
+  const languageName = SUPPORTED_LOCALES[normalizedLanguage] || normalizedLanguage
   const base = `
 You are Kite, an AI assistant that helps users accomplish real work.
 All created files will be saved in the user's workspace. Current workspace: ${workDir}.
+
+## Language policy
+Use ${languageName} (${normalizedLanguage}) for all natural-language responses by default.
+Keep code snippets, shell commands, file paths, environment variable names, logs, and error messages in their original language.
+If the user explicitly requests a different output language in the current turn, follow that request for the current turn only.
 
 ## AskUserQuestion batching policy
 When information is missing, only ask AskUserQuestion for execution-blocking gaps.
@@ -340,6 +348,7 @@ export interface BuildSdkOptionsParams {
   electronPath: string
   aiBrowserEnabled?: boolean
   thinkingEnabled?: boolean
+  responseLanguage?: LocaleCode
   disableToolsForCompat?: boolean
   stderrSuffix?: string // Optional suffix for stderr logs (e.g., "(warm)")
   canUseTool?: CanUseToolHandler
@@ -365,6 +374,7 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): Record<string, a
     electronPath,
     aiBrowserEnabled,
     thinkingEnabled,
+    responseLanguage = 'en',
     disableToolsForCompat,
     stderrSuffix = '',
     canUseTool,
@@ -429,7 +439,7 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): Record<string, a
       type: 'preset' as const,
       preset: 'claude_code' as const,
       append: [
-        buildSystemPromptAppend(workDir),
+        buildSystemPromptAppend(workDir, responseLanguage),
         aiBrowserEnabled ? AI_BROWSER_SYSTEM_PROMPT : '',
         effectiveLazyLoad ? SKILLS_LAZY_SYSTEM_PROMPT : ''
       ].filter(Boolean).join('\n')

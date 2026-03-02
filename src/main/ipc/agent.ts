@@ -19,6 +19,7 @@ import {
 } from '../services/agent'
 import type { AskUserQuestionAnswerInput } from '../services/agent'
 import type { InvocationContext } from '../../shared/resource-access'
+import type { LocaleCode } from '../../shared/i18n/locale'
 import { getResourceIndexHash } from '../services/resource-index.service'
 
 let mainWindow: BrowserWindow | null = null
@@ -36,6 +37,7 @@ type SendMessageIpcRequest = {
   spaceId: string
   conversationId: string
   message: string
+  responseLanguage?: LocaleCode | string
   resumeSessionId?: string
   modelOverride?: string
   model?: string
@@ -164,17 +166,25 @@ export function registerAgentHandlers(window: BrowserWindow | null): void {
   })
 
   // Warm up V2 session - call when switching conversations to prepare for faster message sending
-  ipcMain.handle('agent:ensure-session-warm', async (_event, spaceId: string, conversationId: string) => {
+  ipcMain.handle(
+    'agent:ensure-session-warm',
+    async (
+      _event,
+      spaceId: string,
+      conversationId: string,
+      responseLanguage?: LocaleCode | string
+    ) => {
     try {
       // Async initialization, non-blocking IPC call
-      ensureSessionWarm(spaceId, conversationId).catch((error: unknown) => {
+      ensureSessionWarm(spaceId, conversationId, responseLanguage).catch((error: unknown) => {
         console.error('[IPC] ensureSessionWarm error:', error)
       })
       return { success: true }
     } catch (error: unknown) {
       return toErrorResponse(error)
     }
-  })
+    }
+  )
 
   ipcMain.handle(
     'agent:get-resource-hash',

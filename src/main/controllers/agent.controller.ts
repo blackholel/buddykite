@@ -17,6 +17,7 @@ import {
 } from '../services/agent'
 import type { AskUserQuestionAnswerInput, ChatMode } from '../services/agent'
 import type { InvocationContext } from '../../shared/resource-access'
+import type { LocaleCode } from '../../shared/i18n/locale'
 
 // Image attachment type for multi-modal messages
 interface ImageAttachment {
@@ -32,6 +33,7 @@ export interface SendMessageRequest {
   spaceId: string
   conversationId: string
   message: string
+  responseLanguage?: LocaleCode | string
   resumeSessionId?: string
   modelOverride?: string
   model?: string

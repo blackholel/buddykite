@@ -23,6 +23,7 @@ import type {
 import { isChatMode } from './types'
 import { getEnabledPluginMcpHash, getEnabledPluginMcpList } from '../plugin-mcp.service'
 import { getResourceIndexHash } from '../resource-index.service'
+import { normalizeLocale, type LocaleCode } from '../../../shared/i18n/locale'
 
 // V2 Session management: Map of conversationId -> persistent V2 session
 const v2Sessions = new Map<string, V2SessionInfo>()
@@ -79,6 +80,7 @@ function getSessionRebuildReasons(existing: SessionConfig, next: SessionConfig):
   const reasons: string[] = []
   if (existing.aiBrowserEnabled !== next.aiBrowserEnabled) reasons.push('aiBrowserEnabled')
   if (existing.skillsLazyLoad !== next.skillsLazyLoad) reasons.push('skillsLazyLoad')
+  if ((existing.responseLanguage || 'en') !== (next.responseLanguage || 'en')) reasons.push('responseLanguage')
   if ((existing.profileId || '') !== (next.profileId || '')) reasons.push('profileId')
   if ((existing.providerSignature || '') !== (next.providerSignature || '')) reasons.push('providerSignature')
   if ((existing.effectiveModel || '') !== (next.effectiveModel || '')) reasons.push('effectiveModel')
@@ -92,6 +94,7 @@ function buildSessionConfigSignature(config: SessionConfig): string {
   return JSON.stringify({
     aiBrowserEnabled: config.aiBrowserEnabled,
     skillsLazyLoad: config.skillsLazyLoad,
+    responseLanguage: config.responseLanguage || 'en',
     profileId: config.profileId || '',
     providerSignature: config.providerSignature || '',
     effectiveModel: config.effectiveModel || '',
@@ -171,11 +174,13 @@ export async function getOrCreateV2Session(
         {
           from: {
             aiBrowserEnabled: existing.config.aiBrowserEnabled,
+            responseLanguage: existing.config.responseLanguage || 'en',
             profileId: existing.config.profileId,
             effectiveModel: existing.config.effectiveModel
           },
           to: {
             aiBrowserEnabled: config.aiBrowserEnabled,
+            responseLanguage: config.responseLanguage || 'en',
             profileId: config.profileId,
             effectiveModel: config.effectiveModel
           }
@@ -217,9 +222,14 @@ export async function getOrCreateV2Session(
  * Warm up V2 Session for faster message sending.
  * Called when user switches conversations.
  */
-export async function ensureSessionWarm(spaceId: string, conversationId: string): Promise<void> {
+export async function ensureSessionWarm(
+  spaceId: string,
+  conversationId: string,
+  responseLanguage?: LocaleCode | string
+): Promise<void> {
   const config = getConfig()
   const workDir = getWorkingDir(spaceId)
+  const normalizedResponseLanguage = normalizeLocale(responseLanguage)
   const conversation = getConversation(spaceId, conversationId) as
     | ({ ai?: { profileId?: string }; sessionId?: string } & Record<string, unknown>)
     | null
@@ -257,6 +267,7 @@ export async function ensureSessionWarm(spaceId: string, conversationId: string)
     electronPath,
     aiBrowserEnabled: false,
     thinkingEnabled: false,
+    responseLanguage: normalizedResponseLanguage,
     disableToolsForCompat: effectiveAi.disableToolsForCompat,
     stderrSuffix: ' (warm)',
     canUseTool: createCanUseTool(workDir, spaceId, conversationId, getActiveSession),
@@ -273,6 +284,7 @@ export async function ensureSessionWarm(spaceId: string, conversationId: string)
       {
         aiBrowserEnabled: false,
         skillsLazyLoad,
+        responseLanguage: normalizedResponseLanguage,
         profileId: effectiveAi.profileId,
         providerSignature: effectiveAi.providerSignature,
         effectiveModel: effectiveAi.effectiveModel,

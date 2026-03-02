@@ -122,4 +122,34 @@ describe('session.manager rebuild', () => {
     expect(closeB).not.toHaveBeenCalled()
     expect(closeC).not.toHaveBeenCalled()
   })
+
+  it('仅 responseLanguage 变化时也会触发 session 重建', async () => {
+    const closeA = vi.fn()
+    const closeB = vi.fn()
+    vi.mocked(unstable_v2_createSession)
+      .mockReset()
+      .mockResolvedValueOnce({ close: closeA } as any)
+      .mockResolvedValueOnce({ close: closeB } as any)
+
+    const base: SessionConfig = {
+      aiBrowserEnabled: false,
+      skillsLazyLoad: false,
+      responseLanguage: 'en',
+      profileId: 'profile-a',
+      providerSignature: 'sig-a',
+      effectiveModel: 'model-a',
+      enabledPluginMcpsHash: 'mcp-1',
+      hasCanUseTool: true
+    }
+
+    await getOrCreateV2Session('space-1', 'conv-lang', {}, undefined, base)
+    await getOrCreateV2Session('space-1', 'conv-lang', {}, undefined, {
+      ...base,
+      responseLanguage: 'zh-CN'
+    })
+
+    expect(unstable_v2_createSession).toHaveBeenCalledTimes(2)
+    expect(closeA).toHaveBeenCalledTimes(1)
+    expect(closeB).not.toHaveBeenCalled()
+  })
 })

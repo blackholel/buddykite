@@ -29,7 +29,8 @@ vi.mock('../../services/canvas-lifecycle', () => ({
 }))
 
 vi.mock('../../i18n', () => ({
-  default: { t: (key: string) => key }
+  default: { t: (key: string) => key },
+  getCurrentLanguage: () => 'zh-CN'
 }))
 
 vi.mock('../../utils/thought-utils', () => ({

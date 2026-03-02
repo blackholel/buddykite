@@ -257,6 +257,7 @@ export function registerApiRoutes(app: Express, mainWindow: BrowserWindow | null
       spaceId,
       conversationId,
       message,
+      responseLanguage,
       resumeSessionId,
       modelOverride,
       model,
@@ -272,6 +273,7 @@ export function registerApiRoutes(app: Express, mainWindow: BrowserWindow | null
       spaceId,
       conversationId,
       message,
+      responseLanguage,
       resumeSessionId,
       modelOverride,
       model,
@@ -307,12 +309,12 @@ export function registerApiRoutes(app: Express, mainWindow: BrowserWindow | null
 
   app.post('/api/agent/warm', safeRoute(async (req, res) => {
     const { ensureSessionWarm } = await import('../../services/agent')
-    const { spaceId, conversationId } = req.body ?? {}
+    const { spaceId, conversationId, responseLanguage } = req.body ?? {}
     if (typeof spaceId !== 'string' || typeof conversationId !== 'string') {
       res.json({ success: false, error: 'spaceId and conversationId are required' })
       return
     }
-    await ensureSessionWarm(spaceId, conversationId)
+    await ensureSessionWarm(spaceId, conversationId, responseLanguage)
     res.json({ success: true })
   }))
 

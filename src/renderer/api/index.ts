@@ -17,6 +17,7 @@ import {
 } from './transport'
 import type { ChatMode } from '../types'
 import type { InvocationContext, ResourceListView } from '../../shared/resource-access'
+import type { LocaleCode } from '../../shared/i18n/locale'
 
 // Response type
 interface ApiResponse<T = unknown> {
@@ -323,6 +324,7 @@ export const api = {
     spaceId: string
     conversationId: string
     message: string
+    responseLanguage?: LocaleCode | string
     resumeSessionId?: string
     modelOverride?: string
     model?: string
@@ -390,6 +392,7 @@ export const api = {
     spaceId: string
     conversationId: string
     message: string
+    responseLanguage?: LocaleCode | string
     resumeSessionId?: string
     modelOverride?: string
     model?: string
@@ -437,6 +440,8 @@ export const api = {
     if (isElectron()) {
       return window.kite.sendWorkflowStepMessage(request)
     }
+    // Security boundary: remote HTTP requests must not escalate to workflow-step.
+    // Keep invocationContext forced to interactive for untrusted external clients.
     return httpRequest('POST', '/api/agent/message', {
       ...request,
       invocationContext: 'interactive'
@@ -493,16 +498,20 @@ export const api = {
   },
 
   // Warm up V2 session - call when switching conversations to prepare for faster message sending
-  ensureSessionWarm: async (spaceId: string, conversationId: string): Promise<ApiResponse> => {
+  ensureSessionWarm: async (
+    spaceId: string,
+    conversationId: string,
+    responseLanguage?: LocaleCode | string
+  ): Promise<ApiResponse> => {
     if (isElectron()) {
       // No need to wait, initialize in background
-      window.kite.ensureSessionWarm(spaceId, conversationId).catch((error: unknown) => {
+      window.kite.ensureSessionWarm(spaceId, conversationId, responseLanguage).catch((error: unknown) => {
         console.error('[API] ensureSessionWarm error:', error)
       })
       return { success: true }
     }
     // HTTP mode: send warm-up request to backend
-    return httpRequest('POST', '/api/agent/warm', { spaceId, conversationId }).catch(() => ({
+    return httpRequest('POST', '/api/agent/warm', { spaceId, conversationId, responseLanguage }).catch(() => ({
       success: false // Warm-up failure should not block
     }))
   },
