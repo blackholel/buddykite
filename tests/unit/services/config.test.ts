@@ -216,6 +216,33 @@ describe('Config Service', () => {
         .toBe(path.join(kiteDir, 'plugins', 'cache', 'seed-market', 'seed-plugin', '1.0.0'))
     })
 
+    it('should inject only registered plugin directories from seed registry', async () => {
+      const kiteDir = getKiteDir()
+      const seedDir = path.join(getTestDir(), 'seed-registered-plugins-only')
+      const registeredPluginDir = path.join(seedDir, 'plugins', 'registered-plugin', 'commands')
+      const unregisteredPluginDir = path.join(seedDir, 'plugins', 'unregistered-plugin', 'commands')
+      fs.mkdirSync(registeredPluginDir, { recursive: true })
+      fs.mkdirSync(unregisteredPluginDir, { recursive: true })
+      fs.writeFileSync(path.join(registeredPluginDir, 'registered.md'), '# registered')
+      fs.writeFileSync(path.join(unregisteredPluginDir, 'unregistered.md'), '# unregistered')
+      fs.writeFileSync(path.join(seedDir, 'plugins', 'installed_plugins.json'), JSON.stringify({
+        version: 2,
+        plugins: {
+          'registered-plugin@seed-market': [{
+            scope: 'user',
+            installPath: '__KITE_ROOT__/plugins/registered-plugin',
+            version: '1.0.0'
+          }]
+        }
+      }))
+
+      process.env.KITE_BUILTIN_SEED_DIR = seedDir
+      await initializeApp()
+
+      expect(fs.existsSync(path.join(kiteDir, 'plugins', 'registered-plugin', 'commands', 'registered.md'))).toBe(true)
+      expect(fs.existsSync(path.join(kiteDir, 'plugins', 'unregistered-plugin', 'commands', 'unregistered.md'))).toBe(false)
+    })
+
     it('should skip seed injection when KITE_DISABLE_BUILTIN_SEED is enabled', async () => {
       const seedDir = path.join(getTestDir(), 'seed-disabled')
       fs.mkdirSync(seedDir, { recursive: true })
@@ -303,7 +330,9 @@ describe('Config Service', () => {
       const outputDir = path.join(projectRoot, 'build', 'default-kite-config')
       const backupOutputDir = path.join(getTestDir(), 'seed-output-backup')
       const pluginCacheDir = path.join(sourceSeedDir, 'plugins', 'cache', 'demo-market', 'demo-plugin', '1.0.0')
+      const pluginNonCacheDir = path.join(sourceSeedDir, 'plugins', 'superpowers')
       const installPath = path.join(pluginCacheDir)
+      const nonCacheInstallPath = path.join(pluginNonCacheDir)
       const hasOriginalOutput = fs.existsSync(outputDir)
 
       fs.rmSync(sourceSeedDir, { recursive: true, force: true })
@@ -313,10 +342,15 @@ describe('Config Service', () => {
       }
       fs.mkdirSync(path.join(sourceSeedDir, 'custom-dir', 'nested'), { recursive: true })
       fs.mkdirSync(pluginCacheDir, { recursive: true })
+      fs.mkdirSync(path.join(pluginNonCacheDir, 'commands'), { recursive: true })
       fs.writeFileSync(path.join(sourceSeedDir, 'custom-dir', 'nested', 'note.txt'), 'ok')
+      fs.writeFileSync(path.join(pluginNonCacheDir, 'commands', 'plan.md'), '# plan')
       fs.writeFileSync(path.join(sourceSeedDir, 'settings.json'), JSON.stringify({
         token: 'secret-token',
-        nested: { apiKey: 'abc' }
+        nested: { apiKey: 'abc' },
+        enabledPlugins: {
+          'demo-plugin@demo-market': false
+        }
       }))
       fs.writeFileSync(path.join(sourceSeedDir, 'config.json'), JSON.stringify({
         api: { apiKey: 'should-not-ship', model: 'private-model' },
@@ -331,6 +365,11 @@ describe('Config Service', () => {
             scope: 'user',
             installPath,
             version: '1.0.0'
+          }],
+          'superpowers@superpowers-dev': [{
+            scope: 'user',
+            installPath: nonCacheInstallPath,
+            version: '4.3.1'
           }]
         }
       }))
@@ -351,6 +390,8 @@ describe('Config Service', () => {
         const packagedSettings = JSON.parse(fs.readFileSync(path.join(outputDir, 'settings.json'), 'utf-8'))
         expect(packagedSettings.token).toBe('')
         expect(packagedSettings.nested.apiKey).toBe('')
+        expect(packagedSettings.enabledPlugins['demo-plugin@demo-market']).toBe(false)
+        expect(packagedSettings.enabledPlugins['superpowers@superpowers-dev']).toBe(true)
 
         const packagedConfig = JSON.parse(fs.readFileSync(path.join(outputDir, 'config.json'), 'utf-8'))
         expect(packagedConfig.api).toBeUndefined()
@@ -363,6 +404,8 @@ describe('Config Service', () => {
         )
         expect(packagedRegistry.plugins['demo-plugin@demo-market'][0].installPath)
           .toBe('__KITE_ROOT__/plugins/cache/demo-market/demo-plugin/1.0.0')
+        expect(packagedRegistry.plugins['superpowers@superpowers-dev'][0].installPath)
+          .toBe('__KITE_ROOT__/plugins/superpowers')
       } finally {
         fs.rmSync(outputDir, { recursive: true, force: true })
         if (hasOriginalOutput) {

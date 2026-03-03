@@ -3,7 +3,7 @@
  */
 
 import { app } from 'electron'
-import { basename, dirname, join, posix as pathPosix, resolve, win32 as pathWin32 } from 'path'
+import { basename, dirname, join, posix as pathPosix, relative, resolve, sep, win32 as pathWin32 } from 'path'
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'fs'
 import { getConfigDir } from '../utils/instance'
 
@@ -320,6 +320,11 @@ function isDirectory(path: string): boolean {
   }
 }
 
+function isPathInside(baseDir: string, targetPath: string): boolean {
+  const rel = relative(baseDir, targetPath)
+  return rel !== '' && !rel.startsWith('..') && !rel.startsWith(`..${sep}`)
+}
+
 function isBuiltInSeedDisabled(): boolean {
   const value = process.env[DISABLE_BUILTIN_SEED_ENV_KEY]
   if (!value) return false
@@ -406,6 +411,34 @@ function normalizeInstallPath(pathValue: string, kiteDir: string): string {
   return join(kiteDir, ...parts)
 }
 
+function collectSeedPluginRelativePaths(
+  sourceRegistryPath: string,
+  kiteDir: string,
+  targetPluginsDir: string
+): string[] {
+  const sourceValue = readJsonFile(sourceRegistryPath)
+  if (!isPlainObject(sourceValue)) return []
+
+  const sourceRegistry = sourceValue as SeedInstalledPluginsRegistry
+  const sourcePlugins = isPlainObject(sourceRegistry.plugins) ? sourceRegistry.plugins : {}
+  const targetPluginsAbs = resolve(targetPluginsDir)
+  const relativePaths = new Set<string>()
+
+  for (const installations of Object.values(sourcePlugins)) {
+    if (!Array.isArray(installations)) continue
+    for (const installation of installations) {
+      if (!isPlainObject(installation) || typeof installation.installPath !== 'string') continue
+      const normalizedInstallPath = resolve(normalizeInstallPath(installation.installPath, kiteDir))
+      if (!isPathInside(targetPluginsAbs, normalizedInstallPath)) continue
+      const relPath = relative(targetPluginsAbs, normalizedInstallPath)
+      if (!relPath || relPath === '.') continue
+      relativePaths.add(relPath.split(/[\\/]+/).filter(Boolean).join('/'))
+    }
+  }
+
+  return Array.from(relativePaths)
+}
+
 function mergePluginRegistryWithTemplatePath(sourcePath: string, targetPath: string, kiteDir: string): void {
   const sourceValue = readJsonFile(sourcePath)
   if (!isPlainObject(sourceValue)) return
@@ -460,12 +493,18 @@ function mergePluginRegistryWithTemplatePath(sourcePath: string, targetPath: str
 }
 
 function injectPluginsSeed(sourcePluginsDir: string, targetPluginsDir: string, kiteDir: string): void {
-  const sourceCacheDir = join(sourcePluginsDir, 'cache')
-  if (isDirectory(sourceCacheDir)) {
-    copyDirMissingOnly(sourceCacheDir, join(targetPluginsDir, 'cache'))
+  const sourceRegistryPath = join(sourcePluginsDir, 'installed_plugins.json')
+  if (existsSync(sourceRegistryPath)) {
+    const relativePluginPaths = collectSeedPluginRelativePaths(sourceRegistryPath, kiteDir, targetPluginsDir)
+    for (const relPath of relativePluginPaths) {
+      const segments = relPath.split('/').filter(Boolean)
+      if (segments.length === 0) continue
+      const sourcePluginPath = join(sourcePluginsDir, ...segments)
+      if (!isDirectory(sourcePluginPath)) continue
+      copyDirMissingOnly(sourcePluginPath, join(targetPluginsDir, ...segments))
+    }
   }
 
-  const sourceRegistryPath = join(sourcePluginsDir, 'installed_plugins.json')
   if (existsSync(sourceRegistryPath)) {
     mergePluginRegistryWithTemplatePath(
       sourceRegistryPath,

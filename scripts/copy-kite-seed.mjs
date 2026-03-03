@@ -55,6 +55,10 @@ function writeJson(path, value) {
   writeFileSync(path, JSON.stringify(value, null, 2))
 }
 
+function isPlainObject(value) {
+  return value && typeof value === 'object' && !Array.isArray(value)
+}
+
 function sanitizeConfig(config) {
   if (!config || typeof config !== 'object' || Array.isArray(config)) return null
   const sanitized = sanitizeSecrets(JSON.parse(JSON.stringify(config)))
@@ -104,7 +108,7 @@ function sanitizeSecrets(value) {
   return result
 }
 
-function sanitizePluginsRegistry(registry, pluginsCacheDir) {
+function sanitizePluginsRegistry(registry, sourcePluginsDir) {
   if (!registry || typeof registry !== 'object' || Array.isArray(registry)) return null
   const sourcePlugins = registry.plugins
   if (!sourcePlugins || typeof sourcePlugins !== 'object' || Array.isArray(sourcePlugins)) {
@@ -124,11 +128,11 @@ function sanitizePluginsRegistry(registry, pluginsCacheDir) {
         const installPath = typeof installation.installPath === 'string'
           ? resolve(installation.installPath)
           : null
-        if (!installPath || !isPathInside(pluginsCacheDir, installPath)) return null
-        const relPath = relative(pluginsCacheDir, installPath).split(sep).join('/')
+        if (!installPath || !isPathInside(sourcePluginsDir, installPath)) return null
+        const relPath = relative(sourcePluginsDir, installPath).split(sep).join('/')
         return {
           ...installation,
-          installPath: `${installPathTemplate}/plugins/cache/${relPath}`
+          installPath: `${installPathTemplate}/plugins/${relPath}`
         }
       })
       .filter(Boolean)
@@ -177,8 +181,8 @@ function copySeedFile(sourcePath, targetPath, relativePath) {
 
   if (relativePath === 'plugins/installed_plugins.json') {
     // 插件索引里的绝对安装路径改写成模板路径，避免把构建机路径打进包
-    const sourceCacheDir = join(sourceDir, 'plugins', 'cache')
-    const registry = sanitizePluginsRegistry(readJson(sourcePath), resolve(sourceCacheDir))
+    const sourcePluginsDir = join(sourceDir, 'plugins')
+    const registry = sanitizePluginsRegistry(readJson(sourcePath), resolve(sourcePluginsDir))
     if (registry) {
       writeJson(targetPath, registry)
       return
@@ -226,6 +230,36 @@ function copyAllSeedEntries() {
   return copied
 }
 
+function finalizeSeedSettingsEnabledPlugins(targetRootDir) {
+  const registryPath = join(targetRootDir, 'plugins', 'installed_plugins.json')
+  const settingsPath = join(targetRootDir, 'settings.json')
+  const registry = readJson(registryPath)
+  const settings = readJson(settingsPath)
+
+  if (!isPlainObject(registry) || !isPlainObject(settings)) return
+
+  const plugins = isPlainObject(registry.plugins) ? registry.plugins : {}
+  const pluginNames = Object.keys(plugins)
+  if (pluginNames.length === 0) return
+
+  const enabledPlugins = isPlainObject(settings.enabledPlugins)
+    ? { ...settings.enabledPlugins }
+    : {}
+
+  let changed = !isPlainObject(settings.enabledPlugins)
+  for (const fullName of pluginNames) {
+    if (enabledPlugins[fullName] === undefined) {
+      enabledPlugins[fullName] = true
+      changed = true
+    }
+  }
+
+  if (!changed) return
+
+  settings.enabledPlugins = enabledPlugins
+  writeJson(settingsPath, settings)
+}
+
 function assertSourceDirExists() {
   if (isDirectory(sourceDir)) {
     return
@@ -251,6 +285,7 @@ function main() {
   mkdirSync(outputDir, { recursive: true })
 
   const copiedEntries = copyAllSeedEntries()
+  finalizeSeedSettingsEnabledPlugins(outputDir)
   writeManifest(copiedEntries)
 
   console.log(`[Seed] Prepared built-in seed at: ${outputDir}`)

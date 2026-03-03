@@ -129,4 +129,26 @@ describe('plugins.service', () => {
     _testInitConfigSourceModeLock('claude')
     expect(listEnabledPlugins()).toEqual([])
   })
+
+  it('should accept plugin directory under ~/.kite/plugins root (non-cache path)', () => {
+    const testDir = getTestDir()
+    const kiteRoot = join(testDir, '.kite')
+    const pluginInstallPath = join(kiteRoot, 'plugins', 'superpowers')
+
+    writeRegistry(kiteRoot, 'superpowers@superpowers-dev', pluginInstallPath)
+
+    const installed = loadInstalledPlugins()
+    expect(installed).toHaveLength(1)
+    expect(installed[0]?.installPath).toBe(pluginInstallPath)
+  })
+
+  it('should reject plugin path outside ~/.kite/plugins base directory', () => {
+    const testDir = getTestDir()
+    const kiteRoot = join(testDir, '.kite')
+    const outsidePath = join(testDir, 'outside', 'rogue-plugin')
+
+    writeRegistry(kiteRoot, 'rogue@external-market', outsidePath)
+
+    expect(loadInstalledPlugins()).toEqual([])
+  })
 })

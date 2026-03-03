@@ -66,13 +66,15 @@
 
 ### 4.1 必须项
 
-1. **插件目录存在且不是软链接**
-   - 例：`/Users/dl/.kite/plugins/<plugin-name>`
+1. **插件目录必须在 `~/.kite/plugins` 基路径内，且不是软链接**
+   - 支持两种形态：
+     - `~/.kite/plugins/cache/<marketplace>/<name>/<version>`
+     - `~/.kite/plugins/<plugin-name>(/...)`
 
 2. **注册表有记录**
    - 文件：`/Users/dl/.kite/plugins/installed_plugins.json`
    - key 必须是 `name@marketplace` 形式
-   - `installPath` 必须指向真实目录
+   - `installPath` 必须指向 `~/.kite/plugins` 内真实目录
 
 ### 4.2 推荐项
 
@@ -104,8 +106,15 @@
 1. 顶层 `config.json` 的 `plugins: []` 并不是当前主加载链路使用的配置源。
 2. 只把插件目录放在 `~/.kite/plugins` 下，不写 `installed_plugins.json`，系统不会把它当“已安装插件”。
 3. `installPath` 指向 symlink 会被安全校验拒绝。
+4. `settings.json.enabledPlugins` 一旦存在，只有显式 `true` 的插件会被加载；缺失项默认不会启用。
 
-## 6. 新插件接入最小流程
+## 6. 预置插件首启注入规则（新安装）
+
+1. 首启注入是一次性的（写入 `~/.kite/.seed-state.json` 后不再重复）。
+2. `plugins` 注入按 `installed_plugins.json` 精确复制目录，不会全量复制 `plugins/*`。
+3. seed 产物会自动补齐 `settings.enabledPlugins` 缺失项为 `true`（显式 `false` 保留不覆盖），避免预置插件被白名单漏掉。
+
+## 7. 新插件接入最小流程
 
 1. 放置目录：`/Users/dl/.kite/plugins/<name>`
 2. 确保目录内有资源子目录（按需）：`skills/`、`commands/`、`agents/`、`hooks/hooks.json`
@@ -113,7 +122,7 @@
 4. 在 `settings.json` 的 `enabledPlugins` 置为 `true`
 5. 重启应用或触发资源刷新
 
-## 7. 快速自检命令
+## 8. 快速自检命令
 
 ```bash
 cat /Users/dl/.kite/plugins/installed_plugins.json

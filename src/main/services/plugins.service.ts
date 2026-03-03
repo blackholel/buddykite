@@ -7,7 +7,7 @@
 
 import { join } from 'path'
 import { existsSync, readFileSync, statSync } from 'fs'
-import { isValidDirectoryPath } from '../utils/path-validation'
+import { isPathWithinBasePaths, isValidDirectoryPath } from '../utils/path-validation'
 import { FileCache } from '../utils/file-cache'
 import { getLockedConfigSourceMode, getLockedUserConfigRootDir } from './config-source-mode.service'
 
@@ -89,6 +89,7 @@ function loadPluginsFromRegistry(registryPath: string): PluginInfo[] {
     const content = readFileSync(registryPath, 'utf-8')
     const registry = JSON.parse(content) as InstalledPluginsRegistry
     const plugins: PluginInfo[] = []
+    const allowedBase = join(getLockedUserConfigRootDir(), 'plugins')
 
     for (const [fullName, installations] of Object.entries(registry.plugins)) {
       const [name, marketplace] = fullName.split('@')
@@ -99,9 +100,18 @@ function loadPluginsFromRegistry(registryPath: string): PluginInfo[] {
 
       const installation = installations[0]
       if (!installation) continue
+      if (typeof installation.installPath !== 'string') {
+        console.warn(`[Plugins] Missing installPath for ${fullName}`)
+        continue
+      }
+
+      if (!isPathWithinBasePaths(installation.installPath, [allowedBase])) {
+        console.warn(`[Plugins] Plugin path outside allowed base (${allowedBase}): ${installation.installPath}`)
+        continue
+      }
 
       if (!isValidDirectoryPath(installation.installPath, 'Plugins')) {
-        console.warn(`[Plugins] Plugin path not valid: ${installation.installPath}`)
+        console.warn(`[Plugins] Plugin path not valid directory/symlink check failed: ${installation.installPath}`)
         continue
       }
 
