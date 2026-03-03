@@ -7,7 +7,7 @@
  * │ ┌──────────────────────────────────────────────────┐ │
  * │ │ Textarea                                         │ │
  * │ └──────────────────────────────────────────────────┘ │
- * │ [+] [⚛]─────────────────────────────────  [Send] │
+ * │ [+]──────────────────────────────────────── [Send] │
  * │      Bottom toolbar: always visible, expandable     │
  * └──────────────────────────────────────────────────────┘
  *
@@ -15,12 +15,11 @@
  * - Auto-resize textarea
  * - Keyboard shortcuts (Enter to send, Shift+Enter newline)
  * - Image paste/drop support with compression
- * - Extended thinking mode toggle (theme-colored)
  * - Bottom toolbar for future extensibility
  */
 
 import { useState, useRef, useEffect, useCallback, useMemo, KeyboardEvent, ClipboardEvent, DragEvent } from 'react'
-import { Plus, ImagePlus, Loader2, AlertCircle, Atom, Globe, ClipboardList, X, Bot, Zap, Terminal } from 'lucide-react'
+import { Plus, ImagePlus, Loader2, AlertCircle, Globe, ClipboardList, X, Bot, Zap, Terminal } from 'lucide-react'
 import { useOnboardingStore } from '../../stores/onboarding.store'
 import { useAIBrowserStore } from '../../stores/ai-browser.store'
 import { getComposerMruMap, touchComposerMru } from '../../stores/composer-mru.store'
@@ -31,7 +30,6 @@ import { useCommandsStore } from '../../stores/commands.store'
 import { getOnboardingPrompt } from '../onboarding/onboardingData'
 import { ImageAttachmentPreview } from './ImageAttachmentPreview'
 import { FileContextPreview } from './FileContextPreview'
-import { SkillsDropdown } from '../skills/SkillsDropdown'
 import { ModelSwitcher } from './ModelSwitcher'
 import { ComposerTriggerPanel } from './ComposerTriggerPanel'
 import { processImage, isValidImageType, formatFileSize } from '../../utils/imageProcessor'
@@ -114,7 +112,6 @@ export function InputArea({
   const [isDragOver, setIsDragOver] = useState(false)
   const [isProcessingImages, setIsProcessingImages] = useState(false)
   const [imageError, setImageError] = useState<ImageError | null>(null)
-  const [thinkingEnabled, setThinkingEnabled] = useState(false)  // Extended thinking mode
   const [triggerContext, setTriggerContext] = useState<TriggerContext | null>(null)
   const [activeSuggestionTab, setActiveSuggestionTab] = useState<ComposerSuggestionTab>('skills')
   const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(0)
@@ -222,6 +219,7 @@ export function InputArea({
   const onboardingPrompt = getOnboardingPrompt(t)
   const displayContent = isOnboardingSendStep ? onboardingPrompt : content
   const isTriggerPanelOpen = Boolean(triggerContext) && !isOnboardingSendStep && !isGenerating
+  const effectiveMode: ChatMode = mode === 'plan' ? 'plan' : 'code'
 
   const mruSpaceId = spaceId || 'no-space'
   const effectiveSuggestionTab: ComposerSuggestionTab = triggerContext?.type === 'mention'
@@ -715,9 +713,9 @@ export function InputArea({
       onSend(
         textToSend,
         images.length > 0 ? images : undefined,
-        thinkingEnabled,
+        undefined,
         fileContexts.length > 0 ? fileContexts : undefined,
-        mode
+        effectiveMode
       )
 
       if (!isOnboardingSendStep) {
@@ -725,7 +723,6 @@ export function InputArea({
         setSelectedResourceChips([])
         setImages([])  // Clear images after send
         setFileContexts([])  // Clear file contexts after send
-        // Don't reset thinkingEnabled - user might want to keep it on
         // Reset height
         if (textareaRef.current) {
           textareaRef.current.style.height = 'auto'
@@ -808,29 +805,6 @@ export function InputArea({
     insertText(next.text)
     dequeueInsert(next.id)
   }, [insertQueue, dequeueInsert, insertText])
-
-  // Handle skill insertion from SkillsDropdown
-  const handleInsertSkill = (skillName: string) => {
-    const skill = skills.find((item) => item.name === skillName)
-    if (!skill) {
-      insertText(`/${skillName} `)
-      return
-    }
-    const suggestion = buildComposerResourceSuggestion('skill', skill)
-    setSelectedResourceChips(prev => {
-      if (prev.some((chip) => chip.id === suggestion.stableId)) return prev
-      return [
-        ...prev,
-        {
-          id: suggestion.stableId,
-          type: suggestion.type,
-          displayName: normalizeChipDisplayName(suggestion.displayName),
-          token: suggestion.insertText
-        }
-      ]
-    })
-    textareaRef.current?.focus()
-  }
 
   const removeResourceChip = useCallback((chipId: string) => {
     setSelectedResourceChips(prev => prev.filter((chip) => chip.id !== chipId))
@@ -999,8 +973,6 @@ export function InputArea({
             modeSwitching={modeSwitching}
             isOnboarding={isOnboardingSendStep}
             isProcessingImages={isProcessingImages}
-            thinkingEnabled={thinkingEnabled}
-            onThinkingToggle={() => setThinkingEnabled(!thinkingEnabled)}
             mode={mode}
             onModeChange={onModeChange}
             aiBrowserEnabled={aiBrowserEnabled}
@@ -1009,8 +981,6 @@ export function InputArea({
             canSend={canSend}
             onSend={handleSend}
             onStop={onStop}
-            workDir={workDir}
-            onInsertSkill={handleInsertSkill}
           />
         </div>
       </div>
@@ -1022,7 +992,7 @@ export function InputArea({
  * Input Toolbar - Bottom action bar
  * Extracted as a separate component for maintainability and future extensibility
  *
- * Layout: [+attachment] [skills] ──────────────────── [⚛ thinking] [send]
+ * Layout: [+attachment] ──────────────────────────────────────── [send]
  */
 interface InputToolbarProps {
   conversation: { id: string; ai?: ConversationAiConfig } | null
@@ -1032,8 +1002,6 @@ interface InputToolbarProps {
   modeSwitching: boolean
   isOnboarding: boolean
   isProcessingImages: boolean
-  thinkingEnabled: boolean
-  onThinkingToggle: () => void
   mode: ChatMode
   onModeChange: (mode: ChatMode) => void
   aiBrowserEnabled: boolean
@@ -1042,8 +1010,6 @@ interface InputToolbarProps {
   canSend: boolean
   onSend: () => void
   onStop: () => void
-  workDir?: string
-  onInsertSkill: (skillName: string) => void
 }
 
 function InputToolbar({
@@ -1054,8 +1020,6 @@ function InputToolbar({
   modeSwitching,
   isOnboarding,
   isProcessingImages,
-  thinkingEnabled,
-  onThinkingToggle,
   mode,
   onModeChange,
   aiBrowserEnabled,
@@ -1063,13 +1027,11 @@ function InputToolbar({
   onSystemFileClick,
   canSend,
   onSend,
-  onStop,
-  workDir,
-  onInsertSkill
+  onStop
 }: InputToolbarProps) {
   const { t } = useTranslation()
-  const nextMode: ChatMode = mode === 'code' ? 'plan' : mode === 'plan' ? 'ask' : 'code'
-  const modeLabel = mode === 'code' ? t('Code') : mode === 'plan' ? t('Plan') : t('Ask')
+  const isPlanMode = mode === 'plan'
+  const planButtonLabel = t('Plan')
   return (
     <div className="flex items-center justify-between gap-2 px-2.5 pb-2.5 pt-1.5">
       {/* Left section: attachment button + mode toggles */}
@@ -1115,50 +1077,23 @@ function InputToolbar({
                 <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-primary rounded-full" />
               )}
             </button>
-
-            {/* Skills dropdown */}
-            {workDir && (
-              <SkillsDropdown
-                workDir={workDir}
-                onInsertSkill={onInsertSkill}
-              />
-            )}
-
-            {/* Thinking mode toggle */}
-            <button
-              onClick={onThinkingToggle}
-              className={`h-8 flex items-center gap-1.5 px-2.5 rounded-lg
-                transition-colors duration-200
-                ${thinkingEnabled
-                  ? 'bg-primary/10 text-primary'
-                  : 'text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/50'
-                }
-              `}
-              title={thinkingEnabled ? t('Disable Deep Thinking') : t('Enable Deep Thinking')}
-            >
-              <Atom size={15} />
-              <span className="text-xs">{t('Deep Thinking')}</span>
-            </button>
-
           </>
         )}
-        {!isOnboarding && (
+        {!isOnboarding && !isGenerating && (
           <button
-            onClick={() => onModeChange(nextMode)}
+            onClick={() => onModeChange(isPlanMode ? 'code' : 'plan')}
             disabled={modeSwitching}
             className={`h-8 flex items-center gap-1.5 px-2.5 rounded-lg transition-colors duration-200
-              ${mode === 'plan'
+              ${isPlanMode
                 ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
-                : mode === 'ask'
-                  ? 'bg-sky-500/10 text-sky-600 dark:text-sky-400'
-                  : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                : 'text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/50'
               }
-              ${modeSwitching ? 'opacity-60 cursor-not-allowed' : 'hover:bg-muted/50'}
+              ${modeSwitching ? 'opacity-60 cursor-not-allowed' : ''}
             `}
-            title={t('Current mode: {{mode}} (click to switch)', { mode: modeLabel })}
+            title={t(isPlanMode ? 'Disable Plan Mode' : 'Enable Plan Mode')}
           >
             <ClipboardList size={15} />
-            <span className="text-xs">{modeLabel}</span>
+            <span className="text-xs">{planButtonLabel}</span>
           </button>
         )}
       </div>
@@ -1188,7 +1123,7 @@ function InputToolbar({
                 : 'bg-muted/50 text-muted-foreground/40 cursor-not-allowed'
               }
             `}
-            title={t(mode === 'plan' ? 'Send (Plan Mode)' : mode === 'ask' ? 'Send (Ask Mode)' : thinkingEnabled ? 'Send (Deep Thinking)' : 'Send')}
+            title={t(mode === 'plan' ? 'Send (Plan Mode)' : 'Send')}
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 10.5L12 3m0 0l7.5 7.5M12 3v18" />
