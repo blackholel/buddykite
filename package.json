@@ -29,7 +29,7 @@
     "test:check:win": "node tests/check/binaries.mjs --platform win",
     "test:unit": "vitest run --config tests/vitest.config.ts",
     "test:unit:watch": "vitest --config tests/vitest.config.ts",
-    "test:ask-user-question-guard": "vitest run --config tests/vitest.config.ts src/main/services/agent/__tests__/ask-user-question-flow.test.ts src/main/services/agent/__tests__/message-flow.ask-user-question-status.test.ts src/renderer/stores/__tests__/chat.store.ask-user-question.test.ts tests/unit/services/renderer-comm.ask-user-question.test.ts",
+    "test:ask-user-question-guard": "node tests/check/assert-test-targets-exist.mjs && vitest run --config tests/vitest.config.ts src/main/services/agent/__tests__/ask-user-question-flow.test.ts src/main/services/agent/__tests__/message-flow.ask-user-question-status.test.ts src/renderer/stores/__tests__/chat.store.ask-user-question.test.ts tests/unit/services/renderer-comm.ask-user-question.test.ts",
     "test:e2e": "playwright test --config tests/playwright.config.ts",
     "test:e2e:smoke": "playwright test --config tests/playwright.config.ts --project=smoke",
     "test:e2e:headed": "playwright test --config tests/playwright.config.ts --headed",

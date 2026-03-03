@@ -56,6 +56,13 @@ export function normalizeChatMode(
   return fallback
 }
 
+export function getPermissionModeForChatMode(mode: ChatMode): 'acceptEdits' | 'dontAsk' {
+  if (mode === 'ask') {
+    return 'dontAsk'
+  }
+  return 'acceptEdits'
+}
+
 // ============================================
 // Canvas Context
 // ============================================
@@ -252,6 +259,9 @@ export interface SessionState {
   unmatchedAskUserQuestionToolCalls: Map<string, string[]>
   askUserQuestionSeq: number
   recentlyResolvedAskUserQuestionByToolCallId: Map<string, { runId: string; resolvedAt: number }>
+  askUserQuestionUsedInRun: boolean
+  textClarificationFallbackUsedInConversation: boolean
+  textClarificationDetectedInRun: boolean
   thoughts: Thought[]
   processTrace: ProcessTraceNode[]
 }

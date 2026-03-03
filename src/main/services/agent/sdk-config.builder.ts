@@ -310,10 +310,12 @@ If the user explicitly requests a different output language in the current turn,
 
 ## AskUserQuestion batching policy
 When information is missing, only ask AskUserQuestion for execution-blocking gaps.
+In plan/code modes, AskUserQuestion has higher priority than plain-text clarification.
 If blocking gaps are 2 or more, batch them into one AskUserQuestion call with at most 3 questions.
 Use multiSelect=true only when multiple choices can be valid at the same time.
 Avoid duplicate question texts and duplicate option labels.
 If follow-up questions are predictable, include them in the same AskUserQuestion call.
+If AskUserQuestion is unavailable, plain-text clarification is allowed only once per conversation.
 `
   return base
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { resolveFinalContent } from '../message-flow.service'
+import { buildForcedAssumptionResponse, resolveFinalContent } from '../message-flow.service'
 
 describe('resolveFinalContent priority', () => {
   it('prefers result content first', () => {
@@ -31,5 +31,21 @@ describe('resolveFinalContent priority', () => {
     })
 
     expect(content).toBe('chunk-1\n\nchunk-2')
+  })
+})
+
+describe('buildForcedAssumptionResponse', () => {
+  it('uses Chinese content when response language is zh-CN', () => {
+    const content = buildForcedAssumptionResponse('plan', 'zh-CN')
+
+    expect(content).toContain('澄清预算已用尽')
+    expect(content).toContain('## 默认假设下的计划')
+  })
+
+  it('uses English content when response language is en', () => {
+    const content = buildForcedAssumptionResponse('code', 'en')
+
+    expect(content).toContain('Clarification budget is exhausted')
+    expect(content).toContain('## Default Assumption Execution')
   })
 })

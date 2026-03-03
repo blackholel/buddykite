@@ -240,8 +240,10 @@ describe('sdk-config.builder strict space-only', () => {
     const append = buildSystemPromptAppend('/workspace/project', 'zh-CN')
 
     expect(append).toContain('execution-blocking gaps')
+    expect(append).toContain('higher priority than plain-text clarification')
     expect(append).toContain('at most 3 questions')
     expect(append).toContain('Avoid duplicate question texts and duplicate option labels')
+    expect(append).toContain('plain-text clarification is allowed only once per conversation')
     expect(append).toContain('Language policy')
     expect(append).toContain('zh-CN')
     expect(append).not.toContain('Do NOT use resources outside this list.')

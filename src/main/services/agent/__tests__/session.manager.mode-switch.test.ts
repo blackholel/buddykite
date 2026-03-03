@@ -71,7 +71,15 @@ function createSessionState(overrides: Partial<SessionState> = {}): SessionState
     toolsById: new Map(),
     askUserQuestionModeByToolCallId: new Map(),
     pendingPermissionResolve: null,
-    pendingAskUserQuestion: null,
+    pendingAskUserQuestionsById: new Map(),
+    pendingAskUserQuestionOrder: [],
+    pendingAskUserQuestionIdByToolCallId: new Map(),
+    unmatchedAskUserQuestionToolCalls: new Map(),
+    askUserQuestionSeq: 0,
+    recentlyResolvedAskUserQuestionByToolCallId: new Map(),
+    askUserQuestionUsedInRun: false,
+    textClarificationFallbackUsedInConversation: false,
+    textClarificationDetectedInRun: false,
     thoughts: [],
     processTrace: [],
     ...overrides
@@ -115,6 +123,27 @@ describe('session.manager setSessionMode', () => {
     expect(result.reason).toBe('blocked_pending_interaction')
   })
 
+  it('returns blocked_pending_interaction when pending AskUserQuestion exists', async () => {
+    const session = createSessionState()
+    session.pendingAskUserQuestionsById.set('aq_1', {
+      pendingId: 'aq_1',
+      resolve: vi.fn() as any,
+      inputSnapshot: {},
+      inputFingerprint: 'fp_1',
+      expectedToolCallId: null,
+      runId: 'run-1',
+      createdAt: Date.now(),
+      status: 'awaiting_answer',
+      mode: 'sdk_allow_updated_input'
+    })
+    session.pendingAskUserQuestionOrder.push('aq_1')
+    setActiveSession('conv-1', session)
+
+    const result = await setSessionMode('conv-1', 'plan', 'run-1')
+    expect(result.applied).toBe(false)
+    expect(result.reason).toBe('blocked_pending_interaction')
+  })
+
   it('returns sdk_error when v2 session is unavailable', async () => {
     setActiveSession('conv-1', createSessionState())
     const result = await setSessionMode('conv-1', 'plan', 'run-1')
@@ -140,7 +169,7 @@ describe('session.manager setSessionMode', () => {
       mode: 'plan',
       runId: 'run-1'
     })
-    expect(setPermissionMode).toHaveBeenCalledWith('plan')
+    expect(setPermissionMode).toHaveBeenCalledWith('acceptEdits')
     expect(session.mode).toBe('plan')
   })
 

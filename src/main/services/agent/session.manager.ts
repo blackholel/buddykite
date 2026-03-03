@@ -20,7 +20,7 @@ import type {
   ChatMode,
   AgentSetModeResult
 } from './types'
-import { isChatMode } from './types'
+import { getPermissionModeForChatMode, isChatMode } from './types'
 import { getEnabledPluginMcpHash, getEnabledPluginMcpList } from '../plugin-mcp.service'
 import { getResourceIndexHash } from '../resource-index.service'
 import { normalizeLocale, type LocaleCode } from '../../../shared/i18n/locale'
@@ -43,14 +43,15 @@ function toNonEmptyString(value: unknown): string | undefined {
   return normalized.length > 0 ? normalized : undefined
 }
 
-function toPermissionMode(mode: ChatMode): 'acceptEdits' | 'plan' | 'dontAsk' {
-  if (mode === 'plan') {
-    return 'plan'
+function hasPendingAskUserQuestionInteraction(sessionState: SessionState): boolean {
+  for (const pendingId of sessionState.pendingAskUserQuestionOrder) {
+    const pendingContext = sessionState.pendingAskUserQuestionsById.get(pendingId)
+    if (!pendingContext) continue
+    if (pendingContext.status === 'awaiting_bind' || pendingContext.status === 'awaiting_answer') {
+      return true
+    }
   }
-  if (mode === 'ask') {
-    return 'dontAsk'
-  }
-  return 'acceptEdits'
+  return false
 }
 
 /**
@@ -534,7 +535,7 @@ export async function setSessionMode(
     }
   }
 
-  if (sessionState.pendingAskUserQuestion || sessionState.pendingPermissionResolve) {
+  if (hasPendingAskUserQuestionInteraction(sessionState) || sessionState.pendingPermissionResolve) {
     return {
       applied: false,
       mode: sessionState.mode,
@@ -572,7 +573,7 @@ export async function setSessionMode(
   }
 
   try {
-    await v2SessionInfo.session.setPermissionMode(toPermissionMode(targetMode))
+    await v2SessionInfo.session.setPermissionMode(getPermissionModeForChatMode(targetMode))
     sessionState.mode = targetMode
     v2SessionInfo.lastUsedAt = Date.now()
     return {

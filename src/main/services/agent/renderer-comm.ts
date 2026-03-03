@@ -82,6 +82,37 @@ function getAskUserQuestionFingerprintKey(runId: string, fingerprint: string): s
   return `${runId}:${fingerprint}`
 }
 
+const PLAN_MODE_ALLOWED_TOOLS = new Set<string>([
+  'AskUserQuestion',
+  'Task',
+  'Read',
+  'Grep',
+  'Glob'
+])
+
+const PLAN_MODE_TASK_PROMPT_GUARD = [
+  'PLAN MODE sub-agent policy:',
+  '- This task is read-only exploration.',
+  '- Allowed actions: inspect files, search code, summarize findings.',
+  '- Forbidden actions: modifying files, running commands, executing implementation steps.',
+  '- Output format: Findings, File references, Open questions.'
+].join('\n')
+
+function buildPlanModeTaskInput(input: Record<string, unknown>): Record<string, unknown> {
+  const originalPrompt = typeof input.prompt === 'string' ? input.prompt.trim() : ''
+  const guardedPrompt = originalPrompt.length > 0
+    ? `${PLAN_MODE_TASK_PROMPT_GUARD}\n\n${originalPrompt}`
+    : `${PLAN_MODE_TASK_PROMPT_GUARD}\n\nExplore relevant code paths and report actionable findings.`
+
+  return {
+    ...input,
+    prompt: guardedPrompt,
+    subagent_type: typeof input.subagent_type === 'string' && input.subagent_type.trim().length > 0
+      ? input.subagent_type
+      : 'explorer'
+  }
+}
+
 interface AskUserQuestionNormalizedQuestion {
   id: string
   question: string
@@ -363,6 +394,22 @@ export function createCanUseTool(
       }
     }
 
+    if (effectiveMode === 'plan') {
+      if (!PLAN_MODE_ALLOWED_TOOLS.has(toolName)) {
+        return {
+          behavior: 'deny' as const,
+          message: `PLAN mode only allows AskUserQuestion, Task, Read, Grep and Glob. Tool blocked: ${toolName}`
+        }
+      }
+
+      if (toolName === 'Task') {
+        return {
+          behavior: 'allow' as const,
+          updatedInput: buildPlanModeTaskInput(input)
+        }
+      }
+    }
+
     console.log(
       `[Agent] canUseTool called - Tool: ${toolName}, Input:`,
       JSON.stringify(input).substring(0, 200)
@@ -394,6 +441,7 @@ export function createCanUseTool(
       }
 
       const pendingId = `aq_${session.runId}_${++session.askUserQuestionSeq}`
+      session.askUserQuestionUsedInRun = true
       const mode: AskUserQuestionMode = 'sdk_allow_updated_input'
       return new Promise((resolveDecision) => {
         const context = {

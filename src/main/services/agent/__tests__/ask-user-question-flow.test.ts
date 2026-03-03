@@ -79,6 +79,9 @@ function createSessionState(overrides: Partial<SessionState> = {}): SessionState
     unmatchedAskUserQuestionToolCalls: new Map(),
     askUserQuestionSeq: 0,
     recentlyResolvedAskUserQuestionByToolCallId: new Map(),
+    askUserQuestionUsedInRun: false,
+    textClarificationFallbackUsedInConversation: false,
+    textClarificationDetectedInRun: false,
     thoughts: [],
     processTrace: [],
     ...overrides
