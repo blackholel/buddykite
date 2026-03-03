@@ -31,8 +31,9 @@ const v2Sessions = new Map<string, V2SessionInfo>()
 // Active session state: Map of conversationId -> session state
 const activeSessions = new Map<string, SessionState>()
 
-// Session cleanup interval (clean up sessions not used for 30 minutes)
-const SESSION_IDLE_TIMEOUT_MS = 30 * 60 * 1000
+// Session cleanup defaults
+const DEFAULT_SESSION_IDLE_TIMEOUT_MS = 30 * 60 * 1000
+const MIN_SESSION_IDLE_TIMEOUT_MS = 1000
 const RESOURCE_INDEX_REBUILD_DEBOUNCE_MS = 3000
 let cleanupIntervalId: NodeJS.Timeout | null = null
 const lastResourceIndexRebuildAt = new Map<string, number>()
@@ -54,6 +55,29 @@ function hasPendingAskUserQuestionInteraction(sessionState: SessionState): boole
   return false
 }
 
+function resolveSessionIdleTimeoutMs(): number | null {
+  const rawTimeout = (getConfig().claudeCode as { sessionIdleTimeoutMs?: unknown } | undefined)
+    ?.sessionIdleTimeoutMs
+
+  if (rawTimeout == null) {
+    return DEFAULT_SESSION_IDLE_TIMEOUT_MS
+  }
+
+  if (typeof rawTimeout !== 'number' || !Number.isFinite(rawTimeout)) {
+    return DEFAULT_SESSION_IDLE_TIMEOUT_MS
+  }
+
+  if (rawTimeout <= 0) {
+    return null
+  }
+
+  if (rawTimeout < MIN_SESSION_IDLE_TIMEOUT_MS) {
+    return DEFAULT_SESSION_IDLE_TIMEOUT_MS
+  }
+
+  return rawTimeout
+}
+
 /**
  * Start session cleanup interval
  */
@@ -61,10 +85,18 @@ function startSessionCleanup(): void {
   if (cleanupIntervalId) return
 
   cleanupIntervalId = setInterval(() => {
+    const idleTimeoutMs = resolveSessionIdleTimeoutMs()
+    if (idleTimeoutMs === null) {
+      return
+    }
     const now = Date.now()
     for (const [convId, info] of Array.from(v2Sessions.entries())) {
-      if (now - info.lastUsedAt > SESSION_IDLE_TIMEOUT_MS) {
-        console.log(`[Agent] Cleaning up idle V2 session: ${convId}`)
+      if (activeSessions.has(convId)) {
+        continue
+      }
+      const idleMs = now - info.lastUsedAt
+      if (idleMs > idleTimeoutMs) {
+        console.log(`[Agent] Cleaning up idle V2 session: ${convId} (idleMs=${idleMs}, timeoutMs=${idleTimeoutMs})`)
         try {
           info.session.close()
         } catch (e) {
@@ -148,6 +180,14 @@ function closeV2SessionForRebuild(conversationId: string): void {
   }
 }
 
+export function touchV2Session(conversationId: string): void {
+  const sessionInfo = v2Sessions.get(conversationId)
+  if (!sessionInfo) {
+    return
+  }
+  sessionInfo.lastUsedAt = Date.now()
+}
+
 /**
  * Get or create V2 Session.
  * Enables process reuse to avoid cold start delays.
@@ -167,7 +207,7 @@ export async function getOrCreateV2Session(
         console.log(
           `[Agent][${conversationId}] Skip session rebuild due to resourceIndexHash debounce (${RESOURCE_INDEX_REBUILD_DEBOUNCE_MS}ms)`
         )
-        existing.lastUsedAt = Date.now()
+        touchV2Session(conversationId)
         return existing.session
       }
       console.log(
@@ -191,7 +231,7 @@ export async function getOrCreateV2Session(
       closeV2SessionForRebuild(conversationId)
     } else {
       console.log(`[Agent][${conversationId}] Reusing existing V2 session`)
-      existing.lastUsedAt = Date.now()
+      touchV2Session(conversationId)
       return existing.session
     }
   }
@@ -575,7 +615,7 @@ export async function setSessionMode(
   try {
     await v2SessionInfo.session.setPermissionMode(getPermissionModeForChatMode(targetMode))
     sessionState.mode = targetMode
-    v2SessionInfo.lastUsedAt = Date.now()
+    touchV2Session(conversationId)
     return {
       applied: true,
       mode: targetMode,

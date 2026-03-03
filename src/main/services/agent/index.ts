@@ -87,7 +87,8 @@ export {
   getSessionState,
   getV2SessionInfo,
   getV2SessionsCount,
-  getV2SessionConversationIds
+  getV2SessionConversationIds,
+  touchV2Session
 } from './session.manager'
 
 // Re-export from message-flow.service

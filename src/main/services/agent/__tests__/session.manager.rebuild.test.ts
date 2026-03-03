@@ -41,8 +41,48 @@ vi.mock('../../plugin-mcp.service', () => ({
 }))
 
 import { unstable_v2_createSession } from '@anthropic-ai/claude-agent-sdk'
-import { closeAllV2Sessions, getOrCreateV2Session } from '../session.manager'
-import type { SessionConfig } from '../types'
+import { getConfig } from '../../config.service'
+import {
+  closeAllV2Sessions,
+  deleteActiveSession,
+  getOrCreateV2Session,
+  setActiveSession,
+  touchV2Session
+} from '../session.manager'
+import type { SessionConfig, SessionState } from '../types'
+
+const DEFAULT_SESSION_IDLE_TIMEOUT_MS = 30 * 60 * 1000
+
+function createRunningSessionState(conversationId: string): SessionState {
+  return {
+    abortController: new AbortController(),
+    spaceId: 'space-1',
+    conversationId,
+    runId: `run-${conversationId}`,
+    mode: 'code',
+    startedAt: Date.now(),
+    latestAssistantContent: '',
+    lifecycle: 'running',
+    terminalReason: null,
+    terminalAt: null,
+    finalized: false,
+    toolCallSeq: 0,
+    toolsById: new Map(),
+    askUserQuestionModeByToolCallId: new Map(),
+    pendingPermissionResolve: null,
+    pendingAskUserQuestionsById: new Map(),
+    pendingAskUserQuestionOrder: [],
+    pendingAskUserQuestionIdByToolCallId: new Map(),
+    unmatchedAskUserQuestionToolCalls: new Map(),
+    askUserQuestionSeq: 0,
+    recentlyResolvedAskUserQuestionByToolCallId: new Map(),
+    askUserQuestionUsedInRun: false,
+    textClarificationFallbackUsedInConversation: false,
+    textClarificationDetectedInRun: false,
+    thoughts: [],
+    processTrace: []
+  }
+}
 
 describe('session.manager rebuild', () => {
   const closeFirst = vi.fn()
@@ -151,5 +191,103 @@ describe('session.manager rebuild', () => {
     expect(unstable_v2_createSession).toHaveBeenCalledTimes(2)
     expect(closeA).toHaveBeenCalledTimes(1)
     expect(closeB).not.toHaveBeenCalled()
+  })
+})
+
+describe('session.manager cleanup', () => {
+  const baseConfig: SessionConfig = {
+    aiBrowserEnabled: false,
+    skillsLazyLoad: false,
+    profileId: 'profile-cleanup',
+    providerSignature: 'sig-cleanup',
+    effectiveModel: 'model-cleanup',
+    enabledPluginMcpsHash: 'mcp-cleanup',
+    hasCanUseTool: true
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'))
+    vi.mocked(getConfig).mockReturnValue({} as any)
+    vi.mocked(unstable_v2_createSession).mockReset()
+  })
+
+  afterEach(() => {
+    deleteActiveSession('conv-active')
+    closeAllV2Sessions()
+    vi.useRealTimers()
+    vi.clearAllMocks()
+  })
+
+  it('inactive session 超时后会被清理', async () => {
+    const close = vi.fn()
+    vi.mocked(unstable_v2_createSession).mockResolvedValueOnce({ close } as any)
+
+    await getOrCreateV2Session('space-1', 'conv-inactive', {}, undefined, baseConfig)
+    await vi.advanceTimersByTimeAsync(DEFAULT_SESSION_IDLE_TIMEOUT_MS + 60 * 1000)
+
+    expect(close).toHaveBeenCalledTimes(1)
+  })
+
+  it('active session 超时后不会被清理', async () => {
+    const close = vi.fn()
+    vi.mocked(unstable_v2_createSession).mockResolvedValueOnce({ close } as any)
+
+    await getOrCreateV2Session('space-1', 'conv-active', {}, undefined, baseConfig)
+    setActiveSession('conv-active', createRunningSessionState('conv-active'))
+    await vi.advanceTimersByTimeAsync(DEFAULT_SESSION_IDLE_TIMEOUT_MS + 60 * 1000)
+
+    expect(close).not.toHaveBeenCalled()
+  })
+
+  it('sessionIdleTimeoutMs <= 0 时不执行清理', async () => {
+    const close = vi.fn()
+    vi.mocked(getConfig).mockReturnValue({
+      claudeCode: {
+        sessionIdleTimeoutMs: 0
+      }
+    } as any)
+    vi.mocked(unstable_v2_createSession).mockResolvedValueOnce({ close } as any)
+
+    await getOrCreateV2Session('space-1', 'conv-disabled', {}, undefined, baseConfig)
+    await vi.advanceTimersByTimeAsync(DEFAULT_SESSION_IDLE_TIMEOUT_MS + 5 * 60 * 1000)
+
+    expect(close).not.toHaveBeenCalled()
+  })
+
+  it('touchV2Session 可以延长会话生命周期，避免误清理', async () => {
+    const close = vi.fn()
+    vi.mocked(unstable_v2_createSession).mockResolvedValueOnce({ close } as any)
+
+    await getOrCreateV2Session('space-1', 'conv-touch', {}, undefined, baseConfig)
+    await vi.advanceTimersByTimeAsync(29 * 60 * 1000)
+    touchV2Session('conv-touch')
+
+    await vi.advanceTimersByTimeAsync(2 * 60 * 1000)
+    expect(close).not.toHaveBeenCalled()
+
+    await vi.advanceTimersByTimeAsync(DEFAULT_SESSION_IDLE_TIMEOUT_MS + 60 * 1000)
+    expect(close).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([
+    ['NaN', Number.NaN],
+    ['string', 'abc'],
+    ['tiny', 10]
+  ])('非法 timeout 配置(%s)回退默认行为', async (_, timeoutValue) => {
+    const close = vi.fn()
+    vi.mocked(getConfig).mockReturnValue({
+      claudeCode: {
+        sessionIdleTimeoutMs: timeoutValue
+      }
+    } as any)
+    vi.mocked(unstable_v2_createSession).mockResolvedValueOnce({ close } as any)
+
+    await getOrCreateV2Session('space-1', `conv-invalid-${String(timeoutValue)}`, {}, undefined, baseConfig)
+    await vi.advanceTimersByTimeAsync(2 * 60 * 1000)
+    expect(close).not.toHaveBeenCalled()
+
+    await vi.advanceTimersByTimeAsync(DEFAULT_SESSION_IDLE_TIMEOUT_MS)
+    expect(close).toHaveBeenCalledTimes(1)
   })
 })

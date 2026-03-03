@@ -74,6 +74,13 @@ export interface ClaudeCodeConfig {
   mcpEnabled?: boolean
   /** Enable lazy skills loading (default: false) */
   skillsLazyLoad?: boolean
+  /**
+   * V2 session idle timeout in milliseconds.
+   * - undefined: use default timeout (30 minutes)
+   * - <= 0: disable idle cleanup
+   * - > 0: use configured timeout
+   */
+  sessionIdleTimeoutMs?: number
   /** @deprecated Kept for backward compatibility but ignored at runtime. */
   enableSystemSkills?: boolean
   /**

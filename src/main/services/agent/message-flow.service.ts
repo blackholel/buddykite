@@ -61,7 +61,8 @@ import {
   getV2SessionInfo,
   getV2SessionConversationIds,
   getV2SessionsCount,
-  setSessionMode
+  setSessionMode,
+  touchV2Session
 } from './session.manager'
 import type {
   AgentRequest,
@@ -921,6 +922,7 @@ export async function sendMessage(
       sessionId,
       sessionConfig
     )
+    touchV2Session(conversationId)
 
     // Dynamic runtime parameter adjustment (via SDK patch)
     // These can be changed without rebuilding the session
@@ -1174,6 +1176,7 @@ Keep code snippets, shell commands, file paths, environment variable names, logs
     resetCompatIdleTimer()
 
     for await (const sdkMessage of v2Session.stream() as AsyncIterable<any>) {
+      touchV2Session(conversationId)
       resetCompatIdleTimer()
       // Handle abort - check this session's controller
       if (abortController.signal.aborted) {
@@ -1908,6 +1911,7 @@ export async function stopGeneration(conversationId?: string): Promise<void> {
 
       const drainPromise = (async () => {
         for await (const msg of v2SessionInfo.session.stream()) {
+          touchV2Session(targetConversationId)
           const drainedMessage = msg as { type?: string }
           const drainedType = drainedMessage.type || 'unknown'
           console.log(`[Agent] Drained (${targetConversationId}): ${drainedType}`)
@@ -2070,6 +2074,7 @@ export async function handleAskUserQuestionResponse(
       'No active session found for this conversation'
     )
   }
+  touchV2Session(conversationId)
 
   if (sessionState.conversationId !== conversationId) {
     throw new Error('Conversation mismatch for AskUserQuestion response')
