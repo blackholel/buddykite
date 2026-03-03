@@ -26,7 +26,10 @@ vi.mock('../../../src/main/services/agent/space-resource-policy.service', () => 
   isStrictSpaceOnlyPolicy: vi.fn((policy: { mode: string }) => policy.mode === 'strict-space-only')
 }))
 
-import { createCanUseTool } from '../../../src/main/services/agent/renderer-comm'
+import {
+  createCanUseTool,
+  normalizeAskUserQuestionInput
+} from '../../../src/main/services/agent/renderer-comm'
 
 function createSession(mode: 'plan' | 'code' | 'ask' = 'plan'): SessionState {
   return {
@@ -152,5 +155,57 @@ describe('renderer-comm AskUserQuestion priority + plan whitelist', () => {
     const decision = await pendingDecisionPromise
     expect(decision.behavior).toBe('allow')
     expect(decision.updatedInput).toEqual({ answers: { q_1: 'Plan' } })
+  })
+})
+
+describe('normalizeAskUserQuestionInput multiSelect precedence', () => {
+  it('defaults to multi-select for multi-question payload when not explicitly set', () => {
+    const normalized = normalizeAskUserQuestionInput({
+      questions: [
+        { id: 'q_1', question: 'Question 1', options: ['A', 'B'] },
+        { id: 'q_2', question: 'Question 2', options: ['C', 'D'] }
+      ]
+    })
+
+    const questions = normalized.questions as Array<Record<string, unknown>>
+    expect(questions).toHaveLength(2)
+    expect(questions.every((q) => q.multiSelect === true)).toBe(true)
+  })
+
+  it('keeps single question as single-select when not explicitly set', () => {
+    const normalized = normalizeAskUserQuestionInput({
+      questions: [{ id: 'q_1', question: 'Only one', options: ['A', 'B'] }]
+    })
+
+    const questions = normalized.questions as Array<Record<string, unknown>>
+    expect(questions).toHaveLength(1)
+    expect(questions[0].multiSelect).toBe(false)
+  })
+
+  it('applies top-level multiSelect to questions without explicit field', () => {
+    const normalized = normalizeAskUserQuestionInput({
+      multi_select: false,
+      questions: [
+        { id: 'q_1', question: 'Question 1', options: ['A', 'B'] },
+        { id: 'q_2', question: 'Question 2', options: ['C', 'D'] }
+      ]
+    })
+
+    const questions = normalized.questions as Array<Record<string, unknown>>
+    expect(questions.every((q) => q.multiSelect === false)).toBe(true)
+  })
+
+  it('preserves explicit question-level false over top-level and inferred defaults', () => {
+    const normalized = normalizeAskUserQuestionInput({
+      multiSelect: true,
+      questions: [
+        { id: 'q_1', question: 'Question 1', options: ['A', 'B'], multiSelect: false },
+        { id: 'q_2', question: 'Question 2', options: ['C', 'D'] }
+      ]
+    })
+
+    const questions = normalized.questions as Array<Record<string, unknown>>
+    expect(questions[0].multiSelect).toBe(false)
+    expect(questions[1].multiSelect).toBe(true)
   })
 })

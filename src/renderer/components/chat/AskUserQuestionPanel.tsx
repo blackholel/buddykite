@@ -31,7 +31,7 @@ interface NormalizedQuestion {
   header: string
   question: string
   options: QuestionOption[]
-  multiSelect?: boolean
+  multiSelect: boolean
 }
 
 function toNonEmptyString(value: unknown): string | null {
@@ -40,7 +40,31 @@ function toNonEmptyString(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null
 }
 
-function extractQuestions(input: Record<string, unknown>): NormalizedQuestion[] {
+function toOptionalBoolean(value: unknown): boolean | undefined {
+  if (value === true) return true
+  if (value === false) return false
+  return undefined
+}
+
+function resolveQuestionMultiSelect(
+  questionRecord: Record<string, unknown>,
+  inherited: boolean | undefined,
+  inferred: boolean
+): boolean {
+  const questionLevelCamel = toOptionalBoolean(questionRecord.multiSelect)
+  if (questionLevelCamel !== undefined) return questionLevelCamel
+
+  const questionLevelSnake = toOptionalBoolean(questionRecord.multi_select)
+  if (questionLevelSnake !== undefined) return questionLevelSnake
+
+  if (inherited !== undefined) return inherited
+  return inferred
+}
+
+export function normalizeAskUserQuestionQuestions(input: Record<string, unknown>): NormalizedQuestion[] {
+  const topLevelMultiSelect =
+    toOptionalBoolean(input.multiSelect) ??
+    toOptionalBoolean(input.multi_select)
   const rawQuestions = input.questions
   if (!Array.isArray(rawQuestions) || rawQuestions.length === 0) {
     return [
@@ -52,13 +76,13 @@ function extractQuestions(input: Record<string, unknown>): NormalizedQuestion[] 
           { label: 'Continue', description: 'Proceed with this option' },
           { label: 'Cancel', description: 'Stop and reconsider' }
         ],
-        multiSelect: false
+        multiSelect: topLevelMultiSelect ?? false
       }
     ]
   }
 
-  return rawQuestions
-    .map((rawQuestion, questionIndex): NormalizedQuestion | null => {
+  const parsedQuestions = rawQuestions
+    .map((rawQuestion, questionIndex) => {
       if (!rawQuestion || typeof rawQuestion !== 'object') return null
       const record = rawQuestion as Record<string, unknown>
 
@@ -105,11 +129,49 @@ function extractQuestions(input: Record<string, unknown>): NormalizedQuestion[] 
         )
       }
 
-      const multiSelect = record.multiSelect === true || record.multi_select === true
-
-      return { id, header, question: questionText, options, multiSelect }
+      return {
+        id,
+        header,
+        question: questionText,
+        options,
+        sourceRecord: record
+      }
     })
-    .filter((q): q is NormalizedQuestion => q !== null)
+    .filter((q): q is {
+      id: string
+      header: string
+      question: string
+      options: QuestionOption[]
+      sourceRecord: Record<string, unknown>
+    } => q !== null)
+
+  if (parsedQuestions.length === 0) {
+    return [
+      {
+        id: 'q_1',
+        header: 'Question',
+        question: toNonEmptyString(input.question) || 'Please provide your choice.',
+        options: [
+          { label: 'Continue', description: 'Proceed with this option' },
+          { label: 'Cancel', description: 'Stop and reconsider' }
+        ],
+        multiSelect: topLevelMultiSelect ?? false
+      }
+    ]
+  }
+
+  const inferredMultiSelect = parsedQuestions.length >= 2
+  return parsedQuestions.map((question) => ({
+    id: question.id,
+    header: question.header,
+    question: question.question,
+    options: question.options,
+    multiSelect: resolveQuestionMultiSelect(
+      question.sourceRecord,
+      topLevelMultiSelect,
+      inferredMultiSelect
+    )
+  }))
 }
 
 export function AskUserQuestionPanel({
@@ -122,7 +184,7 @@ export function AskUserQuestionPanel({
 }: AskUserQuestionPanelProps) {
   const { t } = useTranslation()
   const input = toolCall.input as Record<string, unknown>
-  const questions = useMemo(() => extractQuestions(input), [input])
+  const questions = useMemo(() => normalizeAskUserQuestionQuestions(input), [input])
 
   // State for multi-question navigation
   const [currentIndex, setCurrentIndex] = useState(0)

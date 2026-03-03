@@ -30,7 +30,7 @@ import {
   getOnboardingPrompt,
 } from '../onboarding/onboardingData'
 import { api } from '../../api'
-import type { ChatMode, FileContextAttachment, ImageAttachment } from '../../types'
+import type { ChatMode, FileContextAttachment, ImageAttachment, ToolCall } from '../../types'
 import { useTranslation } from '../../i18n'
 
 interface ChatViewProps {
@@ -193,9 +193,26 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
     modeSwitching,
     toolStatusById,
     availableToolsSnapshot,
-    pendingAskUserQuestion,
-    failedAskUserQuestion
+    askUserQuestionsById,
+    askUserQuestionOrder,
+    activeAskUserQuestionId
   } = session
+
+  const askUserQuestionItems = askUserQuestionOrder
+    .map((id) => askUserQuestionsById[id])
+    .filter(Boolean) as Array<{
+    id: string
+    toolCall: ToolCall
+    status: 'pending' | 'failed' | 'resolved'
+  }>
+  const activeAskUserQuestionItem =
+    (activeAskUserQuestionId && askUserQuestionsById[activeAskUserQuestionId]) ||
+    askUserQuestionItems[0] ||
+    null
+  const pendingAskUserQuestion =
+    activeAskUserQuestionItem?.status === 'pending' ? activeAskUserQuestionItem.toolCall : null
+  const failedAskUserQuestion =
+    activeAskUserQuestionItem?.status === 'failed' ? activeAskUserQuestionItem.toolCall : null
 
   // Smart auto-scroll: only scrolls when user is at bottom
   const {
@@ -450,7 +467,7 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
             if (typeof answer !== 'string') {
               throw new Error('Expected manual answer text')
             }
-            dismissAskUserQuestion(currentConversationId)
+            dismissAskUserQuestion(currentConversationId, failedAskUserQuestion.id)
             await sendMessage(answer, undefined, aiBrowserEnabled, false, undefined, 'code')
           }}
           isCompact={isCompact}

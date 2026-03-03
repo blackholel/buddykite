@@ -24,7 +24,7 @@ import { ScrollToBottomButton } from '../../chat/ScrollToBottomButton'
 import { Sparkles } from '../../icons/ToolIcons'
 import { ChangeReviewBar } from '../../diff'
 import type { TabState } from '../../../services/canvas-lifecycle'
-import type { ChatMode, ConversationAiConfig, FileContextAttachment, ImageAttachment } from '../../../types'
+import type { ChatMode, ConversationAiConfig, FileContextAttachment, ImageAttachment, ToolCall } from '../../../types'
 import { useTranslation } from '../../../i18n'
 
 interface ChatTabViewerProps {
@@ -115,11 +115,28 @@ export function ChatTabViewer({ tab }: ChatTabViewerProps) {
     textBlockVersion = 0,
     toolStatusById = {},
     availableToolsSnapshot,
-    pendingAskUserQuestion = null,
+    askUserQuestionsById = {},
+    askUserQuestionOrder = [],
+    activeAskUserQuestionId = null,
     mode = 'code',
-    modeSwitching = false,
-    failedAskUserQuestion = null
+    modeSwitching = false
   } = session || {}
+
+  const askUserQuestionItems = askUserQuestionOrder
+    .map((id) => askUserQuestionsById[id])
+    .filter(Boolean) as Array<{
+    id: string
+    toolCall: ToolCall
+    status: 'pending' | 'failed' | 'resolved'
+  }>
+  const activeAskUserQuestionItem =
+    (activeAskUserQuestionId && askUserQuestionsById[activeAskUserQuestionId]) ||
+    askUserQuestionItems[0] ||
+    null
+  const pendingAskUserQuestion =
+    activeAskUserQuestionItem?.status === 'pending' ? activeAskUserQuestionItem.toolCall : null
+  const derivedFailedAskUserQuestion =
+    activeAskUserQuestionItem?.status === 'failed' ? activeAskUserQuestionItem.toolCall : null
 
   const currentChangeSets = conversationId ? (changeSets.get(conversationId) || []) : []
   const activeChangeSet = currentChangeSets[0]
@@ -299,17 +316,17 @@ export function ChatTabViewer({ tab }: ChatTabViewerProps) {
           isCompact={true}
         />
       )}
-      {!isGenerating && !pendingAskUserQuestion && failedAskUserQuestion && conversationId && (
+      {!isGenerating && !pendingAskUserQuestion && derivedFailedAskUserQuestion && conversationId && (
         <AskUserQuestionPanel
-          toolCall={failedAskUserQuestion}
-          failureReason={failedAskUserQuestion.error || failedAskUserQuestion.output}
+          toolCall={derivedFailedAskUserQuestion}
+          failureReason={derivedFailedAskUserQuestion.error || derivedFailedAskUserQuestion.output}
           submitLabel={t('Send')}
           submitAsText={true}
           onSubmit={async (answer) => {
             if (typeof answer !== 'string') {
               throw new Error('Expected manual answer text')
             }
-            dismissAskUserQuestion(conversationId)
+            dismissAskUserQuestion(conversationId, derivedFailedAskUserQuestion.id)
             if (!spaceId) return
             await sendMessageToConversation(
               spaceId,

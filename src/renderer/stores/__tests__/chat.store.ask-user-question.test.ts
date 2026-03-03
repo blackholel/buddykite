@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentEventBase, AskUserQuestionAnswerPayload, ToolCall } from '../../types'
+import { normalizeAskUserQuestionQuestions } from '../../components/chat/AskUserQuestionPanel'
 
 const mockAnswerQuestion = vi.fn()
 const mockGetConversation = vi.fn()
@@ -541,5 +542,53 @@ describe('Chat Store - AskUserQuestion Flow', () => {
     const session = useChatStore.getState().getSession(conversationId)
     expect(session.isGenerating).toBe(false)
     expect(session.isStreaming).toBe(false)
+  })
+})
+
+describe('AskUserQuestionPanel normalization fallback', () => {
+  it('defaults to multi-select for multi-question payload when not explicitly set', () => {
+    const questions = normalizeAskUserQuestionQuestions({
+      questions: [
+        { id: 'q_1', question: 'Question 1', options: ['A', 'B'] },
+        { id: 'q_2', question: 'Question 2', options: ['C', 'D'] }
+      ]
+    })
+
+    expect(questions).toHaveLength(2)
+    expect(questions.every((question) => question.multiSelect === true)).toBe(true)
+  })
+
+  it('keeps single-question payload as single-select when not explicitly set', () => {
+    const questions = normalizeAskUserQuestionQuestions({
+      questions: [{ id: 'q_1', question: 'Only one', options: ['A', 'B'] }]
+    })
+
+    expect(questions).toHaveLength(1)
+    expect(questions[0].multiSelect).toBe(false)
+  })
+
+  it('applies top-level multiSelect to questions without explicit field', () => {
+    const questions = normalizeAskUserQuestionQuestions({
+      multi_select: false,
+      questions: [
+        { id: 'q_1', question: 'Question 1', options: ['A', 'B'] },
+        { id: 'q_2', question: 'Question 2', options: ['C', 'D'] }
+      ]
+    })
+
+    expect(questions.every((question) => question.multiSelect === false)).toBe(true)
+  })
+
+  it('preserves explicit question-level false over top-level and inferred defaults', () => {
+    const questions = normalizeAskUserQuestionQuestions({
+      multiSelect: true,
+      questions: [
+        { id: 'q_1', question: 'Question 1', options: ['A', 'B'], multiSelect: false },
+        { id: 'q_2', question: 'Question 2', options: ['C', 'D'] }
+      ]
+    })
+
+    expect(questions[0].multiSelect).toBe(false)
+    expect(questions[1].multiSelect).toBe(true)
   })
 })

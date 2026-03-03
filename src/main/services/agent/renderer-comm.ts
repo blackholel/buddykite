@@ -58,6 +58,27 @@ function normalizeStringArray(values: unknown): string[] {
   return Array.from(unique)
 }
 
+function toOptionalBoolean(value: unknown): boolean | undefined {
+  if (value === true) return true
+  if (value === false) return false
+  return undefined
+}
+
+function resolveQuestionMultiSelect(
+  questionRecord: Record<string, unknown>,
+  inherited: boolean | undefined,
+  inferred: boolean
+): boolean {
+  const questionLevelCamel = toOptionalBoolean(questionRecord.multiSelect)
+  if (questionLevelCamel !== undefined) return questionLevelCamel
+
+  const questionLevelSnake = toOptionalBoolean(questionRecord.multi_select)
+  if (questionLevelSnake !== undefined) return questionLevelSnake
+
+  if (inherited !== undefined) return inherited
+  return inferred
+}
+
 function stableStringify(value: unknown): string {
   if (Array.isArray(value)) {
     return `[${value.map((entry) => stableStringify(entry)).join(',')}]`
@@ -215,6 +236,10 @@ export function buildAskUserQuestionUpdatedInput(
 export function normalizeAskUserQuestionInput(
   input: Record<string, unknown>
 ): Record<string, unknown> {
+  const topLevelMultiSelect =
+    toOptionalBoolean(input.multiSelect) ??
+    toOptionalBoolean(input.multi_select)
+
   const rawQuestions = input.questions
   if (!Array.isArray(rawQuestions) || rawQuestions.length === 0) {
     const question = toNonEmptyString(input.question) || 'Please provide your choice.'
@@ -227,13 +252,14 @@ export function normalizeAskUserQuestionInput(
           options: [
             { label: 'Continue', description: 'Proceed with this option' },
             { label: 'Cancel', description: 'Stop and reconsider' }
-          ]
+          ],
+          multiSelect: topLevelMultiSelect ?? false
         }
       ]
     }
   }
 
-  const questions = rawQuestions
+  const normalizedQuestions = rawQuestions
     .map((rawQuestion, questionIndex) => {
       if (!rawQuestion || typeof rawQuestion !== 'object') return null
       const record = rawQuestion as Record<string, unknown>
@@ -288,20 +314,23 @@ export function normalizeAskUserQuestionInput(
         )
       }
 
-      // Extract multiSelect field (supports both camelCase and snake_case)
-      const multiSelect = record.multiSelect === true || record.multi_select === true
-
       return {
         id,
         header,
         question: questionText,
         options,
-        multiSelect
+        sourceRecord: record
       }
     })
-    .filter((item): item is { id: string; header: string; question: string; options: Array<{ label: string; description: string }>; multiSelect: boolean } => item !== null)
+    .filter((item): item is {
+      id: string
+      header: string
+      question: string
+      options: Array<{ label: string; description: string }>
+      sourceRecord: Record<string, unknown>
+    } => item !== null)
 
-  if (questions.length === 0) {
+  if (normalizedQuestions.length === 0) {
     return {
       questions: [
         {
@@ -311,11 +340,25 @@ export function normalizeAskUserQuestionInput(
           options: [
             { label: 'Continue', description: 'Proceed with this option' },
             { label: 'Cancel', description: 'Stop and reconsider' }
-          ]
+          ],
+          multiSelect: topLevelMultiSelect ?? false
         }
       ]
     }
   }
+
+  const inferredMultiSelect = normalizedQuestions.length >= 2
+  const questions = normalizedQuestions.map((item) => ({
+    id: item.id,
+    header: item.header,
+    question: item.question,
+    options: item.options,
+    multiSelect: resolveQuestionMultiSelect(
+      item.sourceRecord,
+      topLevelMultiSelect,
+      inferredMultiSelect
+    )
+  }))
 
   return { questions }
 }
