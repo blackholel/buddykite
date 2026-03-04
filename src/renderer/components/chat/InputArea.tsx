@@ -32,6 +32,7 @@ import { ImageAttachmentPreview } from './ImageAttachmentPreview'
 import { FileContextPreview } from './FileContextPreview'
 import { ModelSwitcher } from './ModelSwitcher'
 import { ComposerTriggerPanel } from './ComposerTriggerPanel'
+import { SkillsDropdown } from '../skills'
 import { processImage, isValidImageType, formatFileSize } from '../../utils/imageProcessor'
 import type { ChatMode, ConversationAiConfig, FileContextAttachment, ImageAttachment, KiteConfig } from '../../types'
 import { useTranslation } from '../../i18n'
@@ -145,6 +146,7 @@ export function InputArea({
   const [globalExpandState, setGlobalExpandState] = useState<Record<string, boolean>>({})
   const [mruVersion, setMruVersion] = useState(0)
   const [selectedResourceChips, setSelectedResourceChips] = useState<SelectedComposerResourceChip[]>([])
+  const [thinkingEnabled, setThinkingEnabled] = useState(false)
   const [queueHint, setQueueHint] = useState<string | null>(null)
   const [guidingQueueItemIds, setGuidingQueueItemIds] = useState<Set<string>>(new Set())
   const [isComposing, setIsComposing] = useState(false)
@@ -741,7 +743,7 @@ export function InputArea({
       onSend(
         textToSend,
         images.length > 0 ? images : undefined,
-        undefined,
+        thinkingEnabled,
         fileContexts.length > 0 ? fileContexts : undefined,
         effectiveMode
       )
@@ -824,6 +826,14 @@ export function InputArea({
       return prev + ' ' + text
     })
     textareaRef.current?.focus()
+  }, [])
+
+  const onInsertSkill = useCallback((skillName: string) => {
+    insertText(`/${skillName}`)
+  }, [insertText])
+
+  const onThinkingToggle = useCallback(() => {
+    setThinkingEnabled(prev => !prev)
   }, [])
 
   // Consume pending insert requests from sidebar panels
@@ -1146,6 +1156,10 @@ export function InputArea({
             aiBrowserEnabled={aiBrowserEnabled}
             onAIBrowserToggle={() => setAIBrowserEnabled(!aiBrowserEnabled)}
             onSystemFileClick={handleSystemFileButtonClick}
+            workDir={workDir}
+            onInsertSkill={onInsertSkill}
+            thinkingEnabled={thinkingEnabled}
+            onThinkingToggle={onThinkingToggle}
             canSend={canSend}
             onSend={handleSend}
             onStop={onStop}
@@ -1191,6 +1205,10 @@ interface InputToolbarProps {
   aiBrowserEnabled: boolean
   onAIBrowserToggle: () => void
   onSystemFileClick: () => void
+  workDir?: string
+  onInsertSkill: (skillName: string) => void
+  thinkingEnabled: boolean
+  onThinkingToggle: () => void
   canSend: boolean
   onSend: () => void
   onStop: () => void
@@ -1209,6 +1227,10 @@ function InputToolbar({
   aiBrowserEnabled,
   onAIBrowserToggle,
   onSystemFileClick,
+  workDir,
+  onInsertSkill,
+  thinkingEnabled,
+  onThinkingToggle,
   canSend,
   onSend,
   onStop
