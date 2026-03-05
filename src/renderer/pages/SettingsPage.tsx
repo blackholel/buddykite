@@ -2,26 +2,25 @@
  * Settings Page - App configuration
  */
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { useAppStore } from '../stores/app.store'
-import { usePythonStore } from '../stores/python.store'
 import { api } from '../api'
 import type {
   KiteConfig,
   ThemeMode,
   McpServersConfig,
-  ApiProfile
+  ApiProfile,
+  ProviderProtocol
 } from '../types'
-import { CheckCircle2, XCircle, ArrowLeft, ChevronDown, ChevronRight, Package, Trash2, Loader2 } from '../components/icons/ToolIcons'
-import { Header } from '../components/layout/Header'
+import type { LucideIcon } from 'lucide-react'
+import { Bot, Eye, EyeOff, Info, Network, Palette, ServerCog, Shield, SlidersHorizontal, X } from 'lucide-react'
 import { McpServerList } from '../components/settings/McpServerList'
 import { useTranslation, setLanguage, getCurrentLanguage, SUPPORTED_LOCALES, type LocaleCode } from '../i18n'
 import { ensureAiConfig } from '../../shared/types/ai-profile'
-import { ProfileCard } from '../components/settings/ProfileCard'
-import { ProfileEditor } from '../components/settings/ProfileEditor'
 import {
   AI_PROFILE_TEMPLATES,
   isValidOpenAICompatEndpoint,
+  normalizeModelCatalog,
   normalizeProfileForSave
 } from '../components/settings/aiProfileDomain'
 
@@ -50,9 +49,102 @@ function selectFirstEnabledProfileId(profiles: ApiProfile[]): string {
   return enabledProfile?.id || profiles[0]?.id || ''
 }
 
+function ensureTemplateProfiles(profiles: ApiProfile[]): ApiProfile[] {
+  const baseProfiles = [...profiles]
+  for (const template of AI_PROFILE_TEMPLATES) {
+    const exists = baseProfiles.some(
+      profile => profile.vendor === template.vendor && profile.protocol === template.protocol
+    )
+    if (!exists) {
+      baseProfiles.push({
+        id: createProfileId(template.key),
+        name: template.label,
+        vendor: template.vendor,
+        protocol: template.protocol,
+        apiUrl: template.apiUrl,
+        apiKey: '',
+        defaultModel: template.defaultModel,
+        modelCatalog: template.modelCatalog,
+        docUrl: template.docUrl,
+        enabled: false
+      })
+    }
+  }
+  return baseProfiles
+}
+
+function getProfileMonogram(name: string): string {
+  const trimmed = name.trim()
+  if (!trimmed) return '·'
+  const matchedLatin = trimmed.match(/[A-Za-z]/)
+  if (matchedLatin?.[0]) return matchedLatin[0].toUpperCase()
+  return trimmed[0]
+}
+
 const THEME_OPTIONS: Array<{ value: ThemeMode; labelKey: string }> = [
   { value: 'light', labelKey: 'Light' },
   { value: 'dark', labelKey: 'Dark' }
+]
+
+type SettingsSectionId =
+  | 'model'
+  | 'appearance'
+  | 'general'
+  | 'permissions'
+  | 'mcp'
+  | 'network'
+  | 'about'
+
+interface SettingsSectionDef {
+  id: SettingsSectionId
+  labelKey: string
+  hintKey: string
+  icon: LucideIcon
+}
+
+const SETTINGS_SECTIONS: SettingsSectionDef[] = [
+  {
+    id: 'model',
+    labelKey: 'Model',
+    hintKey: 'Provider and model setup',
+    icon: Bot
+  },
+  {
+    id: 'appearance',
+    labelKey: 'Appearance',
+    hintKey: 'Theme and language',
+    icon: Palette
+  },
+  {
+    id: 'general',
+    labelKey: 'General',
+    hintKey: 'System behavior',
+    icon: SlidersHorizontal
+  },
+  {
+    id: 'permissions',
+    labelKey: 'Permissions',
+    hintKey: 'Execution and trust',
+    icon: Shield
+  },
+  {
+    id: 'mcp',
+    labelKey: 'MCP',
+    hintKey: 'Tool server config',
+    icon: ServerCog
+  },
+  {
+    id: 'network',
+    labelKey: 'Network',
+    hintKey: 'Remote access',
+    icon: Network
+  },
+  {
+    id: 'about',
+    labelKey: 'About',
+    hintKey: 'Version information',
+    icon: Info
+  }
 ]
 
 // Apple-style toggle component (extracted to top-level to avoid re-creation on every render)
@@ -93,32 +185,14 @@ export function SettingsPage() {
   const { t } = useTranslation()
   const { config, setConfig, goBack } = useAppStore()
 
-  // Python store
-  const {
-    isAvailable: pythonAvailable,
-    isDetecting: pythonDetecting,
-    globalEnvironment: pythonEnvironment,
-    globalPackages: pythonPackages,
-    isLoadingGlobalPackages: loadingPythonPackages,
-    detectionError: pythonError,
-    isInstallingPackage,
-    installProgress,
-    detectPython,
-    loadGlobalPackages,
-    installPackage,
-    uninstallPackage
-  } = usePythonStore()
-
-  // Python UI state
-  const [showPythonPackages, setShowPythonPackages] = useState(false)
-  const [newPackageName, setNewPackageName] = useState('')
-
   const initialAiConfig = ensureAiConfig(config?.ai, config?.api)
-  const [profiles, setProfiles] = useState<ApiProfile[]>(initialAiConfig.profiles)
+  const [profiles, setProfiles] = useState<ApiProfile[]>(ensureTemplateProfiles(initialAiConfig.profiles))
   const [defaultProfileId, setDefaultProfileId] = useState(initialAiConfig.defaultProfileId)
   const [selectedProfileId, setSelectedProfileId] = useState(initialAiConfig.defaultProfileId)
-  const [templateKey, setTemplateKey] = useState(AI_PROFILE_TEMPLATES[0]?.key || 'minimax')
   const [theme, setTheme] = useState<ThemeMode>(config?.appearance?.theme === 'dark' ? 'dark' : 'light')
+  const [activeSection, setActiveSection] = useState<SettingsSectionId>('model')
+  const [showApiKey, setShowApiKey] = useState(false)
+  const [modelInput, setModelInput] = useState('')
 
   // Connection status
   const [isValidating, setIsValidating] = useState(false)
@@ -139,6 +213,9 @@ export function SettingsPage() {
   const [minimizeToTray, setMinimizeToTray] = useState(config?.system?.minimizeToTray || false)
 
   const selectedProfile = profiles.find(profile => profile.id === selectedProfileId) || null
+  const selectedCatalog = selectedProfile
+    ? normalizeModelCatalog(selectedProfile.defaultModel, selectedProfile.modelCatalog)
+    : []
   const selectedProfileUrlInvalid =
     selectedProfile?.protocol === 'openai_compat' &&
     !isValidOpenAICompatEndpoint(selectedProfile.apiUrl)
@@ -159,7 +236,7 @@ export function SettingsPage() {
 
   useEffect(() => {
     const nextAiConfig = ensureAiConfig(config?.ai, config?.api)
-    setProfiles(nextAiConfig.profiles)
+    setProfiles(ensureTemplateProfiles(nextAiConfig.profiles))
     setDefaultProfileId(nextAiConfig.defaultProfileId)
     setSelectedProfileId((prev) => {
       if (nextAiConfig.profiles.some(profile => profile.id === prev)) {
@@ -170,6 +247,11 @@ export function SettingsPage() {
   }, [config?.ai, config?.api])
 
   useEffect(() => {
+    setShowApiKey(false)
+    setModelInput('')
+  }, [selectedProfileId])
+
+  useEffect(() => {
     setTheme(config?.appearance?.theme === 'dark' ? 'dark' : 'light')
   }, [config?.appearance?.theme])
 
@@ -177,18 +259,6 @@ export function SettingsPage() {
   useEffect(() => {
     loadSystemSettings()
   }, [])
-
-  // Load Python environment on mount
-  useEffect(() => {
-    detectPython()
-  }, [detectPython])
-
-  // Load Python packages when environment is available
-  useEffect(() => {
-    if (pythonAvailable && showPythonPackages) {
-      loadGlobalPackages()
-    }
-  }, [pythonAvailable, showPythonPackages, loadGlobalPackages])
 
   const loadSystemSettings = async () => {
     try {
@@ -341,20 +411,6 @@ export function SettingsPage() {
     setConfig({ ...config, mcpServers: servers } as KiteConfig)
   }
 
-  // Handle Python package install
-  const handleInstallPackage = async () => {
-    if (!newPackageName.trim()) return
-    const success = await installPackage(newPackageName.trim())
-    if (success) {
-      setNewPackageName('')
-    }
-  }
-
-  // Handle Python package uninstall
-  const handleUninstallPackage = async (packageName: string) => {
-    await uninstallPackage(packageName)
-  }
-
   const updateSelectedProfile = (updates: Partial<ApiProfile>) => {
     if (!selectedProfileId) return
 
@@ -388,8 +444,26 @@ export function SettingsPage() {
     }
   }
 
+  const handleProtocolChange = (protocol: ProviderProtocol) => {
+    updateSelectedProfile({ protocol })
+    setValidationResult(null)
+  }
+
+  const handleAddModelId = () => {
+    if (!selectedProfile) return
+    const normalizedModel = modelInput.trim()
+    if (!normalizedModel) return
+    updateSelectedProfile({
+      modelCatalog: normalizeModelCatalog(selectedProfile.defaultModel, [...selectedCatalog, normalizedModel])
+    })
+    setModelInput('')
+    setValidationResult(null)
+  }
+
   const handleAddProfileFromTemplate = () => {
-    const template = AI_PROFILE_TEMPLATES.find(item => item.key === templateKey) || AI_PROFILE_TEMPLATES[0]
+    const template = AI_PROFILE_TEMPLATES.find(item =>
+      !profiles.some(profile => profile.vendor === item.vendor && profile.protocol === item.protocol)
+    )
     if (!template) return
 
     const profileName = toUniqueProfileName(template.label, profiles)
@@ -442,7 +516,7 @@ export function SettingsPage() {
   const handleValidateConnection = async () => {
     if (!selectedProfile) return
 
-    if (!selectedProfile.apiKey.trim()) {
+    if (selectedProfile.enabled !== false && !selectedProfile.apiKey.trim()) {
       setValidationResult({ valid: false, message: t('Please enter API Key') })
       return
     }
@@ -546,677 +620,684 @@ export function SettingsPage() {
 
   const currentLanguage = getCurrentLanguage()
   const localeEntries = Object.entries(SUPPORTED_LOCALES) as [LocaleCode, string][]
+  const activeSectionMeta = SETTINGS_SECTIONS.find(section => section.id === activeSection) || SETTINGS_SECTIONS[0]
 
-  return (
-    <div className="h-full w-full flex flex-col relative">
-      {/* Ambient background */}
-      <div className="ambient-bg">
-        <div className="ambient-orb ambient-orb-1" />
-        <div className="ambient-orb ambient-orb-2" />
-      </div>
-
-      {/* Header */}
-      <Header
-        left={
-          <>
+  const renderModelSection = () => (
+    <section className="settings-modal-card settings-model-card">
+      <div className="settings-model-grid">
+        <aside className="settings-model-vendors">
+          <div className="mb-2 flex items-center justify-between border-b border-border/70 pb-2">
+            <label className="text-xs font-medium text-muted-foreground">{t('供应商')}</label>
             <button
-              onClick={goBack}
-              className="p-1.5 rounded-xl hover:bg-secondary/80 transition-all duration-200 group"
+              type="button"
+              onClick={handleAddProfileFromTemplate}
+              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-2xl leading-none text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
+              title={t('Add Profile')}
             >
-              <ArrowLeft className="w-[18px] h-[18px] text-muted-foreground group-hover:text-foreground transition-colors" />
+              +
             </button>
-            <span className="font-semibold text-sm tracking-tight">{t('Settings')}</span>
-          </>
-        }
-      />
-
-      {/* Content */}
-      <main className="flex-1 overflow-auto relative z-10">
-        <div className="max-w-[1560px] mx-auto px-6 py-8 space-y-5">
-          {/* AI Profiles Section */}
-          <section className="settings-section">
-            <div className="flex items-center gap-3 mb-5">
-              <div className="w-9 h-9 rounded-xl bg-[#da7756]/15 flex items-center justify-center">
-                <svg className="w-5 h-5 text-[#da7756]" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M4.709 15.955l4.72-2.647.08-.08 2.726-1.529.08-.08 6.206-3.48a.25.25 0 00.125-.216V6.177a.25.25 0 00-.375-.217l-6.206 3.48-.08.08-2.726 1.53-.08.079-4.72 2.647a.25.25 0 00-.125.217v1.746c0 .18.193.294.354.216h.001zm13.937-3.584l-4.72 2.647-.08.08-2.726 1.529-.08.08-6.206 3.48a.25.25 0 00-.125.216v1.746a.25.25 0 00.375.217l6.206-3.48.08-.08 2.726-1.53.08-.079 4.72-2.647a.25.25 0 00.125-.217v-1.746a.25.25 0 00-.375-.216z"/>
-                </svg>
-              </div>
-              <div>
-                <h2 className="text-base font-semibold tracking-tight">{t('AI Profiles')}</h2>
-                <p className="text-xs text-muted-foreground">{t('Manage provider profiles and default profile')}</p>
-              </div>
-            </div>
-
-            <div className="space-y-5">
-              <div className="flex items-end gap-3">
-                <div className="flex-1">
-                  <label className="block text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">{t('Preset Template')}</label>
-                  <select
-                    value={templateKey}
-                    onChange={(event) => setTemplateKey(event.target.value)}
-                    className="w-full select-apple text-sm"
-                  >
-                    {AI_PROFILE_TEMPLATES.map(template => (
-                      <option key={template.key} value={template.key}>
-                        {t(template.label)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <button
-                  onClick={handleAddProfileFromTemplate}
-                  className="px-4 py-2.5 btn-apple text-sm"
-                >
-                  {t('Add Profile')}
-                </button>
-              </div>
-
-              <div className="grid grid-cols-1 gap-4 lg:grid-cols-[380px_minmax(0,1fr)]">
-                <aside className="space-y-2">
-                  <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('Profile List')}</label>
-                  <div className="space-y-2">
-                    {profiles.map((profile) => (
-                      <ProfileCard
-                        key={profile.id}
-                        profile={profile}
-                        isActive={profile.id === selectedProfileId}
-                        isDefault={profile.id === defaultProfileId}
-                        onClick={() => {
-                          setSelectedProfileId(profile.id)
-                          setValidationResult(null)
-                        }}
-                      />
-                    ))}
-                  </div>
-                </aside>
-
-                <ProfileEditor
-                  profile={selectedProfile}
-                  isDefault={selectedProfile?.id === defaultProfileId}
-                  canDelete={profiles.length > 1}
-                  isBusy={isValidating}
-                  validationResult={validationResult}
-                  onUpdate={(patch) => {
-                    updateSelectedProfile(patch)
-                    setValidationResult(null)
-                  }}
-                  onDelete={handleRemoveSelectedProfile}
-                  onSetDefault={() => {
-                    if (!selectedProfile || selectedProfile.enabled === false) {
-                      return
-                    }
-                    setDefaultProfileId(selectedProfile.id)
-                    setValidationResult(null)
-                  }}
-                  onValidate={handleValidateConnection}
-                  onSave={handleSave}
-                  onEnabledChange={handleSelectedProfileEnabledChange}
-                />
-              </div>
-            </div>
-          </section>
-
-          {/* Permissions Section */}
-          <section className="settings-section">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-medium">{t('Permissions')}</h2>
-              <span className="text-xs px-2.5 py-1 rounded-lg bg-kite-success/15 text-kite-success font-medium">
-                {t('Full Permission Mode')}
-              </span>
-            </div>
-
-            {/* Info banner */}
-            <div className="settings-info mb-5 text-sm text-muted-foreground">
-              {t('Current version defaults to full permission mode, AI can freely perform all operations. Future versions will support fine-grained permission control.')}
-            </div>
-
-            <div className="space-y-4 opacity-50">
-              {/* File Access */}
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium">{t('File Read/Write')}</p>
-                  <p className="text-sm text-muted-foreground">{t('Allow AI to read and create files')}</p>
-                </div>
-                <span className="text-xs px-2.5 py-1 rounded-lg bg-kite-success/15 text-kite-success font-medium">
-                  {t('Allow')}
-                </span>
-              </div>
-
-              {/* Command Execution */}
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium">{t('Execute Commands')}</p>
-                  <p className="text-sm text-muted-foreground">{t('Allow AI to execute terminal commands')}</p>
-                </div>
-                <span className="text-xs px-2.5 py-1 rounded-lg bg-kite-success/15 text-kite-success font-medium">
-                  {t('Allow')}
-                </span>
-              </div>
-
-              {/* Trust Mode */}
-              <div className="flex items-center justify-between pt-4 border-t border-border/50">
-                <div>
-                  <p className="font-medium">{t('Trust Mode')}</p>
-                  <p className="text-sm text-muted-foreground">{t('Automatically execute all operations')}</p>
-                </div>
-                <AppleToggle checked={true} onChange={() => {}} disabled={true} />
-              </div>
-            </div>
-          </section>
-
-          {/* Configuration Source Section */}
-          <section className="settings-section">
-            <div className="flex items-center gap-3 mb-5">
-              <div className="w-9 h-9 rounded-xl bg-secondary flex items-center justify-center">
-                <svg className="w-5 h-5 text-foreground" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M4 4h7v7H4V4zm9 0h7v7h-7V4zM4 13h7v7H4v-7zm9 0h7v7h-7v-7z" />
-                </svg>
-              </div>
-              <div>
-                <h2 className="text-base font-semibold tracking-tight">{t('Configuration Source')}</h2>
-                <p className="text-xs text-muted-foreground">{t('Choose which user configuration directory Kite uses')}</p>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <div>
-                <label className="block text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">
-                  {t('Source')}
-                </label>
-                <div className="w-full px-3 py-2 rounded-xl border border-border/60 bg-muted/30 text-sm">
-                  {t('Kite (~/.kite)')}
-                </div>
-              </div>
-
-              <div className="settings-info text-sm">
-                {t('Current version only supports Kite config root.')}
-              </div>
-            </div>
-          </section>
-
-          {/* Python Environment Section */}
-          <section className="settings-section">
-            <div className="flex items-center gap-3 mb-5">
-              <div className="w-9 h-9 rounded-xl bg-[#3776ab]/15 flex items-center justify-center">
-                <svg className="w-5 h-5 text-[#3776ab]" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M14.25.18l.9.2.73.26.59.3.45.32.34.34.25.34.16.33.1.3.04.26.02.2-.01.13V8.5l-.05.63-.13.55-.21.46-.26.38-.3.31-.33.25-.35.19-.35.14-.33.1-.3.07-.26.04-.21.02H8.77l-.69.05-.59.14-.5.22-.41.27-.33.32-.27.35-.2.36-.15.37-.1.35-.07.32-.04.27-.02.21v3.06H3.17l-.21-.03-.28-.07-.32-.12-.35-.18-.36-.26-.36-.36-.35-.46-.32-.59-.28-.73-.21-.88-.14-1.05-.05-1.23.06-1.22.16-1.04.24-.87.32-.71.36-.57.4-.44.42-.33.42-.24.4-.16.36-.1.32-.05.24-.01h.16l.06.01h8.16v-.83H6.18l-.01-2.75-.02-.37.05-.34.11-.31.17-.28.25-.26.31-.23.38-.2.44-.18.51-.15.58-.12.64-.1.71-.06.77-.04.84-.02 1.27.05zm-6.3 1.98l-.23.33-.08.41.08.41.23.34.33.22.41.09.41-.09.33-.22.23-.34.08-.41-.08-.41-.23-.33-.33-.22-.41-.09-.41.09zm13.09 3.95l.28.06.32.12.35.18.36.27.36.35.35.47.32.59.28.73.21.88.14 1.04.05 1.23-.06 1.23-.16 1.04-.24.86-.32.71-.36.57-.4.45-.42.33-.42.24-.4.16-.36.09-.32.05-.24.02-.16-.01h-8.22v.82h5.84l.01 2.76.02.36-.05.34-.11.31-.17.29-.25.25-.31.24-.38.2-.44.17-.51.15-.58.13-.64.09-.71.07-.77.04-.84.01-1.27-.04-1.07-.14-.9-.2-.73-.25-.59-.3-.45-.33-.34-.34-.25-.34-.16-.33-.1-.3-.04-.25-.02-.2.01-.13v-5.34l.05-.64.13-.54.21-.46.26-.38.3-.32.33-.24.35-.2.35-.14.33-.1.3-.06.26-.04.21-.02.13-.01h5.84l.69-.05.59-.14.5-.21.41-.28.33-.32.27-.35.2-.36.15-.36.1-.35.07-.32.04-.28.02-.21V6.07h2.09l.14.01zm-6.47 14.25l-.23.33-.08.41.08.41.23.33.33.23.41.08.41-.08.33-.23.23-.33.08-.41-.08-.41-.23-.33-.33-.23-.41-.08-.41.08z"/>
-                </svg>
-              </div>
-              <div>
-                <h2 className="text-base font-semibold tracking-tight">{t('Python Environment')}</h2>
-                <p className="text-xs text-muted-foreground">{t('Built-in Python for code execution')}</p>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              {/* Status */}
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium">{t('Status')}</p>
-                  <p className="text-sm text-muted-foreground">
-                    {pythonDetecting
-                      ? t('Detecting...')
-                      : pythonAvailable
-                      ? `Python ${pythonEnvironment?.version || ''}`
-                      : pythonError || t('Not available')}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  {pythonDetecting ? (
-                    <Loader2 className="w-5 h-5 text-muted-foreground animate-spin" />
-                  ) : pythonAvailable ? (
-                    <CheckCircle2 className="w-5 h-5 text-green-500" />
-                  ) : (
-                    <XCircle className="w-5 h-5 text-red-500" />
-                  )}
-                </div>
-              </div>
-
-              {/* Environment Info */}
-              {pythonAvailable && pythonEnvironment && (
-                <div className="bg-secondary/50 rounded-lg p-3 space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">{t('Type')}</span>
-                    <span>{pythonEnvironment.type === 'embedded' ? t('Built-in') : t('Virtual Environment')}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">{t('Path')}</span>
-                    <span className="text-xs font-mono truncate max-w-[200px]" title={pythonEnvironment.pythonPath}>
-                      {pythonEnvironment.pythonPath}
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              {/* Packages Section */}
-              {pythonAvailable && (
-                <div className="pt-4 border-t border-border/50">
-                  <button
-                    onClick={() => setShowPythonPackages(!showPythonPackages)}
-                    className="flex items-center gap-2 w-full text-left"
-                  >
-                    {showPythonPackages ? (
-                      <ChevronDown className="w-4 h-4" />
-                    ) : (
-                      <ChevronRight className="w-4 h-4" />
-                    )}
-                    <Package className="w-4 h-4" />
-                    <span className="font-medium">{t('Installed Packages')}</span>
-                    <span className="text-xs text-muted-foreground">
-                      ({pythonPackages.length})
-                    </span>
-                  </button>
-
-                  {showPythonPackages && (
-                    <div className="mt-3 space-y-3">
-                      {/* Install new package */}
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          value={newPackageName}
-                          onChange={(e) => setNewPackageName(e.target.value)}
-                          onKeyDown={(e) => e.key === 'Enter' && handleInstallPackage()}
-                          placeholder={t('Package name (e.g., requests)')}
-                          className="flex-1 px-3 py-1.5 text-sm input-apple"
-                          disabled={isInstallingPackage}
-                        />
-                        <button
-                          onClick={handleInstallPackage}
-                          disabled={isInstallingPackage || !newPackageName.trim()}
-                          className="px-4 py-1.5 text-sm btn-apple"
-                        >
-                          {isInstallingPackage ? t('Installing...') : t('Install')}
-                        </button>
-                      </div>
-
-                      {/* Install progress */}
-                      {installProgress && (
-                        <div className="bg-secondary/50 rounded-lg p-3 text-sm">
-                          <div className="flex items-center gap-2">
-                            {installProgress.phase === 'error' ? (
-                              <XCircle className="w-4 h-4 text-red-500" />
-                            ) : installProgress.phase === 'done' ? (
-                              <CheckCircle2 className="w-4 h-4 text-green-500" />
-                            ) : (
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                            )}
-                            <span>{installProgress.message}</span>
-                          </div>
-                          {installProgress.error && (
-                            <p className="mt-2 text-xs text-red-500">{installProgress.error}</p>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Package list */}
-                      {loadingPythonPackages ? (
-                        <div className="flex items-center justify-center py-4">
-                          <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
-                        </div>
-                      ) : pythonPackages.length > 0 ? (
-                        <div className="max-h-48 overflow-y-auto space-y-1">
-                          {pythonPackages.map((pkg) => (
-                            <div
-                              key={pkg.name}
-                              className="flex items-center justify-between py-1.5 px-2 rounded hover:bg-secondary/50 group"
-                            >
-                              <div className="flex items-center gap-2">
-                                <span className="text-sm">{pkg.name}</span>
-                                <span className="text-xs text-muted-foreground">{pkg.version}</span>
-                              </div>
-                              <button
-                                onClick={() => handleUninstallPackage(pkg.name)}
-                                className="opacity-0 group-hover:opacity-100 p-1 text-muted-foreground hover:text-red-500 transition-opacity"
-                                title={t('Uninstall')}
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="text-sm text-muted-foreground text-center py-4">
-                          {t('No packages installed')}
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </section>
-
-          {/* Appearance Section */}
-          <section className="settings-section">
-            <h2 className="text-base font-semibold tracking-tight mb-5">{t('Appearance')}</h2>
-
-            <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">{t('Theme')}</label>
-              <div className="flex gap-2">
-                {THEME_OPTIONS.map((themeOption) => (
-                  <button
-                    key={themeOption.value}
-                    onClick={() => handleThemeChange(themeOption.value)}
-                    className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
-                      theme === themeOption.value
-                        ? 'bg-secondary text-foreground ring-2 ring-foreground/15'
-                        : 'bg-secondary/50 hover:bg-secondary/80 text-foreground/75'
-                    }`}
-                  >
-                    {t(themeOption.labelKey)}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </section>
-
-          {/* Language Section */}
-          <section className="settings-section">
-            <h2 className="text-base font-semibold tracking-tight mb-5">{t('Language')}</h2>
-
-            <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
-                {localeEntries.map(([code, name]) => (
-                  <button
-                    key={code}
-                    type="button"
-                    onClick={() => handleLanguageChange(code)}
-                    className={`rounded-xl px-3 py-2 text-sm text-left transition-all duration-200 ${
-                      currentLanguage === code
-                        ? 'bg-secondary text-foreground ring-2 ring-foreground/15'
-                        : 'bg-secondary/50 hover:bg-secondary/80 text-foreground/75'
-                    }`}
-                  >
-                    {name}
-                  </button>
-                ))}
-              </div>
-
-              <label className="block text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">{t('Language')}</label>
-              <select
-                value={currentLanguage}
-                onChange={(e) => handleLanguageChange(e.target.value as LocaleCode)}
-                className="w-full px-4 py-2.5 input-apple text-sm"
+          </div>
+          <div className="space-y-1 pr-1">
+            {profiles.map((profile) => (
+              <button
+                key={profile.id}
+                type="button"
+                onClick={() => {
+                  setSelectedProfileId(profile.id)
+                  setValidationResult(null)
+                }}
+                className={`flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left transition ${
+                  profile.id === selectedProfileId
+                    ? 'bg-secondary/85 text-foreground'
+                    : 'text-muted-foreground hover:bg-secondary/60 hover:text-foreground'
+                }`}
               >
-                {localeEntries.map(([code, name]) => (
-                  <option key={code} value={code}>
-                    {name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </section>
-
-          {/* System Section */}
-          {!api.isRemoteMode() && (
-            <section className="settings-section">
-              <h2 className="text-base font-semibold tracking-tight mb-5">{t('System')}</h2>
-
-              <div className="space-y-4">
-                {/* Auto Launch */}
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <p className="font-medium">{t('Auto Launch on Startup')}</p>
-                      <span
-                        className="inline-flex items-center justify-center w-4 h-4 text-xs rounded-full bg-muted text-muted-foreground cursor-help"
-                        title={t('Automatically run Kite when system starts')}
-                      >
-                        ?
-                      </span>
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      {t('Automatically run Kite when system starts')}
-                    </p>
-                  </div>
-                  <AppleToggle checked={autoLaunch} onChange={handleAutoLaunchChange} />
+                <div className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-secondary text-lg font-medium">
+                  {getProfileMonogram(profile.name)}
                 </div>
+                <span className="flex-1 truncate text-sm md:text-[15px]">
+                  {profile.name}
+                </span>
+                {profile.enabled !== false && (
+                  <span className="h-2.5 w-2.5 rounded-full bg-[#2f5c45]" />
+                )}
+              </button>
+            ))}
+          </div>
+        </aside>
 
-                {/* Minimize to Tray */}
-                <div className="flex items-center justify-between pt-4 border-t border-border/50">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <p className="font-medium">{t('Background Daemon')}</p>
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      {t('Minimize to {{trayType}} when closing window, instead of exiting the program', {
-                        trayType: window.platform?.isMac ? t('menu bar') : t('system tray')
-                      })}
-                    </p>
-                    <p className="text-xs text-muted-foreground/70 mt-1">
-                      {t('When enabled, you can remotely control anytime, click {{trayType}} icon to awaken', {
-                        trayType: window.platform?.isMac ? t('menu bar') : t('tray')
-                      })}
-                    </p>
-                  </div>
-                  <AppleToggle checked={minimizeToTray} onChange={handleMinimizeToTrayChange} />
-                </div>
-              </div>
-            </section>
-          )}
-
-          {/* MCP Servers Section */}
-          <section className="settings-section">
-            <McpServerList
-              servers={config?.mcpServers || {}}
-              onSave={handleMcpServersSave}
-            />
-
-            {/* Help text */}
-            <div className="mt-5 pt-4 border-t border-border/50">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs text-muted-foreground">{t('Format compatible with Cursor / Claude Desktop')}</span>
-                <a
-                  href="https://modelcontextprotocol.io/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs text-foreground hover:text-foreground/80 transition-colors"
-                >
-                  {t('Learn about MCP')} →
-                </a>
-              </div>
-              <p className="text-xs text-amber-500/80">
-                ⚠️ {t('Configuration changes will take effect after starting a new conversation')}
-              </p>
+        <section className="settings-model-detail">
+          {!selectedProfile ? (
+            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+              {t('Please create or select a profile')}
             </div>
-          </section>
-
-          {/* Remote Access Section */}
-          <section className="settings-section">
-            <h2 className="text-base font-semibold tracking-tight mb-5">{t('Remote Access')}</h2>
-
-            {/* Security Warning */}
-            <div className="settings-warning mb-5">
-              <div className="flex items-start gap-3">
-                <span className="text-amber-500 text-xl">⚠️</span>
-                <div className="text-sm">
-                  <p className="text-amber-500 font-medium mb-1">{t('Security Warning')}</p>
-                  <p className="text-amber-500/80">
-                    {t('After enabling remote access, anyone with the password can fully control your computer (read/write files, execute commands). Do not share the access password with untrusted people.')}
-                  </p>
-                </div>
-              </div>
-            </div>
-
+          ) : (
             <div className="space-y-4">
-              {/* Enable/Disable Toggle */}
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between border-b border-border/70 pb-4">
                 <div>
-                  <p className="font-medium">{t('Enable Remote Access')}</p>
-                  <p className="text-sm text-muted-foreground">
-                    {t('Allow access to Kite from other devices')}
+                  <h3 className="text-3xl font-semibold tracking-tight">{selectedProfile.name}</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {selectedProfile.enabled ? t('已启用') : t('未启用')}
                   </p>
                 </div>
                 <AppleToggle
-                  checked={remoteStatus?.enabled || false}
-                  onChange={handleToggleRemote}
-                  disabled={isEnablingRemote}
+                  checked={selectedProfile.enabled !== false}
+                  onChange={handleSelectedProfileEnabledChange}
                 />
               </div>
 
-              {/* Remote Access Details */}
-              {remoteStatus?.enabled && (
-                <>
-                  {/* Local Access */}
-                  <div className="bg-secondary/50 rounded-lg p-4 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">{t('Local Address')}</span>
-                      <div className="flex items-center gap-2">
-                        <code className="text-sm bg-background px-2 py-1 rounded">
-                          {remoteStatus.server.localUrl}
-                        </code>
-                        <button
-                          onClick={() => copyToClipboard(remoteStatus.server.localUrl || '')}
-                          className="text-xs text-muted-foreground hover:text-foreground"
-                        >
-                          {t('Copy')}
-                        </button>
-                      </div>
-                    </div>
+              <div>
+                <p className="mb-2 text-sm font-medium">{t('API 协议格式')}</p>
+                <p className="mb-3 text-xs text-muted-foreground">{t('多数国内供应商支持 Anthropic 兼容与 OpenAI 兼容')}</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleProtocolChange('anthropic_compat')}
+                    className={`rounded-xl border px-4 py-2.5 text-sm font-medium transition ${
+                      selectedProfile.protocol !== 'openai_compat'
+                        ? 'border-[#305a45] bg-[#f1f6f3] text-[#2e5642]'
+                        : 'border-border bg-background text-muted-foreground hover:bg-secondary/50'
+                    }`}
+                  >
+                    Anthropic 兼容
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleProtocolChange('openai_compat')}
+                    className={`rounded-xl border px-4 py-2.5 text-sm font-medium transition ${
+                      selectedProfile.protocol === 'openai_compat'
+                        ? 'border-[#305a45] bg-[#f1f6f3] text-[#2e5642]'
+                        : 'border-border bg-background text-muted-foreground hover:bg-secondary/50'
+                    }`}
+                  >
+                    OpenAI 兼容
+                  </button>
+                </div>
+              </div>
 
-                    {remoteStatus.server.lanUrl && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-muted-foreground">{t('LAN Address')}</span>
-                        <div className="flex items-center gap-2">
-                          <code className="text-sm bg-background px-2 py-1 rounded">
-                            {remoteStatus.server.lanUrl}
-                          </code>
-                          <button
-                            onClick={() => copyToClipboard(remoteStatus.server.lanUrl || '')}
-                            className="text-xs text-muted-foreground hover:text-foreground"
-                          >
-                            {t('Copy')}
-                          </button>
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">{t('Access Password')}</span>
-                      <div className="flex items-center gap-2">
-                        <code className="text-sm bg-background px-2 py-1 rounded font-mono tracking-wider">
-                          {showPassword ? remoteStatus.server.token : '••••••'}
-                        </code>
-                        <button
-                          onClick={() => setShowPassword(!showPassword)}
-                          className="text-xs text-muted-foreground hover:text-foreground"
-                        >
-                          {showPassword ? t('Hide') : t('Show')}
-                        </button>
-                        <button
-                          onClick={() => copyToClipboard(remoteStatus.server.token || '')}
-                          className="text-xs text-muted-foreground hover:text-foreground"
-                        >
-                          {t('Copy')}
-                        </button>
-                      </div>
-                    </div>
-
-                    {remoteStatus.clients > 0 && (
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-muted-foreground">{t('Connected Devices')}</span>
-                        <span className="text-green-500">{t('{{count}} devices', { count: remoteStatus.clients })}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Tunnel Section */}
-                  <div className="pt-4 border-t border-border/50">
-                    <div className="flex items-center justify-between mb-3">
-                      <div>
-                        <p className="font-medium">{t('Internet Access')}</p>
-                        <p className="text-sm text-muted-foreground">
-                          {t('Get public address via Cloudflare (wait about 10 seconds for DNS resolution after startup)')}
-                        </p>
-                      </div>
+              {selectedProfile.enabled === false ? (
+                <div className="rounded-2xl border border-dashed border-border bg-secondary/35 py-10 text-center">
+                  <p className="text-base font-medium">{t('该供应商尚未启用')}</p>
+                  <p className="mt-2 text-sm text-muted-foreground">{t('先开启右上角开关，再配置 API 密钥和模型')}</p>
+                  <button
+                    type="button"
+                    onClick={() => handleSelectedProfileEnabledChange(true)}
+                    className="mt-4 rounded-xl btn-apple px-4 py-2 text-sm"
+                  >
+                    {t('启用')} {selectedProfile.name}
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-muted-foreground">API Key</label>
+                    <div className="relative">
+                      <input
+                        type={showApiKey ? 'text' : 'password'}
+                        value={selectedProfile.apiKey}
+                        onChange={(event) => {
+                          updateSelectedProfile({ apiKey: event.target.value })
+                          setValidationResult(null)
+                        }}
+                        className="w-full input-apple px-4 py-2.5 pr-11 text-sm"
+                        placeholder={t('Please enter API Key')}
+                      />
                       <button
-                        onClick={handleToggleTunnel}
-                        disabled={isEnablingTunnel}
-                        className={`px-4 py-2 rounded-lg text-sm transition-colors ${
-                          remoteStatus.tunnel.status === 'running'
-                            ? 'bg-red-500/20 text-red-500 hover:bg-red-500/30'
-                            : 'bg-secondary text-foreground hover:bg-secondary/80'
-                        }`}
+                        type="button"
+                        onClick={() => setShowApiKey(prev => !prev)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        aria-label={showApiKey ? t('Hide API Key') : t('Show API Key')}
                       >
-                        {isEnablingTunnel
-                          ? t('Connecting...')
-                          : remoteStatus.tunnel.status === 'running'
-                          ? t('Stop Tunnel')
-                          : remoteStatus.tunnel.status === 'starting'
-                          ? t('Connecting...')
-                          : t('Start Tunnel')}
+                        {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </button>
                     </div>
+                  </div>
 
-                    {remoteStatus.tunnel.status === 'running' && remoteStatus.tunnel.url && (
-                      <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4 space-y-3">
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm text-green-500">{t('Public Address')}</span>
-                          <div className="flex items-center gap-2">
-                            <code className="text-sm bg-background px-2 py-1 rounded text-green-500">
-                              {remoteStatus.tunnel.url}
-                            </code>
-                            <button
-                              onClick={() => copyToClipboard(remoteStatus.tunnel.url || '')}
-                              className="text-xs text-green-500/80 hover:text-green-500"
-                            >
-                              {t('Copy')}
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {remoteStatus.tunnel.status === 'error' && (
-                      <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3">
-                        <p className="text-sm text-red-500">
-                          {t('Tunnel connection failed')}: {remoteStatus.tunnel.error}
-                        </p>
-                      </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-muted-foreground">API URL</label>
+                    <input
+                      type="text"
+                      value={selectedProfile.apiUrl}
+                      onChange={(event) => {
+                        updateSelectedProfile({ apiUrl: event.target.value })
+                        setValidationResult(null)
+                      }}
+                      className="w-full input-apple px-4 py-2.5 text-sm"
+                    />
+                    {selectedProfileUrlInvalid && (
+                      <p className="mt-1 text-xs text-destructive">{t('URL must end with /chat/completions or /responses')}</p>
                     )}
                   </div>
 
-                  {/* QR Code */}
-                  {qrCode && (
-                    <div className="pt-4 border-t border-border/50">
-                      <p className="font-medium mb-3">{t('Scan to Access')}</p>
-                      <div className="flex flex-col items-center gap-3">
-                        <div className="bg-white p-3 rounded-xl">
-                          <img src={qrCode} alt="QR Code" className="w-48 h-48" />
-                        </div>
-                        <div className="text-center text-sm">
-                          <p className="text-muted-foreground">
-                            {t('Scan the QR code with your phone and enter the password to access')}
-                          </p>
-                          <p className="text-amber-500 text-xs mt-1">
-                            {t('QR code contains password, do not share screenshots with others')}
-                          </p>
-                        </div>
-                      </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-muted-foreground">{t('Default Model')}</label>
+                    <input
+                      type="text"
+                      value={selectedProfile.defaultModel}
+                      onChange={(event) => {
+                        const nextDefaultModel = event.target.value
+                        updateSelectedProfile({
+                          defaultModel: nextDefaultModel,
+                          modelCatalog: normalizeModelCatalog(nextDefaultModel, selectedCatalog)
+                        })
+                        setValidationResult(null)
+                      }}
+                      className="w-full input-apple px-4 py-2.5 text-sm"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-muted-foreground">{t('Model Catalog')}</label>
+                    <div className="mb-2 flex flex-wrap gap-1.5">
+                      {selectedCatalog.map((modelId) => (
+                        <button
+                          type="button"
+                          key={modelId}
+                          onClick={() => {
+                            if (modelId === selectedProfile.defaultModel) return
+                            updateSelectedProfile({
+                              modelCatalog: selectedCatalog.filter(item => item !== modelId)
+                            })
+                          }}
+                          className={`rounded-full border px-2.5 py-1 text-xs ${
+                            modelId === selectedProfile.defaultModel
+                              ? 'cursor-default border-[#305a45] bg-[#f1f6f3] text-[#2e5642]'
+                              : 'border-border bg-background text-muted-foreground hover:bg-secondary/50'
+                          }`}
+                        >
+                          {modelId}
+                        </button>
+                      ))}
                     </div>
-                  )}
-                </>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={modelInput}
+                        onChange={(event) => setModelInput(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') {
+                            event.preventDefault()
+                            handleAddModelId()
+                          }
+                        }}
+                        className="w-full input-apple px-4 py-2 text-sm"
+                        placeholder={t('Add model id')}
+                      />
+                      <button
+                        type="button"
+                        onClick={handleAddModelId}
+                        className="rounded-xl border border-border/70 px-3 text-sm hover:bg-secondary/50"
+                      >
+                        {t('Add')}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex flex-wrap items-center gap-2 border-t border-border/60 pt-4">
+                <button
+                  type="button"
+                  onClick={() => selectedProfile.enabled !== false && setDefaultProfileId(selectedProfile.id)}
+                  className={`rounded-xl px-4 py-2 text-sm ${
+                    selectedProfile.id === defaultProfileId
+                      ? 'bg-secondary text-foreground'
+                      : 'bg-secondary/60 text-foreground hover:bg-secondary'
+                  }`}
+                  disabled={selectedProfile.enabled === false}
+                >
+                  {selectedProfile.id === defaultProfileId ? t('Default') : t('Set as Default')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleValidateConnection()}
+                  className="rounded-xl bg-secondary px-4 py-2 text-sm hover:bg-secondary/80 disabled:opacity-50"
+                  disabled={isValidating || selectedProfile.enabled === false || selectedProfileUrlInvalid || !selectedProfile.apiKey.trim()}
+                >
+                  {isValidating ? t('Testing...') : t('Test Connection')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleSave()}
+                  className="rounded-xl btn-apple px-4 py-2 text-sm disabled:opacity-50"
+                  disabled={isValidating || selectedProfileUrlInvalid || (selectedProfile.enabled !== false && !selectedProfile.apiKey.trim())}
+                >
+                  {isValidating ? t('Saving...') : t('Save')}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleRemoveSelectedProfile}
+                  className="rounded-xl bg-red-500/15 px-4 py-2 text-sm text-red-500 hover:bg-red-500/20 disabled:opacity-50"
+                  disabled={profiles.length <= 1}
+                >
+                  {t('Delete')}
+                </button>
+              </div>
+
+              {validationResult?.message && (
+                <p className={`text-sm ${validationResult.valid ? 'text-green-500' : 'text-red-500'}`}>
+                  {validationResult.message}
+                </p>
               )}
             </div>
-          </section>
+          )}
+        </section>
+      </div>
+    </section>
+  )
 
-          {/* About Section */}
-          <section className="settings-section">
-            <h2 className="text-base font-semibold tracking-tight mb-5">{t('About')}</h2>
-
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">{t('Version')}</span>
-                <span>1.0.0</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">{t('Build')}</span>
-                <span> Powered by Claude Code </span>
-              </div>
-            </div>
-          </section>
+  const renderAppearanceSection = () => (
+    <div className="space-y-4">
+      <section className="settings-modal-card">
+        <h3 className="mb-4 text-base font-semibold tracking-tight">{t('Theme')}</h3>
+        <div className="grid grid-cols-2 gap-2 sm:max-w-[360px]">
+          {THEME_OPTIONS.map((themeOption) => (
+            <button
+              key={themeOption.value}
+              onClick={() => handleThemeChange(themeOption.value)}
+              className={`rounded-xl px-4 py-2.5 text-sm font-medium transition-all duration-200 ${
+                theme === themeOption.value
+                  ? 'bg-secondary text-foreground ring-2 ring-foreground/15'
+                  : 'bg-secondary/50 text-foreground/75 hover:bg-secondary/80'
+              }`}
+            >
+              {t(themeOption.labelKey)}
+            </button>
+          ))}
         </div>
-      </main>
+      </section>
+
+      <section className="settings-modal-card">
+        <h3 className="mb-4 text-base font-semibold tracking-tight">{t('Language')}</h3>
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {localeEntries.map(([code, name]) => (
+              <button
+                key={code}
+                type="button"
+                onClick={() => handleLanguageChange(code)}
+                className={`rounded-xl px-3 py-2 text-left text-sm transition-all duration-200 ${
+                  currentLanguage === code
+                    ? 'bg-secondary text-foreground ring-2 ring-foreground/15'
+                    : 'bg-secondary/50 text-foreground/75 hover:bg-secondary/80'
+                }`}
+              >
+                {name}
+              </button>
+            ))}
+          </div>
+          <select
+            value={currentLanguage}
+            onChange={(event) => handleLanguageChange(event.target.value as LocaleCode)}
+            className="w-full input-apple px-4 py-2.5 text-sm"
+          >
+            {localeEntries.map(([code, name]) => (
+              <option key={code} value={code}>
+                {name}
+              </option>
+            ))}
+          </select>
+        </div>
+      </section>
+    </div>
+  )
+
+  const renderGeneralSection = () => (
+    <section className="settings-modal-card">
+      <h3 className="mb-4 text-base font-semibold tracking-tight">{t('System')}</h3>
+      {api.isRemoteMode() ? (
+        <p className="text-sm text-muted-foreground">{t('System settings are unavailable in remote mode')}</p>
+      ) : (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex-1 pr-4">
+              <p className="font-medium">{t('Auto Launch on Startup')}</p>
+              <p className="text-sm text-muted-foreground">{t('Automatically run Kite when system starts')}</p>
+            </div>
+            <AppleToggle checked={autoLaunch} onChange={handleAutoLaunchChange} />
+          </div>
+          <div className="flex items-center justify-between border-t border-border/50 pt-4">
+            <div className="flex-1 pr-4">
+              <p className="font-medium">{t('Background Daemon')}</p>
+              <p className="text-sm text-muted-foreground">
+                {t('Minimize to {{trayType}} when closing window, instead of exiting the program', {
+                  trayType: window.platform?.isMac ? t('menu bar') : t('system tray')
+                })}
+              </p>
+            </div>
+            <AppleToggle checked={minimizeToTray} onChange={handleMinimizeToTrayChange} />
+          </div>
+        </div>
+      )}
+    </section>
+  )
+
+  const renderPermissionSection = () => (
+    <section className="settings-modal-card">
+      <div className="mb-4 flex items-center justify-between">
+        <h3 className="text-base font-semibold tracking-tight">{t('Permissions')}</h3>
+        <span className="rounded-lg bg-kite-success/15 px-2.5 py-1 text-xs font-medium text-kite-success">
+          {t('Full Permission Mode')}
+        </span>
+      </div>
+
+      <div className="settings-info mb-5 text-sm text-muted-foreground">
+        {t('Current version defaults to full permission mode, AI can freely perform all operations. Future versions will support fine-grained permission control.')}
+      </div>
+
+      <div className="space-y-4 opacity-60">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="font-medium">{t('File Read/Write')}</p>
+            <p className="text-sm text-muted-foreground">{t('Allow AI to read and create files')}</p>
+          </div>
+          <span className="rounded-lg bg-kite-success/15 px-2.5 py-1 text-xs font-medium text-kite-success">
+            {t('Allow')}
+          </span>
+        </div>
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="font-medium">{t('Execute Commands')}</p>
+            <p className="text-sm text-muted-foreground">{t('Allow AI to execute terminal commands')}</p>
+          </div>
+          <span className="rounded-lg bg-kite-success/15 px-2.5 py-1 text-xs font-medium text-kite-success">
+            {t('Allow')}
+          </span>
+        </div>
+        <div className="flex items-center justify-between border-t border-border/50 pt-4">
+          <div>
+            <p className="font-medium">{t('Trust Mode')}</p>
+            <p className="text-sm text-muted-foreground">{t('Automatically execute all operations')}</p>
+          </div>
+          <AppleToggle checked={true} onChange={() => {}} disabled={true} />
+        </div>
+      </div>
+    </section>
+  )
+
+  const renderMcpSection = () => (
+    <section className="settings-modal-card">
+      <McpServerList
+        servers={config?.mcpServers || {}}
+        onSave={handleMcpServersSave}
+      />
+      <div className="mt-5 border-t border-border/50 pt-4">
+        <div className="mb-2 flex items-center justify-between">
+          <span className="text-xs text-muted-foreground">{t('Format compatible with Cursor / Claude Desktop')}</span>
+          <a
+            href="https://modelcontextprotocol.io/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-foreground transition-colors hover:text-foreground/80"
+          >
+            {t('Learn about MCP')} →
+          </a>
+        </div>
+        <p className="text-xs text-amber-500/80">
+          ⚠️ {t('Configuration changes will take effect after starting a new conversation')}
+        </p>
+      </div>
+    </section>
+  )
+
+  const renderNetworkSection = () => (
+    <section className="settings-modal-card">
+      <h3 className="mb-5 text-base font-semibold tracking-tight">{t('Remote Access')}</h3>
+
+      <div className="settings-warning mb-5">
+        <div className="flex items-start gap-3">
+          <span className="text-xl text-amber-500">⚠️</span>
+          <div className="text-sm">
+            <p className="mb-1 font-medium text-amber-500">{t('Security Warning')}</p>
+            <p className="text-amber-500/80">
+              {t('After enabling remote access, anyone with the password can fully control your computer (read/write files, execute commands). Do not share the access password with untrusted people.')}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="font-medium">{t('Enable Remote Access')}</p>
+            <p className="text-sm text-muted-foreground">{t('Allow access to Kite from other devices')}</p>
+          </div>
+          <AppleToggle
+            checked={remoteStatus?.enabled || false}
+            onChange={handleToggleRemote}
+            disabled={isEnablingRemote}
+          />
+        </div>
+
+        {remoteStatus?.enabled && (
+          <>
+            <div className="space-y-3 rounded-lg bg-secondary/50 p-4">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">{t('Local Address')}</span>
+                <div className="flex items-center gap-2">
+                  <code className="rounded bg-background px-2 py-1 text-sm">{remoteStatus.server.localUrl}</code>
+                  <button
+                    onClick={() => copyToClipboard(remoteStatus.server.localUrl || '')}
+                    className="text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    {t('Copy')}
+                  </button>
+                </div>
+              </div>
+
+              {remoteStatus.server.lanUrl && (
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">{t('LAN Address')}</span>
+                  <div className="flex items-center gap-2">
+                    <code className="rounded bg-background px-2 py-1 text-sm">{remoteStatus.server.lanUrl}</code>
+                    <button
+                      onClick={() => copyToClipboard(remoteStatus.server.lanUrl || '')}
+                      className="text-xs text-muted-foreground hover:text-foreground"
+                    >
+                      {t('Copy')}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">{t('Access Password')}</span>
+                <div className="flex items-center gap-2">
+                  <code className="rounded bg-background px-2 py-1 font-mono text-sm tracking-wider">
+                    {showPassword ? remoteStatus.server.token : '••••••'}
+                  </code>
+                  <button
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    {showPassword ? t('Hide') : t('Show')}
+                  </button>
+                  <button
+                    onClick={() => copyToClipboard(remoteStatus.server.token || '')}
+                    className="text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    {t('Copy')}
+                  </button>
+                </div>
+              </div>
+
+              {remoteStatus.clients > 0 && (
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">{t('Connected Devices')}</span>
+                  <span className="text-green-500">{t('{{count}} devices', { count: remoteStatus.clients })}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="border-t border-border/50 pt-4">
+              <div className="mb-3 flex items-center justify-between">
+                <div>
+                  <p className="font-medium">{t('Internet Access')}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {t('Get public address via Cloudflare (wait about 10 seconds for DNS resolution after startup)')}
+                  </p>
+                </div>
+                <button
+                  onClick={handleToggleTunnel}
+                  disabled={isEnablingTunnel}
+                  className={`rounded-lg px-4 py-2 text-sm transition-colors ${
+                    remoteStatus.tunnel.status === 'running'
+                      ? 'bg-red-500/20 text-red-500 hover:bg-red-500/30'
+                      : 'bg-secondary text-foreground hover:bg-secondary/80'
+                  }`}
+                >
+                  {isEnablingTunnel
+                    ? t('Connecting...')
+                    : remoteStatus.tunnel.status === 'running'
+                    ? t('Stop Tunnel')
+                    : remoteStatus.tunnel.status === 'starting'
+                    ? t('Connecting...')
+                    : t('Start Tunnel')}
+                </button>
+              </div>
+
+              {remoteStatus.tunnel.status === 'running' && remoteStatus.tunnel.url && (
+                <div className="space-y-3 rounded-lg border border-green-500/30 bg-green-500/10 p-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-green-500">{t('Public Address')}</span>
+                    <div className="flex items-center gap-2">
+                      <code className="rounded bg-background px-2 py-1 text-sm text-green-500">{remoteStatus.tunnel.url}</code>
+                      <button
+                        onClick={() => copyToClipboard(remoteStatus.tunnel.url || '')}
+                        className="text-xs text-green-500/80 hover:text-green-500"
+                      >
+                        {t('Copy')}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {remoteStatus.tunnel.status === 'error' && (
+                <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3">
+                  <p className="text-sm text-red-500">
+                    {t('Tunnel connection failed')}: {remoteStatus.tunnel.error}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {qrCode && (
+              <div className="border-t border-border/50 pt-4">
+                <p className="mb-3 font-medium">{t('Scan to Access')}</p>
+                <div className="flex flex-col items-center gap-3">
+                  <div className="rounded-xl bg-white p-3">
+                    <img src={qrCode} alt="QR Code" className="h-48 w-48" />
+                  </div>
+                  <div className="text-center text-sm">
+                    <p className="text-muted-foreground">{t('Scan the QR code with your phone and enter the password to access')}</p>
+                    <p className="mt-1 text-xs text-amber-500">{t('QR code contains password, do not share screenshots with others')}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </section>
+  )
+
+  const renderAboutSection = () => (
+    <section className="settings-modal-card">
+      <h3 className="mb-5 text-base font-semibold tracking-tight">{t('About')}</h3>
+      <div className="space-y-2 text-sm">
+        <div className="flex justify-between">
+          <span className="text-muted-foreground">{t('Version')}</span>
+          <span>1.0.0</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-muted-foreground">{t('Build')}</span>
+          <span>Powered by Claude Code</span>
+        </div>
+      </div>
+    </section>
+  )
+
+  const renderActiveSection = () => {
+    switch (activeSection) {
+      case 'model':
+        return renderModelSection()
+      case 'appearance':
+        return renderAppearanceSection()
+      case 'general':
+        return renderGeneralSection()
+      case 'permissions':
+        return renderPermissionSection()
+      case 'mcp':
+        return renderMcpSection()
+      case 'network':
+        return renderNetworkSection()
+      case 'about':
+      default:
+        return renderAboutSection()
+    }
+  }
+
+  return (
+    <div className="settings-modal-page">
+      <div className="settings-modal-overlay" />
+      <div className="settings-modal-shell">
+        <aside className="settings-modal-sidebar">
+          <div className="settings-modal-sidebar-title">
+            <p className="text-sm font-semibold tracking-tight">{t('Settings')}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{t('Organized by categories')}</p>
+          </div>
+
+          <nav className="space-y-1">
+            {SETTINGS_SECTIONS.map(section => {
+              const Icon = section.icon
+              const selected = section.id === activeSection
+              return (
+                <button
+                  key={section.id}
+                  type="button"
+                  onClick={() => setActiveSection(section.id)}
+                  className={`settings-modal-nav-item ${selected ? 'settings-modal-nav-item-active' : ''}`}
+                >
+                  <Icon className="h-4 w-4" />
+                  <span className="flex-1 text-left text-sm font-medium">{t(section.labelKey)}</span>
+                </button>
+              )
+            })}
+          </nav>
+        </aside>
+
+        <section className="settings-modal-main">
+          <header className="settings-modal-header">
+            <div>
+              <h2 className="text-3xl font-semibold tracking-tight">{t(activeSectionMeta.labelKey)}</h2>
+              <p className="mt-1 text-sm text-muted-foreground">{t(activeSectionMeta.hintKey)}</p>
+            </div>
+            <button
+              type="button"
+              onClick={goBack}
+              className="settings-modal-close"
+              aria-label={t('Close')}
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </header>
+
+          <div className="settings-modal-content">
+            {renderActiveSection()}
+          </div>
+
+          <footer className="settings-modal-footer">
+            <button
+              type="button"
+              onClick={goBack}
+              className="btn-apple rounded-2xl px-6 py-2.5 text-sm"
+            >
+              {t('Done')}
+            </button>
+          </footer>
+        </section>
+      </div>
     </div>
   )
 }

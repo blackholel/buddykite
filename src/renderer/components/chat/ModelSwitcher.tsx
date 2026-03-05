@@ -36,25 +36,14 @@ export function ModelSwitcher({
   const panelRef = useRef<HTMLDivElement>(null)
 
   const allProfiles = config?.ai?.profiles || []
-  const boundProfileId = conversation?.ai?.profileId
-  const profiles = useMemo(() => {
-    const enabledProfiles = allProfiles.filter(profile => profile.enabled !== false)
-    const visibleProfiles = enabledProfiles.length > 0 ? enabledProfiles : allProfiles
-    const boundProfile = boundProfileId
-      ? allProfiles.find(profile => profile.id === boundProfileId)
-      : null
-
-    if (boundProfile && !visibleProfiles.some(profile => profile.id === boundProfile.id)) {
-      return [boundProfile, ...visibleProfiles]
-    }
-
-    return visibleProfiles
-  }, [allProfiles, boundProfileId])
+  const profiles = useMemo(
+    () => allProfiles.filter(profile => profile.enabled !== false),
+    [allProfiles]
+  )
 
   const fallbackProfileId = config?.ai?.defaultProfileId || profiles[0]?.id || ''
   const profileId = conversation?.ai?.profileId || fallbackProfileId
   const activeProfile =
-    allProfiles.find(profile => profile.id === profileId) ||
     profiles.find(profile => profile.id === profileId) ||
     profiles[0] ||
     null
