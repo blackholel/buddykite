@@ -19,6 +19,7 @@ import { useTranslation, setLanguage, getCurrentLanguage, SUPPORTED_LOCALES, typ
 import { ensureAiConfig } from '../../shared/types/ai-profile'
 import {
   AI_PROFILE_TEMPLATES,
+  isValidAnthropicCompatEndpoint,
   isValidOpenAICompatEndpoint,
   normalizeModelCatalog,
   normalizeProfileForSave
@@ -217,9 +218,19 @@ export function SettingsPage() {
   const selectedCatalog = selectedProfile
     ? normalizeModelCatalog(selectedProfile.defaultModel, selectedProfile.modelCatalog)
     : []
-  const selectedProfileUrlInvalid =
-    selectedProfile?.protocol === 'openai_compat' &&
-    !isValidOpenAICompatEndpoint(selectedProfile.apiUrl)
+  const selectedProfileUrlError = (() => {
+    if (!selectedProfile) return null
+    const apiUrl = selectedProfile.apiUrl.trim()
+    if (!apiUrl) return null
+    if (selectedProfile.protocol === 'openai_compat' && !isValidOpenAICompatEndpoint(apiUrl)) {
+      return t('URL must end with /chat/completions or /responses')
+    }
+    if (selectedProfile.protocol === 'anthropic_compat' && !isValidAnthropicCompatEndpoint(apiUrl)) {
+      return t('Anthropic compatible URL should not end with /chat/completions or /responses')
+    }
+    return null
+  })()
+  const selectedProfileUrlInvalid = Boolean(selectedProfileUrlError)
 
   // Load remote access status
   useEffect(() => {
@@ -523,13 +534,13 @@ export function SettingsPage() {
       return
     }
 
-    if (selectedProfile.protocol === 'openai_compat' && !selectedProfile.apiUrl.trim()) {
+    if (selectedProfile.protocol !== 'anthropic_official' && !selectedProfile.apiUrl.trim()) {
       setValidationResult({ valid: false, message: t('Please enter API URL') })
       return
     }
 
     if (selectedProfileUrlInvalid) {
-      setValidationResult({ valid: false, message: t('URL must end with /chat/completions or /responses') })
+      setValidationResult({ valid: false, message: selectedProfileUrlError || t('Please enter API URL') })
       return
     }
 
@@ -581,8 +592,13 @@ export function SettingsPage() {
       return
     }
 
-    if (selectedProfile.protocol === 'openai_compat' && selectedProfileUrlInvalid) {
-      setValidationResult({ valid: false, message: t('URL must end with /chat/completions or /responses') })
+    if (selectedProfile.protocol !== 'anthropic_official' && !selectedProfile.apiUrl.trim()) {
+      setValidationResult({ valid: false, message: t('Please enter API URL') })
+      return
+    }
+
+    if (selectedProfileUrlInvalid) {
+      setValidationResult({ valid: false, message: selectedProfileUrlError || t('Please enter API URL') })
       return
     }
 
@@ -689,20 +705,23 @@ export function SettingsPage() {
               </div>
 
               <div className="rounded-2xl border border-border/70 bg-secondary/25 p-4">
-                <p className="text-sm font-medium">{t('Quick setup for beginners')}</p>
+                <p className="text-sm font-medium">{t('Model config help title')}</p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  {t('Just complete these three items first: protocol, API Key, and default model.')}
+                  {t('Model config help desc')}
                 </p>
                 <ol className="mt-3 space-y-1.5 text-xs text-muted-foreground">
-                  <li>1. {t('Choose protocol')}</li>
-                  <li>2. {t('Enter API Key')}</li>
-                  <li>3. {t('Set default model')}</li>
+                  <li>{t('Step 1: Choose protocol')}</li>
+                  <li>{t('Step 2: Enter API Key')}</li>
+                  <li>{t('Step 3: Set model')}</li>
                 </ol>
               </div>
 
               <div>
-                <p className="mb-2 text-sm font-medium">{t('API 协议格式')}</p>
-                <p className="mb-3 text-xs text-muted-foreground">{t('多数国内供应商支持 Anthropic 兼容与 OpenAI 兼容')}</p>
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-sm font-medium">{t('API 协议格式')}</p>
+                  <span className="text-xs text-muted-foreground">① {t('Step 1: Choose protocol')}</span>
+                </div>
+                <p className="mb-3 text-xs text-muted-foreground">{t('Protocol help')}</p>
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
@@ -744,7 +763,11 @@ export function SettingsPage() {
               ) : (
                 <div className="space-y-3">
                   <div>
-                    <label className="mb-1 block text-xs font-medium text-muted-foreground">API Key</label>
+                    <div className="mb-1 flex items-center justify-between">
+                      <label className="text-xs font-medium text-muted-foreground">API Key</label>
+                      <span className="text-xs text-muted-foreground">② {t('Step 2: Enter API Key')}</span>
+                    </div>
+                    <p className="mb-2 text-xs text-muted-foreground">{t('API Key help')}</p>
                     <div className="relative">
                       <input
                         type={showApiKey ? 'text' : 'password'}
@@ -765,10 +788,15 @@ export function SettingsPage() {
                         {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </button>
                     </div>
+                    <details className="mt-2">
+                      <summary className="cursor-pointer text-xs text-blue-600 hover:text-blue-700">{t('Where to get API Key')}</summary>
+                      <p className="mt-2 whitespace-pre-line text-xs text-muted-foreground">{t('API Key guide')}</p>
+                    </details>
                   </div>
 
                   <div>
                     <label className="mb-1 block text-xs font-medium text-muted-foreground">API URL</label>
+                    <p className="mb-2 text-xs text-muted-foreground">{t('API URL help')}</p>
                     <input
                       type="text"
                       value={selectedProfile.apiUrl}
@@ -779,12 +807,16 @@ export function SettingsPage() {
                       className="w-full input-apple px-4 py-2.5 text-sm"
                     />
                     {selectedProfileUrlInvalid && (
-                      <p className="mt-1 text-xs text-destructive">{t('URL must end with /chat/completions or /responses')}</p>
+                      <p className="mt-1 text-xs text-destructive">{selectedProfileUrlError}</p>
                     )}
                   </div>
 
                   <div>
-                    <label className="mb-1 block text-xs font-medium text-muted-foreground">{t('Default Model')}</label>
+                    <div className="mb-1 flex items-center justify-between">
+                      <label className="text-xs font-medium text-muted-foreground">{t('Default Model')}</label>
+                      <span className="text-xs text-muted-foreground">③ {t('Step 3: Set model')}</span>
+                    </div>
+                    <p className="mb-2 text-xs text-muted-foreground">{t('Default model help')}</p>
                     <input
                       type="text"
                       value={selectedProfile.defaultModel}
@@ -798,6 +830,10 @@ export function SettingsPage() {
                       }}
                       className="w-full input-apple px-4 py-2.5 text-sm"
                     />
+                    <details className="mt-2">
+                      <summary className="cursor-pointer text-xs text-blue-600 hover:text-blue-700">{t('Common models')}</summary>
+                      <p className="mt-2 whitespace-pre-line text-xs text-muted-foreground">{t('Model examples')}</p>
+                    </details>
                   </div>
 
                   <div className="rounded-2xl border border-dashed border-border/70 bg-secondary/20 p-3">
