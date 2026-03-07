@@ -666,6 +666,9 @@
   "Choose protocol": "Choose protocol",
   "Set default model": "Set default model",
   "Anthropic compatible URL should not end with /chat/completions or /responses": "Anthropic compatible URL should not end with /chat/completions or /responses",
+  "Please configure API Key in Settings": "Please configure API Key in Settings",
+  "Please enable the AI provider in Settings": "Please enable the AI provider in Settings",
+  "Switch profile and model": "Switch profile and model",
   "Advanced options": "Advanced options",
   "Return to conversation": "Return to conversation"
 }

@@ -27,6 +27,10 @@ let mainWindow: BrowserWindow | null = null
 
 function toErrorResponse(error: unknown): { success: false; error: string; errorCode?: string } {
   const err = error as Error & { errorCode?: string }
+  console.error('[IPC][agent] request failed', {
+    message: err?.message || String(error),
+    errorCode: typeof err?.errorCode === 'string' ? err.errorCode : undefined
+  })
   return {
     success: false,
     error: err?.message || String(error),

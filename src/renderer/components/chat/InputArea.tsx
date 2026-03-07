@@ -253,8 +253,13 @@ export function InputArea({
   const isTriggerPanelOpen = Boolean(triggerContext) && !isOnboardingSendStep
 
   const mruSpaceId = spaceId || 'no-space'
-  const aiSetupState = useMemo(() => getAiSetupState(config), [config])
+  const conversationProfileId = conversation?.ai?.profileId
+  const aiSetupState = useMemo(
+    () => getAiSetupState(config, conversationProfileId),
+    [config, conversationProfileId]
+  )
   const isAiConfigured = aiSetupState.configured
+  const effectiveMode = mode
   const effectiveSuggestionTab: ComposerSuggestionTab = triggerContext?.type === 'mention'
     ? 'agents'
     : activeSuggestionTab
@@ -736,15 +741,34 @@ export function InputArea({
 
   // Handle send
   const handleSend = () => {
+    console.log('[InputArea] handleSend requested', {
+      mode: effectiveMode,
+      isOnboardingSendStep,
+      isAiConfigured,
+      aiSetupReason: aiSetupState.reason,
+      contentLength: content.trim().length,
+      chips: selectedResourceChips.length,
+      images: images.length,
+      fileContexts: fileContexts.length,
+      isProcessingImages
+    })
+
     if (!isAiConfigured && !isOnboardingSendStep) {
       const reason = aiSetupState.reason
       if (reason === 'missing_api_key') {
         showError(t('Please configure API Key in Settings'))
       } else if (reason === 'disabled_profile') {
         showError(t('Please enable the AI provider in Settings'))
+      } else if (reason === 'invalid_url') {
+        showError(t('URL must end with /chat/completions or /responses'))
       } else {
         showError(t('Please configure AI profile first'))
       }
+      console.warn('[InputArea] blocked send by ai setup guard', {
+        conversationId: conversation?.id || null,
+        profileId: conversationProfileId || null,
+        reason
+      })
       return
     }
 

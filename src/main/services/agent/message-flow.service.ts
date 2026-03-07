@@ -710,14 +710,21 @@ export async function sendMessage(
     )
   }
   const config = getConfig()
-  assertAiProfileConfigured(config)
   const conversation = getConversation(spaceId, conversationId) as
     | ({ ai?: { profileId?: string }; sessionId?: string } & Record<string, unknown>)
     | null
+  const configuredConversationProfileId = toNonEmptyText(conversation?.ai?.profileId)
+  console.log('[Agent] sendMessage entry', {
+    spaceId,
+    conversationId,
+    invocationContext: runtimeInvocationContext,
+    requestedProfileId: configuredConversationProfileId || null,
+    defaultProfileId: toNonEmptyText(config.ai?.defaultProfileId) || null
+  })
+  assertAiProfileConfigured(config, configuredConversationProfileId)
   const requestModelOverride = toNonEmptyText(modelOverride) || toNonEmptyText(legacyModelOverride)
   const effectiveResponseLanguage = normalizeLocale(responseLanguage)
   const effectiveAi = resolveEffectiveConversationAi(spaceId, conversationId, requestModelOverride)
-  const configuredConversationProfileId = toNonEmptyText(conversation?.ai?.profileId)
   const defaultProfileId = toNonEmptyText(config.ai?.defaultProfileId)
 
   if (!configuredConversationProfileId) {

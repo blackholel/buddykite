@@ -336,6 +336,12 @@ function resolveSendErrorMessage(error: string | undefined, errorCode?: string):
   return i18n.t('Failed to send message')
 }
 
+function toNonEmptyProfileId(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const normalized = value.trim()
+  return normalized.length > 0 ? normalized : undefined
+}
+
 function toGuideErrorMessage(error: string | undefined, errorCode?: string): string {
   if (errorCode === 'ASK_USER_QUESTION_NO_ACTIVE_SESSION') {
     return i18n.t('No active run found for guided update.')
@@ -1407,7 +1413,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const conversation = get().getCurrentConversation()
     const conversationMeta = get().getCurrentConversationMeta()
     const { currentSpaceId } = get()
-    const aiSetupState = getAiSetupState(useAppStore.getState().config)
+    const conversationProfileId =
+      toNonEmptyProfileId(conversation?.ai?.profileId) ??
+      toNonEmptyProfileId(conversationMeta?.ai?.profileId)
+    const aiSetupState = getAiSetupState(useAppStore.getState().config, conversationProfileId)
 
     if ((!conversation && !conversationMeta) || !currentSpaceId) {
       console.error('[ChatStore] No conversation or space selected')
@@ -1420,6 +1429,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const snapshotSession = get().sessions.get(conversationId)
     const effectiveMode = normalizeChatMode(mode, undefined, snapshotSession?.mode || 'code')
     if (!aiSetupState.configured) {
+      console.warn('[ChatStore] sendMessage blocked by ai setup guard', {
+        spaceId: currentSpaceId,
+        conversationId,
+        conversationProfileId: conversationProfileId || null,
+        reason: aiSetupState.reason
+      })
       set((state) => {
         const newSessions = new Map(state.sessions)
         const session = newSessions.get(conversationId) || createEmptySessionState()
@@ -1542,6 +1557,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
       if (context === 'workflow-step') {
         const response = await api.sendWorkflowStepMessage(baseRequest)
         if (!response.success) {
+          console.error('[ChatStore] sendWorkflowStepMessage failed', {
+            spaceId: currentSpaceId,
+            conversationId,
+            errorCode: response.errorCode,
+            error: response.error
+          })
           throw new Error(resolveSendErrorMessage(response.error, response.errorCode))
         }
       } else {
@@ -1550,18 +1571,25 @@ export const useChatStore = create<ChatState>((set, get) => ({
           invocationContext: 'interactive'
         })
         if (!response.success) {
+          console.error('[ChatStore] sendMessage API failed', {
+            spaceId: currentSpaceId,
+            conversationId,
+            errorCode: response.errorCode,
+            error: response.error
+          })
           throw new Error(resolveSendErrorMessage(response.error, response.errorCode))
         }
       }
     } catch (error) {
-      console.error('Failed to send message:', error)
+      const reason = toErrorMessage(error, i18n.t('Failed to send message'))
+      console.error('[ChatStore] Failed to send message:', error)
       // Update session error state
       set((state) => {
         const newSessions = new Map(state.sessions)
         const session = newSessions.get(conversationId) || createEmptySessionState()
         newSessions.set(conversationId, {
           ...session,
-          error: 'Failed to send message',
+          error: reason,
           isGenerating: false,
           isThinking: false,
           activePlanTabId: session.activePlanTabId,
@@ -1577,8 +1605,23 @@ export const useChatStore = create<ChatState>((set, get) => ({
       console.error('[ChatStore] spaceId and conversationId are required')
       return
     }
-    const aiSetupState = getAiSetupState(useAppStore.getState().config)
+    const snapshot = get()
+    const conversationProfileId =
+      toNonEmptyProfileId(snapshot.conversationCache.get(conversationId)?.ai?.profileId) ??
+      toNonEmptyProfileId(
+        snapshot.spaceStates
+          .get(spaceId)
+          ?.conversations.find((conversation) => conversation.id === conversationId)
+          ?.ai?.profileId
+      )
+    const aiSetupState = getAiSetupState(useAppStore.getState().config, conversationProfileId)
     if (!aiSetupState.configured) {
+      console.warn('[ChatStore] sendMessageToConversation blocked by ai setup guard', {
+        spaceId,
+        conversationId,
+        conversationProfileId: conversationProfileId || null,
+        reason: aiSetupState.reason
+      })
       set((state) => {
         const newSessions = new Map(state.sessions)
         const session = newSessions.get(conversationId) || createEmptySessionState()
@@ -1674,6 +1717,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
       if (context === 'workflow-step') {
         const response = await api.sendWorkflowStepMessage(baseRequest)
         if (!response.success) {
+          console.error('[ChatStore] sendWorkflowStepMessage (tab) failed', {
+            spaceId,
+            conversationId,
+            errorCode: response.errorCode,
+            error: response.error
+          })
           throw new Error(resolveSendErrorMessage(response.error, response.errorCode))
         }
       } else {
@@ -1682,18 +1731,25 @@ export const useChatStore = create<ChatState>((set, get) => ({
           invocationContext: 'interactive'
         })
         if (!response.success) {
+          console.error('[ChatStore] sendMessage (tab) API failed', {
+            spaceId,
+            conversationId,
+            errorCode: response.errorCode,
+            error: response.error
+          })
           throw new Error(resolveSendErrorMessage(response.error, response.errorCode))
         }
       }
     } catch (error) {
-      console.error('Failed to send message to conversation:', error)
+      const reason = toErrorMessage(error, i18n.t('Failed to send message'))
+      console.error('[ChatStore] Failed to send message to conversation:', error)
       // Update session error state
       set((state) => {
         const newSessions = new Map(state.sessions)
         const session = newSessions.get(conversationId) || createEmptySessionState()
         newSessions.set(conversationId, {
           ...session,
-          error: 'Failed to send message',
+          error: reason,
           isGenerating: false,
           isThinking: false,
           activePlanTabId: session.activePlanTabId,
@@ -1898,8 +1954,23 @@ export const useChatStore = create<ChatState>((set, get) => ({
     if (!spaceId || !conversationId) {
       return { accepted: false, error: '[ChatStore] spaceId and conversationId are required' }
     }
-    const aiSetupState = getAiSetupState(useAppStore.getState().config)
+    const snapshot = get()
+    const conversationProfileId =
+      toNonEmptyProfileId(snapshot.conversationCache.get(conversationId)?.ai?.profileId) ??
+      toNonEmptyProfileId(
+        snapshot.spaceStates
+          .get(spaceId)
+          ?.conversations.find((conversation) => conversation.id === conversationId)
+          ?.ai?.profileId
+      )
+    const aiSetupState = getAiSetupState(useAppStore.getState().config, conversationProfileId)
     if (!aiSetupState.configured) {
+      console.warn('[ChatStore] dispatchTurnInternal blocked by ai setup guard', {
+        spaceId,
+        conversationId,
+        conversationProfileId: conversationProfileId || null,
+        reason: aiSetupState.reason
+      })
       const reason = i18n.t('Please configure AI profile first')
       set((state) => {
         const newSessions = new Map(state.sessions)

@@ -8,9 +8,17 @@ export function createAiProfileNotConfiguredError(
   return error
 }
 
-export function assertAiProfileConfigured(config: AiSetupConfigInput | null | undefined): void {
-  const aiSetupState = getAiSetupState(config)
+export function assertAiProfileConfigured(
+  config: AiSetupConfigInput | null | undefined,
+  profileId?: string | null
+): void {
+  const aiSetupState = getAiSetupState(config, profileId)
   if (!aiSetupState.configured) {
+    console.warn('[AISetupGuard] profile not configured', {
+      profileId: profileId || null,
+      reason: aiSetupState.reason,
+      defaultProfileId: config?.ai?.defaultProfileId ?? null
+    })
     throw createAiProfileNotConfiguredError()
   }
 }

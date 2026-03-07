@@ -110,4 +110,41 @@ describe('getAiSetupState', () => {
 
     expect(state).toEqual({ configured: true, reason: null })
   })
+
+  it('uses explicit profileId when provided, even if default profile is invalid', () => {
+    const state = getAiSetupState(
+      {
+        ai: {
+          profiles: [
+            {
+              id: 'p-default',
+              name: 'Default',
+              vendor: 'anthropic',
+              protocol: 'anthropic_official',
+              apiUrl: 'https://api.anthropic.com',
+              apiKey: '',
+              defaultModel: 'claude-sonnet-4-5-20250929',
+              modelCatalog: ['claude-sonnet-4-5-20250929'],
+              enabled: true
+            },
+            {
+              id: 'p-conversation',
+              name: 'Conversation',
+              vendor: 'minimax',
+              protocol: 'anthropic_compat',
+              apiUrl: 'https://api.minimaxi.com/anthropic',
+              apiKey: 'mm-key',
+              defaultModel: 'MiniMax-Text-01',
+              modelCatalog: ['MiniMax-Text-01'],
+              enabled: true
+            }
+          ],
+          defaultProfileId: 'p-default'
+        }
+      },
+      'p-conversation'
+    )
+
+    expect(state).toEqual({ configured: true, reason: null })
+  })
 })

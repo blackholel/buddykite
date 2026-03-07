@@ -28,8 +28,13 @@ vi.mock('../../../src/renderer/services/canvas-lifecycle', () => ({
 }))
 
 import { useChatStore } from '../../../src/renderer/stores/chat.store'
+import { useAppStore } from '../../../src/renderer/stores/app.store'
 
-function seedConversation(spaceId: string, conversationId: string): void {
+function seedConversation(
+  spaceId: string,
+  conversationId: string,
+  conversationProfileId?: string
+): void {
   const now = new Date().toISOString()
   useChatStore.setState({
     currentSpaceId: spaceId,
@@ -45,7 +50,8 @@ function seedConversation(spaceId: string, conversationId: string): void {
               createdAt: now,
               updatedAt: now,
               messageCount: 0,
-              preview: ''
+              preview: '',
+              ...(conversationProfileId ? { ai: { profileId: conversationProfileId } } : {})
             }
           ],
           currentConversationId: conversationId
@@ -62,7 +68,8 @@ function seedConversation(spaceId: string, conversationId: string): void {
           createdAt: now,
           updatedAt: now,
           messageCount: 0,
-          messages: []
+          messages: [],
+          ...(conversationProfileId ? { ai: { profileId: conversationProfileId } } : {})
         }
       ]
     ])
@@ -82,6 +89,7 @@ describe('chat.store AI setup guard', () => {
     mockGetConversation.mockResolvedValue({ success: false })
     mockListChangeSets.mockResolvedValue({ success: false })
     mockStopGeneration.mockResolvedValue({ success: true })
+    useAppStore.setState({ config: null } as any)
   })
 
   it('blocks submitTurn before API call when profile is not configured', async () => {
@@ -105,5 +113,61 @@ describe('chat.store AI setup guard', () => {
     expect(useChatStore.getState().getSession(conversationId).error).toBe(
       i18n.t('Please configure AI profile first')
     )
+  })
+
+  it('allows submitTurn when current conversation profile is configured even if default profile is invalid', async () => {
+    const spaceId = 'space-1'
+    const conversationId = 'conv-ai-guard'
+    const conversationProfileId = 'p-conversation'
+    seedConversation(spaceId, conversationId, conversationProfileId)
+
+    useAppStore.setState({
+      config: {
+        api: {
+          provider: 'anthropic',
+          apiKey: '',
+          apiUrl: 'https://api.anthropic.com',
+          model: 'claude-sonnet-4-5-20250929'
+        },
+        ai: {
+          defaultProfileId: 'p-default',
+          profiles: [
+            {
+              id: 'p-default',
+              name: 'Default',
+              vendor: 'anthropic',
+              protocol: 'anthropic_official',
+              apiUrl: 'https://api.anthropic.com',
+              apiKey: '',
+              defaultModel: 'claude-sonnet-4-5-20250929',
+              modelCatalog: ['claude-sonnet-4-5-20250929'],
+              enabled: true
+            },
+            {
+              id: conversationProfileId,
+              name: 'Conversation',
+              vendor: 'minimax',
+              protocol: 'anthropic_compat',
+              apiUrl: 'https://api.minimaxi.com/anthropic',
+              apiKey: 'mm-key',
+              defaultModel: 'MiniMax-Text-01',
+              modelCatalog: ['MiniMax-Text-01'],
+              enabled: true
+            }
+          ]
+        }
+      }
+    } as any)
+
+    await useChatStore.getState().submitTurn({
+      spaceId,
+      conversationId,
+      content: 'hello',
+      aiBrowserEnabled: false,
+      mode: 'code'
+    })
+
+    expect(mockSendMessage).toHaveBeenCalledTimes(1)
+    expect(useChatStore.getState().getQueueError(conversationId)).toBeNull()
   })
 })

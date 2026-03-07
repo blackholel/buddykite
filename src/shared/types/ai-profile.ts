@@ -305,13 +305,22 @@ export function isValidOpenAICompatEndpoint(url: string): boolean {
   return normalized.endsWith('/chat/completions') || normalized.endsWith('/responses')
 }
 
-export function getAiSetupState(config: AiSetupConfigInput | null | undefined): AiSetupState {
+export function getAiSetupState(
+  config: AiSetupConfigInput | null | undefined,
+  profileId?: string | null
+): AiSetupState {
   if (config?.ai && Array.isArray(config.ai.profiles) && config.ai.profiles.length === 0) {
     return { configured: false, reason: 'missing_profile' }
   }
 
   const fallbackApi = ensureLegacyApiConfig(config?.api, DEFAULT_LEGACY_API_CONFIG)
-  const profile = selectDefaultApiProfile(config?.ai, fallbackApi)
+  const normalizedAi = ensureAiConfig(config?.ai, fallbackApi)
+  const requestedProfileId = isNonEmptyString(profileId) ? profileId.trim() : null
+  const profile =
+    (requestedProfileId
+      ? normalizedAi.profiles.find(item => item.id === requestedProfileId)
+      : undefined) ||
+    selectDefaultApiProfile(normalizedAi, fallbackApi)
 
   if (!profile) {
     return { configured: false, reason: 'missing_profile' }
