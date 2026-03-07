@@ -324,13 +324,15 @@ describe('Config Service', () => {
       expect(result.status).toBe(1)
     })
 
-    it('should package full seed while removing sensitive config fields', () => {
+    it('should package allowlisted seed entries while removing sensitive and cache data', () => {
       const scriptPath = path.join(projectRoot, 'scripts', 'copy-kite-seed.mjs')
       const sourceSeedDir = path.join(getTestDir(), 'seed-source-full-copy')
       const outputDir = path.join(projectRoot, 'build', 'default-kite-config')
       const backupOutputDir = path.join(getTestDir(), 'seed-output-backup')
       const pluginCacheDir = path.join(sourceSeedDir, 'plugins', 'cache', 'demo-market', 'demo-plugin', '1.0.0')
       const pluginNonCacheDir = path.join(sourceSeedDir, 'plugins', 'superpowers')
+      const instanceCacheDir = path.join(sourceSeedDir, 'instances', 'kite', 'electron-data', 'Cache')
+      const tempDebugDir = path.join(sourceSeedDir, 'temp', 'claude-config', 'debug')
       const installPath = path.join(pluginCacheDir)
       const nonCacheInstallPath = path.join(pluginNonCacheDir)
       const hasOriginalOutput = fs.existsSync(outputDir)
@@ -343,8 +345,18 @@ describe('Config Service', () => {
       fs.mkdirSync(path.join(sourceSeedDir, 'custom-dir', 'nested'), { recursive: true })
       fs.mkdirSync(pluginCacheDir, { recursive: true })
       fs.mkdirSync(path.join(pluginNonCacheDir, 'commands'), { recursive: true })
+      fs.mkdirSync(path.join(pluginNonCacheDir, '.git'), { recursive: true })
+      fs.mkdirSync(path.join(sourceSeedDir, 'skills', 'demo'), { recursive: true })
+      fs.mkdirSync(instanceCacheDir, { recursive: true })
+      fs.mkdirSync(tempDebugDir, { recursive: true })
       fs.writeFileSync(path.join(sourceSeedDir, 'custom-dir', 'nested', 'note.txt'), 'ok')
       fs.writeFileSync(path.join(pluginNonCacheDir, 'commands', 'plan.md'), '# plan')
+      fs.writeFileSync(path.join(pluginNonCacheDir, '.git', 'HEAD'), 'ref: refs/heads/main')
+      fs.writeFileSync(path.join(sourceSeedDir, 'skills', 'demo', 'SKILL.md'), '# demo skill')
+      fs.writeFileSync(path.join(instanceCacheDir, 'cache.bin'), 'cache-data')
+      fs.writeFileSync(path.join(tempDebugDir, 'debug.log'), 'debug-data')
+      fs.writeFileSync(path.join(sourceSeedDir, '.DS_Store'), 'mac-noise')
+      fs.writeFileSync(path.join(sourceSeedDir, 'runtime.log'), 'runtime-log')
       fs.writeFileSync(path.join(sourceSeedDir, 'settings.json'), JSON.stringify({
         token: 'secret-token',
         nested: { apiKey: 'abc' },
@@ -385,7 +397,14 @@ describe('Config Service', () => {
         })
 
         expect(result.status).toBe(0)
-        expect(fs.existsSync(path.join(outputDir, 'custom-dir', 'nested', 'note.txt'))).toBe(true)
+        expect(fs.existsSync(path.join(outputDir, 'skills', 'demo', 'SKILL.md'))).toBe(true)
+        expect(fs.existsSync(path.join(outputDir, 'custom-dir', 'nested', 'note.txt'))).toBe(false)
+        expect(fs.existsSync(path.join(outputDir, 'instances'))).toBe(false)
+        expect(fs.existsSync(path.join(outputDir, 'temp'))).toBe(false)
+        expect(fs.existsSync(path.join(outputDir, '.DS_Store'))).toBe(false)
+        expect(fs.existsSync(path.join(outputDir, 'runtime.log'))).toBe(false)
+        expect(fs.existsSync(path.join(outputDir, 'plugins', 'superpowers', '.git'))).toBe(false)
+        expect(fs.existsSync(path.join(outputDir, 'plugins', 'superpowers', 'commands', 'plan.md'))).toBe(true)
 
         const packagedSettings = JSON.parse(fs.readFileSync(path.join(outputDir, 'settings.json'), 'utf-8'))
         expect(packagedSettings.token).toBe('')

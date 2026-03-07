@@ -23,8 +23,42 @@ const packageJsonPath = join(projectRoot, 'package.json')
 const installPathTemplate = '__KITE_ROOT__'
 const secretKeyPattern = /(key|token|secret|password)/i
 const seedStateFileName = '.seed-state.json'
+const allowedRootEntries = new Set([
+  'config.json',
+  'settings.json',
+  'plugins',
+  'skills',
+  'agents',
+  'commands',
+  'i18n',
+  'taxonomy',
+  'rules',
+  'spaces-index.json'
+])
 const ignoredRootEntries = new Set([
   seedStateFileName
+])
+const blockedRootEntries = new Set([
+  'instances',
+  'temp'
+])
+const blockedDirectoryNames = new Set([
+  'Cache',
+  'Code Cache',
+  'GPUCache',
+  'DawnCache',
+  'DawnGraphiteCache',
+  'DawnWebGPUCache',
+  'blob_storage',
+  '.git',
+  '.github',
+  '.cursor',
+  '.opencode',
+  '.claude',
+  '.codex'
+])
+const blockedFileNames = new Set([
+  '.DS_Store'
 ])
 
 function isDirectory(path) {
@@ -38,6 +72,30 @@ function isDirectory(path) {
 function isPathInside(baseDir, targetPath) {
   const rel = relative(baseDir, targetPath)
   return rel !== '' && !rel.startsWith('..') && !rel.startsWith(`..${sep}`)
+}
+
+function normalizeRelativePathForMatch(relativePath) {
+  return relativePath.split(sep).join('/')
+}
+
+function shouldSkipSeedEntry(relativePath, isDirectoryEntry) {
+  const normalizedPath = normalizeRelativePathForMatch(relativePath)
+  const segments = normalizedPath.split('/').filter(Boolean)
+  if (segments.length === 0) return false
+
+  const rootEntry = segments[0]
+  if (!allowedRootEntries.has(rootEntry)) return true
+  if (ignoredRootEntries.has(rootEntry)) return true
+  if (blockedRootEntries.has(rootEntry)) return true
+
+  for (const segment of segments) {
+    if (blockedDirectoryNames.has(segment)) return true
+  }
+
+  const fileName = segments[segments.length - 1]
+  if (blockedFileNames.has(fileName)) return true
+  if (!isDirectoryEntry && fileName.endsWith('.log')) return true
+  return false
 }
 
 function readJson(path) {
@@ -200,18 +258,23 @@ function copySeedFile(sourcePath, targetPath, relativePath) {
 }
 
 function copyAllSeedEntries() {
-  const copied = []
-  // 全量遍历 .kite，除了根目录里明确忽略的元数据文件
+  const copiedRoots = new Set()
+  // 仅复制运行必需的根目录白名单条目，并跳过缓存与构建机噪音文件
   const walk = (currentSourceDir, currentTargetDir, currentRelativeDir = '') => {
     mkdirSync(currentTargetDir, { recursive: true })
     for (const entry of readdirSync(currentSourceDir, { withFileTypes: true })) {
-      if (currentRelativeDir === '' && ignoredRootEntries.has(entry.name)) continue
+      const relativePath = currentRelativeDir ? `${currentRelativeDir}/${entry.name}` : entry.name
+      const isDirectoryEntry = entry.isDirectory()
+      if (shouldSkipSeedEntry(relativePath, isDirectoryEntry)) continue
+
+      if (currentRelativeDir === '') {
+        copiedRoots.add(entry.name)
+      }
 
       const sourcePath = join(currentSourceDir, entry.name)
       const targetPath = join(currentTargetDir, entry.name)
-      const relativePath = currentRelativeDir ? `${currentRelativeDir}/${entry.name}` : entry.name
 
-      if (entry.isDirectory()) {
+      if (isDirectoryEntry) {
         walk(sourcePath, targetPath, relativePath)
         continue
       }
@@ -221,13 +284,8 @@ function copyAllSeedEntries() {
     }
   }
 
-  for (const entry of readdirSync(sourceDir, { withFileTypes: true })) {
-    if (ignoredRootEntries.has(entry.name)) continue
-    copied.push(entry.name)
-  }
-
   walk(sourceDir, outputDir)
-  return copied
+  return Array.from(copiedRoots)
 }
 
 function finalizeSeedSettingsEnabledPlugins(targetRootDir) {
