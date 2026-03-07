@@ -314,6 +314,7 @@ In plan/code modes, AskUserQuestion has higher priority than plain-text clarific
 If blocking gaps are 2 or more, batch them into one AskUserQuestion call with at most 3 questions.
 Use multiSelect=true only when multiple choices can be valid at the same time.
 Avoid duplicate question texts and duplicate option labels.
+Never include an explicit "Other" option in AskUserQuestion options; the UI adds it automatically.
 If follow-up questions are predictable, include them in the same AskUserQuestion call.
 If AskUserQuestion is unavailable, plain-text clarification is allowed only once per conversation.
 `

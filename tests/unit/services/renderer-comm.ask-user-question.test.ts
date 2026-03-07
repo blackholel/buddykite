@@ -72,6 +72,16 @@ function createPlanHandler(session: SessionState) {
   )
 }
 
+function createCodeHandler(session: SessionState) {
+  return createCanUseTool(
+    '/workspace/project',
+    'space-1',
+    'conversation-1',
+    () => session,
+    { mode: 'code' }
+  )
+}
+
 describe('renderer-comm AskUserQuestion priority + plan whitelist', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -156,6 +166,92 @@ describe('renderer-comm AskUserQuestion priority + plan whitelist', () => {
     expect(decision.behavior).toBe('allow')
     expect(decision.updatedInput).toEqual({ answers: { q_1: 'Plan' } })
   })
+
+  it('code mode AskUserQuestion remains callable and creates pending context', async () => {
+    const session = createSession('code')
+    const canUseTool = createCodeHandler(session)
+
+    const pendingDecisionPromise = canUseTool(
+      'AskUserQuestion',
+      {
+        questions: [
+          {
+            id: 'q_1',
+            question: 'Continue with default assumptions?',
+            options: [
+              { label: 'Yes', description: 'Proceed with defaults' },
+              { label: 'No', description: 'Stop and clarify first' }
+            ]
+          }
+        ]
+      },
+      { signal: new AbortController().signal }
+    )
+
+    await Promise.resolve()
+    expect(session.pendingAskUserQuestionOrder.length).toBe(1)
+    const pendingId = session.pendingAskUserQuestionOrder[0]
+    const pendingContext = session.pendingAskUserQuestionsById.get(pendingId)
+    expect(pendingContext).toBeTruthy()
+    pendingContext?.resolve({ behavior: 'allow', updatedInput: { answers: { q_1: 'Yes' } } })
+
+    await expect(pendingDecisionPromise).resolves.toMatchObject({
+      behavior: 'allow'
+    })
+  })
+
+  it('plan mode AskUserQuestion applies runtime normalization pipeline before pending bind', async () => {
+    const session = createSession('plan')
+    const canUseTool = createPlanHandler(session)
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const pendingDecisionPromise = canUseTool(
+      'AskUserQuestion',
+      {
+        questions: [
+          {
+            id: 'q_1',
+            question: 'Pick one',
+            options: ['A', 'B', 'Other', 'C', 'D', 'E', 'A']
+          },
+          {
+            id: 'q_2',
+            question: 'Pick two',
+            options: ['X', 'Y']
+          },
+          {
+            id: 'q_3',
+            question: 'Pick three',
+            options: ['L', 'M']
+          },
+          {
+            id: 'q_4',
+            question: 'Should be truncated',
+            options: ['N', 'O']
+          }
+        ]
+      },
+      { signal: new AbortController().signal }
+    )
+
+    await Promise.resolve()
+    const pendingId = session.pendingAskUserQuestionOrder[0]
+    const pendingContext = session.pendingAskUserQuestionsById.get(pendingId)
+    expect(pendingContext).toBeTruthy()
+
+    const questions = (pendingContext?.inputSnapshot.questions || []) as Array<Record<string, unknown>>
+    expect(questions).toHaveLength(3)
+    const firstOptions = questions[0].options as Array<{ label: string }>
+    expect(firstOptions).toHaveLength(4)
+    expect(firstOptions.some((option) => option.label.toLowerCase().startsWith('other'))).toBe(false)
+    expect(warnSpy).toHaveBeenCalled()
+    expect(String(warnSpy.mock.calls[0][0])).toContain('AskUserQuestion input normalized')
+
+    pendingContext?.resolve({ behavior: 'allow', updatedInput: { answers: { q_1: 'A' } } })
+    await expect(pendingDecisionPromise).resolves.toMatchObject({ behavior: 'allow' })
+
+    warnSpy.mockRestore()
+  })
 })
 
 describe('normalizeAskUserQuestionInput multiSelect precedence', () => {
@@ -207,5 +303,56 @@ describe('normalizeAskUserQuestionInput multiSelect precedence', () => {
     const questions = normalized.questions as Array<Record<string, unknown>>
     expect(questions[0].multiSelect).toBe(false)
     expect(questions[1].multiSelect).toBe(true)
+  })
+
+  it('trims questions to at most 3 and options to at most 4', () => {
+    const normalized = normalizeAskUserQuestionInput({
+      questions: [
+        {
+          id: 'q_1',
+          question: 'Q1',
+          options: ['A', 'B', 'C', 'D', 'E']
+        },
+        {
+          id: 'q_2',
+          question: 'Q2',
+          options: ['A', 'B']
+        },
+        {
+          id: 'q_3',
+          question: 'Q3',
+          options: ['A', 'B']
+        },
+        {
+          id: 'q_4',
+          question: 'Q4',
+          options: ['A', 'B']
+        }
+      ]
+    })
+
+    const questions = normalized.questions as Array<Record<string, unknown>>
+    expect(questions).toHaveLength(3)
+    const firstOptions = questions[0].options as Array<{ label: string }>
+    expect(firstOptions).toHaveLength(4)
+    expect(firstOptions.map((option) => option.label)).toEqual(['A', 'B', 'C', 'D'])
+  })
+
+  it('removes explicit Other options and guarantees at least 2 unique options', () => {
+    const normalized = normalizeAskUserQuestionInput({
+      questions: [
+        {
+          id: 'q_1',
+          question: 'Select one',
+          options: ['Other', 'other...', 'Only']
+        }
+      ]
+    })
+
+    const questions = normalized.questions as Array<Record<string, unknown>>
+    expect(questions).toHaveLength(1)
+    const options = questions[0].options as Array<{ label: string }>
+    expect(options.length).toBeGreaterThanOrEqual(2)
+    expect(options.some((option) => option.label.toLowerCase().startsWith('other'))).toBe(false)
   })
 })

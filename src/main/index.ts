@@ -100,6 +100,7 @@ import {
 import { checkForUpdates } from './services/updater.service'
 import { initAnalytics } from './services/analytics'
 import { registerProtocols } from './services/protocol.service'
+import { runDependencyConsistencySelfCheck } from './services/dependency-consistency.service'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -315,6 +316,17 @@ app.whenReady().then(async () => {
 
   // Initialize app data directories
   await initializeApp()
+
+  if (is.dev) {
+    try {
+      runDependencyConsistencySelfCheck()
+    } catch (error) {
+      console.warn(
+        '[Startup][DependencySelfCheck] failed:',
+        error instanceof Error ? error.message : String(error)
+      )
+    }
+  }
 
   // Lock configuration source mode before any watcher/agent/session initialization.
   // This prevents runtime mixed-source reads if user changes mode without restart.

@@ -139,6 +139,93 @@ interface AskUserQuestionNormalizedQuestion {
   question: string
 }
 
+interface AskUserQuestionOption {
+  label: string
+  description: string
+}
+
+interface AskUserQuestionNormalizationDiagnostics {
+  adjusted: boolean
+  originalQuestionCount: number
+  normalizedQuestionCount: number
+  trimmedQuestionCount: number
+  trimmedOptionCount: number
+  removedOtherOptionCount: number
+  dedupedOptionCount: number
+  paddedOptionCount: number
+}
+
+interface AskUserQuestionNormalizationResult {
+  normalizedInput: Record<string, unknown>
+  diagnostics: AskUserQuestionNormalizationDiagnostics
+}
+
+const ASK_USER_QUESTION_MAX_QUESTIONS = 3
+const ASK_USER_QUESTION_MAX_OPTIONS = 4
+const ASK_USER_QUESTION_MIN_OPTIONS = 2
+const ASK_USER_QUESTION_FALLBACK_OPTIONS: AskUserQuestionOption[] = [
+  { label: 'Yes', description: 'Select Yes' },
+  { label: 'No', description: 'Select No' },
+  { label: 'Continue', description: 'Proceed with this option' },
+  { label: 'Cancel', description: 'Stop and reconsider' }
+]
+
+function normalizeOptionKey(label: string): string {
+  return label.trim().toLowerCase()
+}
+
+function isOtherOptionLabel(label: string): boolean {
+  const normalized = normalizeOptionKey(label).replace(/\s+/g, '')
+  return normalized === 'other' || normalized === 'other...' || normalized === 'other…'
+}
+
+function applyAskUserQuestionOptionConstraints(
+  options: AskUserQuestionOption[],
+  diagnostics: AskUserQuestionNormalizationDiagnostics
+): AskUserQuestionOption[] {
+  const deduped: AskUserQuestionOption[] = []
+  const seenKeys = new Set<string>()
+
+  for (const option of options) {
+    if (isOtherOptionLabel(option.label)) {
+      diagnostics.removedOtherOptionCount += 1
+      continue
+    }
+
+    const optionKey = normalizeOptionKey(option.label)
+    if (seenKeys.has(optionKey)) {
+      diagnostics.dedupedOptionCount += 1
+      continue
+    }
+
+    seenKeys.add(optionKey)
+    deduped.push(option)
+  }
+
+  let constrained = deduped
+  if (constrained.length > ASK_USER_QUESTION_MAX_OPTIONS) {
+    diagnostics.trimmedOptionCount += constrained.length - ASK_USER_QUESTION_MAX_OPTIONS
+    constrained = constrained.slice(0, ASK_USER_QUESTION_MAX_OPTIONS)
+  }
+
+  if (constrained.length < ASK_USER_QUESTION_MIN_OPTIONS) {
+    for (const fallbackOption of ASK_USER_QUESTION_FALLBACK_OPTIONS) {
+      if (constrained.length >= ASK_USER_QUESTION_MIN_OPTIONS) {
+        break
+      }
+      const fallbackKey = normalizeOptionKey(fallbackOption.label)
+      if (seenKeys.has(fallbackKey) || isOtherOptionLabel(fallbackOption.label)) {
+        continue
+      }
+      constrained.push(fallbackOption)
+      seenKeys.add(fallbackKey)
+      diagnostics.paddedOptionCount += 1
+    }
+  }
+
+  return constrained
+}
+
 function getAskUserQuestionNormalizedQuestions(
   inputSnapshot: Record<string, unknown>
 ): AskUserQuestionNormalizedQuestion[] {
@@ -233,9 +320,20 @@ export function buildAskUserQuestionUpdatedInput(
   }
 }
 
-export function normalizeAskUserQuestionInput(
+export function normalizeAskUserQuestionInputWithDiagnostics(
   input: Record<string, unknown>
-): Record<string, unknown> {
+): AskUserQuestionNormalizationResult {
+  const diagnostics: AskUserQuestionNormalizationDiagnostics = {
+    adjusted: false,
+    originalQuestionCount: Array.isArray(input.questions) ? input.questions.length : 0,
+    normalizedQuestionCount: 0,
+    trimmedQuestionCount: 0,
+    trimmedOptionCount: 0,
+    removedOtherOptionCount: 0,
+    dedupedOptionCount: 0,
+    paddedOptionCount: 0
+  }
+
   const topLevelMultiSelect =
     toOptionalBoolean(input.multiSelect) ??
     toOptionalBoolean(input.multi_select)
@@ -243,19 +341,23 @@ export function normalizeAskUserQuestionInput(
   const rawQuestions = input.questions
   if (!Array.isArray(rawQuestions) || rawQuestions.length === 0) {
     const question = toNonEmptyString(input.question) || 'Please provide your choice.'
+    diagnostics.normalizedQuestionCount = 1
     return {
-      questions: [
-        {
-          id: 'q_1',
-          header: 'Question',
-          question,
-          options: [
-            { label: 'Continue', description: 'Proceed with this option' },
-            { label: 'Cancel', description: 'Stop and reconsider' }
-          ],
-          multiSelect: topLevelMultiSelect ?? false
-        }
-      ]
+      normalizedInput: {
+        questions: [
+          {
+            id: 'q_1',
+            header: 'Question',
+            question,
+            options: [
+              { label: 'Continue', description: 'Proceed with this option' },
+              { label: 'Cancel', description: 'Stop and reconsider' }
+            ],
+            multiSelect: topLevelMultiSelect ?? false
+          }
+        ]
+      },
+      diagnostics
     }
   }
 
@@ -277,7 +379,7 @@ export function normalizeAskUserQuestionInput(
         buildQuestionId(toNonEmptyString(record.header) || questionText, questionIndex)
 
       const rawOptions = record.options || record.choices || record.selectOptions
-      const options = Array.isArray(rawOptions)
+      const parsedOptions = Array.isArray(rawOptions)
         ? rawOptions
             .map((rawOption) => {
               if (typeof rawOption === 'string') {
@@ -304,15 +406,10 @@ export function normalizeAskUserQuestionInput(
 
               return { label, description }
             })
-            .filter((option): option is { label: string; description: string } => option !== null)
+            .filter((option): option is AskUserQuestionOption => option !== null)
         : []
 
-      if (options.length === 0) {
-        options.push(
-          { label: 'Yes', description: 'Select Yes' },
-          { label: 'No', description: 'Select No' }
-        )
-      }
+      const options = applyAskUserQuestionOptionConstraints(parsedOptions, diagnostics)
 
       return {
         id,
@@ -331,24 +428,34 @@ export function normalizeAskUserQuestionInput(
     } => item !== null)
 
   if (normalizedQuestions.length === 0) {
+    diagnostics.normalizedQuestionCount = 1
     return {
-      questions: [
-        {
-          id: 'q_1',
-          header: 'Question',
-          question: 'Please provide your choice.',
-          options: [
-            { label: 'Continue', description: 'Proceed with this option' },
-            { label: 'Cancel', description: 'Stop and reconsider' }
-          ],
-          multiSelect: topLevelMultiSelect ?? false
-        }
-      ]
+      normalizedInput: {
+        questions: [
+          {
+            id: 'q_1',
+            header: 'Question',
+            question: 'Please provide your choice.',
+            options: [
+              { label: 'Continue', description: 'Proceed with this option' },
+              { label: 'Cancel', description: 'Stop and reconsider' }
+            ],
+            multiSelect: topLevelMultiSelect ?? false
+          }
+        ]
+      },
+      diagnostics
     }
   }
 
-  const inferredMultiSelect = normalizedQuestions.length >= 2
-  const questions = normalizedQuestions.map((item) => ({
+  const constrainedQuestions = normalizedQuestions.slice(0, ASK_USER_QUESTION_MAX_QUESTIONS)
+  if (normalizedQuestions.length > ASK_USER_QUESTION_MAX_QUESTIONS) {
+    diagnostics.trimmedQuestionCount = normalizedQuestions.length - ASK_USER_QUESTION_MAX_QUESTIONS
+  }
+  diagnostics.normalizedQuestionCount = constrainedQuestions.length
+
+  const inferredMultiSelect = constrainedQuestions.length >= 2
+  const questions = constrainedQuestions.map((item) => ({
     id: item.id,
     header: item.header,
     question: item.question,
@@ -360,7 +467,23 @@ export function normalizeAskUserQuestionInput(
     )
   }))
 
-  return { questions }
+  diagnostics.adjusted =
+    diagnostics.trimmedQuestionCount > 0 ||
+    diagnostics.trimmedOptionCount > 0 ||
+    diagnostics.removedOtherOptionCount > 0 ||
+    diagnostics.dedupedOptionCount > 0 ||
+    diagnostics.paddedOptionCount > 0
+
+  return {
+    normalizedInput: { questions },
+    diagnostics
+  }
+}
+
+export function normalizeAskUserQuestionInput(
+  input: Record<string, unknown>
+): Record<string, unknown> {
+  return normalizeAskUserQuestionInputWithDiagnostics(input).normalizedInput
 }
 
 /**
@@ -467,7 +590,14 @@ export function createCanUseTool(
         return { behavior: 'deny' as const, message: 'Session not found' }
       }
 
-      const normalizedInput = normalizeAskUserQuestionInput(input)
+      const { normalizedInput, diagnostics } = normalizeAskUserQuestionInputWithDiagnostics(input)
+      if (diagnostics.adjusted) {
+        console.warn(
+          `[Agent][${conversationId}] AskUserQuestion input normalized: ${JSON.stringify(
+            diagnostics
+          )}`
+        )
+      }
       const fingerprint = getAskUserQuestionInputFingerprint(normalizedInput)
       const hasDuplicatePending = session.pendingAskUserQuestionOrder.some((pendingId) => {
         const context = session.pendingAskUserQuestionsById.get(pendingId)

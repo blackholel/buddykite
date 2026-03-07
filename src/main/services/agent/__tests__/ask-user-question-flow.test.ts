@@ -13,7 +13,8 @@ const sessionManagerMocks = vi.hoisted(() => ({
   setActiveSession: vi.fn(),
   deleteActiveSession: vi.fn(),
   getV2SessionInfo: vi.fn(),
-  getV2SessionsCount: vi.fn(() => 0)
+  getV2SessionsCount: vi.fn(() => 0),
+  touchV2Session: vi.fn()
 }))
 
 vi.mock('../session.manager', () => ({
@@ -23,7 +24,8 @@ vi.mock('../session.manager', () => ({
   setActiveSession: sessionManagerMocks.setActiveSession,
   deleteActiveSession: sessionManagerMocks.deleteActiveSession,
   getV2SessionInfo: sessionManagerMocks.getV2SessionInfo,
-  getV2SessionsCount: sessionManagerMocks.getV2SessionsCount
+  getV2SessionsCount: sessionManagerMocks.getV2SessionsCount,
+  touchV2Session: sessionManagerMocks.touchV2Session
 }))
 
 function createPending(
