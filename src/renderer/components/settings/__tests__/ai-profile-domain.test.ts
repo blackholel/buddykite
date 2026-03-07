@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ApiProfile } from '../../../types'
 import {
+  isValidAnthropicCompatEndpoint,
   isValidOpenAICompatEndpoint,
   normalizeModelCatalog,
   normalizeProfileForSave
@@ -11,6 +12,12 @@ describe('ai profile domain', () => {
     expect(isValidOpenAICompatEndpoint('https://api.openai.com/v1/responses')).toBe(true)
     expect(isValidOpenAICompatEndpoint('https://provider.com/v1/chat/completions/')).toBe(true)
     expect(isValidOpenAICompatEndpoint('https://provider.com/v1')).toBe(false)
+  })
+
+  it('isValidAnthropicCompatEndpoint should reject OpenAI style endpoints', () => {
+    expect(isValidAnthropicCompatEndpoint('https://provider.com/anthropic')).toBe(true)
+    expect(isValidAnthropicCompatEndpoint('https://provider.com/v1/responses')).toBe(false)
+    expect(isValidAnthropicCompatEndpoint('https://provider.com/v1/chat/completions/')).toBe(false)
   })
 
   it('normalizeModelCatalog should keep default model and remove duplicates', () => {

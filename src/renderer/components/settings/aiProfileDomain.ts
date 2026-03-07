@@ -4,6 +4,10 @@ import { isValidOpenAICompatEndpoint } from '../../../shared/types/ai-profile'
 
 export { isValidOpenAICompatEndpoint }
 
+export function isValidAnthropicCompatEndpoint(url: string): boolean {
+  return !isValidOpenAICompatEndpoint(url)
+}
+
 export interface AiProfileTemplate {
   key: string
   label: string
