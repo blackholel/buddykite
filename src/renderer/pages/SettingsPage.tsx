@@ -13,7 +13,7 @@ import type {
   ProviderProtocol
 } from '../types'
 import type { LucideIcon } from 'lucide-react'
-import { Bot, Eye, EyeOff, Info, Network, Palette, ServerCog, Shield, SlidersHorizontal, X } from 'lucide-react'
+import { Bot, Download, Eye, EyeOff, Info, Network, Palette, RefreshCw, ServerCog, Shield, SlidersHorizontal, X } from 'lucide-react'
 import { McpServerList } from '../components/settings/McpServerList'
 import { useTranslation, setLanguage, getCurrentLanguage, SUPPORTED_LOCALES, type LocaleCode } from '../i18n'
 import { ensureAiConfig } from '../../shared/types/ai-profile'
@@ -182,6 +182,17 @@ interface RemoteAccessStatus {
   clients: number
 }
 
+interface UpdaterState {
+  status: 'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'manual-download' | 'error'
+  currentVersion: string
+  latestVersion?: string | null
+  checkTime?: string | null
+  message?: string
+  downloadSource?: 'github' | 'baidu' | null
+  downloadUrl?: string | null
+  baiduExtractCode?: string | null
+}
+
 export function SettingsPage() {
   const { t } = useTranslation()
   const { config, setConfig, goBack } = useAppStore()
@@ -213,6 +224,10 @@ export function SettingsPage() {
   // System settings state
   const [autoLaunch, setAutoLaunch] = useState(config?.system?.autoLaunch || false)
   const [minimizeToTray, setMinimizeToTray] = useState(config?.system?.minimizeToTray || false)
+
+  // Updater state (About section)
+  const [updaterState, setUpdaterState] = useState<UpdaterState | null>(null)
+  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false)
 
   const selectedProfile = profiles.find(profile => profile.id === selectedProfileId) || null
   const selectedCatalog = selectedProfile
@@ -273,6 +288,21 @@ export function SettingsPage() {
     loadSystemSettings()
   }, [])
 
+  useEffect(() => {
+    if (api.isRemoteMode()) return
+
+    void loadUpdaterState()
+    const unsubscribe = api.onUpdaterStatus((data) => {
+      const nextState = data as UpdaterState
+      setUpdaterState(nextState)
+      setIsCheckingUpdate(nextState.status === 'checking')
+    })
+
+    return () => {
+      unsubscribe()
+    }
+  }, [])
+
   const loadSystemSettings = async () => {
     try {
       const [autoLaunchRes, minimizeRes] = await Promise.all([
@@ -288,6 +318,36 @@ export function SettingsPage() {
     } catch (error) {
       console.error('[Settings] Failed to load system settings:', error)
     }
+  }
+
+  const loadUpdaterState = async () => {
+    try {
+      const response = await api.getUpdaterState()
+      if (response.success && response.data) {
+        const nextState = response.data as UpdaterState
+        setUpdaterState(nextState)
+        setIsCheckingUpdate(nextState.status === 'checking')
+      }
+    } catch (error) {
+      console.error('[Settings] Failed to load updater state:', error)
+    }
+  }
+
+  const handleCheckUpdates = async () => {
+    setIsCheckingUpdate(true)
+    try {
+      await api.checkForUpdates()
+    } catch (error) {
+      console.error('[Settings] Failed to check updates:', error)
+      setIsCheckingUpdate(false)
+    }
+  }
+
+  const handleDownloadUpdate = async () => {
+    const version = updaterState?.latestVersion || updaterState?.currentVersion
+    if (!version) return
+    const targetUrl = updaterState?.downloadUrl || `https://github.com/openkursar/hello-halo/releases/tag/v${version}`
+    await api.openExternal(targetUrl)
   }
 
   // Load QR code when remote is enabled
@@ -639,6 +699,21 @@ export function SettingsPage() {
   const currentLanguage = getCurrentLanguage()
   const localeEntries = Object.entries(SUPPORTED_LOCALES) as [LocaleCode, string][]
   const activeSectionMeta = SETTINGS_SECTIONS.find(section => section.id === activeSection) || SETTINGS_SECTIONS[0]
+  const formatCheckTime = (value?: string | null): string => {
+    if (!value) return '-'
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) return '-'
+    return date.toLocaleString()
+  }
+
+  const getUpdateStatusLabel = (): string => {
+    if (!updaterState) return '-'
+    if (updaterState.status === 'checking' || isCheckingUpdate) return t('Checking for updates...')
+    if (updaterState.status === 'available') return t('Update available')
+    if (updaterState.status === 'not-available') return t('Already up to date')
+    if (updaterState.status === 'error') return t('Update check failed')
+    return updaterState.message || '-'
+  }
 
   const renderModelSection = () => (
     <section className="settings-modal-card settings-model-card">
@@ -1294,16 +1369,56 @@ export function SettingsPage() {
   const renderAboutSection = () => (
     <section className="settings-modal-card">
       <h3 className="mb-5 text-base font-semibold tracking-tight">{t('About')}</h3>
-      <div className="space-y-2 text-sm">
-        <div className="flex justify-between">
-          <span className="text-muted-foreground">{t('Version')}</span>
-          <span>1.0.0</span>
+      {api.isRemoteMode() ? (
+        <p className="text-sm text-muted-foreground">{t('System settings are unavailable in remote mode')}</p>
+      ) : (
+        <div className="space-y-4 text-sm">
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">{t('Current version')}</span>
+            <span>{updaterState?.currentVersion || '-'}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">{t('Latest version')}</span>
+            <span>{updaterState?.latestVersion || '-'}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">{t('Last checked at')}</span>
+            <span>{formatCheckTime(updaterState?.checkTime)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">{t('Status')}</span>
+            <span>{getUpdateStatusLabel()}</span>
+          </div>
+          {updaterState?.downloadSource === 'baidu' && updaterState.baiduExtractCode && (
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">{t('Extract code')}</span>
+              <span className="font-mono">{updaterState.baiduExtractCode}</span>
+            </div>
+          )}
+
+          <div className="flex flex-wrap gap-2 border-t border-border/50 pt-4">
+            <button
+              type="button"
+              onClick={() => void handleCheckUpdates()}
+              className="inline-flex items-center gap-2 rounded-xl border border-border/70 px-4 py-2 text-sm hover:bg-secondary/50 disabled:opacity-50"
+              disabled={isCheckingUpdate}
+            >
+              <RefreshCw className={`h-4 w-4 ${isCheckingUpdate ? 'animate-spin' : ''}`} />
+              {t('Check for updates')}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => void handleDownloadUpdate()}
+              className="inline-flex items-center gap-2 rounded-xl btn-apple px-4 py-2 text-sm disabled:opacity-50"
+              disabled={updaterState?.status !== 'available'}
+            >
+              <Download className="h-4 w-4" />
+              {t('Download update')}
+            </button>
+          </div>
         </div>
-        <div className="flex justify-between">
-          <span className="text-muted-foreground">{t('Build')}</span>
-          <span>Powered by Claude Code</span>
-        </div>
-      </div>
+      )}
     </section>
   )
 

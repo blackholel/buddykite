@@ -25,11 +25,11 @@ const REQUIRED_SETUP_ZH_KEYS = [
 ]
 
 describe('setup page localization and updater visibility', () => {
-  it('does not render update notification in App shell', () => {
+  it('renders update notification in App shell', () => {
     const appSource = fs.readFileSync(appFile, 'utf-8')
 
-    expect(appSource).not.toContain('import { UpdateNotification }')
-    expect(appSource).not.toContain('<UpdateNotification />')
+    expect(appSource).toContain("import { UpdateNotification }")
+    expect(appSource).toContain('<UpdateNotification />')
   })
 
   it('uses i18n labels for setup form API fields and default profile name', () => {

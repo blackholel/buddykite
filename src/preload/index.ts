@@ -339,7 +339,9 @@ export interface KiteAPI {
   // Updater
   checkForUpdates: () => Promise<IpcResponse>
   installUpdate: () => Promise<IpcResponse>
-  getVersion: () => Promise<IpcResponse>
+  getVersion: () => Promise<IpcResponse<string>>
+  getUpdaterState: () => Promise<IpcResponse>
+  dismissUpdateVersion: (version: string) => Promise<IpcResponse>
   onUpdaterStatus: (callback: (data: unknown) => void) => () => void
 
   // Browser (embedded browser for Content Canvas)
@@ -648,6 +650,8 @@ const api: KiteAPI = {
   checkForUpdates: () => ipcRenderer.invoke('updater:check'),
   installUpdate: () => ipcRenderer.invoke('updater:install'),
   getVersion: () => ipcRenderer.invoke('updater:get-version'),
+  getUpdaterState: () => ipcRenderer.invoke('updater:get-state'),
+  dismissUpdateVersion: (version) => ipcRenderer.invoke('updater:dismiss-version', version),
   onUpdaterStatus: (callback) => createEventListener('updater:status', callback),
 
   // Browser (embedded browser for Content Canvas)

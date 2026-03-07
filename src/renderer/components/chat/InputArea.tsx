@@ -1372,14 +1372,22 @@ function InputToolbar({
           <button
             onClick={() => onModeChange(isPlanMode ? 'code' : 'plan')}
             disabled={modeSwitching}
-            className={`h-8 flex items-center gap-1.5 px-2.5 rounded-lg border border-border/60
-              bg-background/70 text-foreground/80 transition-colors duration-200
-              ${modeSwitching ? 'opacity-60 cursor-not-allowed' : 'hover:bg-muted/40'}
+            aria-pressed={isPlanMode}
+            className={`h-8 flex items-center gap-1.5 px-2.5 rounded-lg
+              transition-colors duration-200 relative border
+              ${isPlanMode
+                ? 'bg-foreground/10 border-foreground/20 text-foreground'
+                : 'border-border/60 text-muted-foreground/70 hover:text-foreground hover:bg-foreground/5'
+              }
+              ${modeSwitching ? 'opacity-60 cursor-not-allowed' : ''}
             `}
             title={t(isPlanMode ? 'Disable Plan Mode' : 'Enable Plan Mode')}
           >
             <ClipboardList size={15} />
             <span className="text-xs">{planButtonLabel}</span>
+            {isPlanMode && (
+              <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-foreground rounded-full" />
+            )}
           </button>
         )}
       </div>

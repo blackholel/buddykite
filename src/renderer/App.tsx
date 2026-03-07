@@ -20,6 +20,7 @@ import { GitBashSetup } from './components/setup/GitBashSetup'
 import { SearchPanel } from './components/search/SearchPanel'
 import { SearchHighlightBar } from './components/search/SearchHighlightBar'
 import { OnboardingOverlay } from './components/onboarding'
+import { UpdateNotification } from './components/updater/UpdateNotification'
 import { api } from './api'
 import type {
   AgentEventBase,
@@ -474,6 +475,8 @@ export default function App() {
       <SearchHighlightBar />
       {/* Onboarding overlay - renders on top of everything */}
       <OnboardingOverlay />
+      {/* Update notification - remind users to download new version manually */}
+      <UpdateNotification />
     </div>
   )
 }

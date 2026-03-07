@@ -116,6 +116,12 @@ interface KiteConfig {
   system: {
     autoLaunch: boolean
     minimizeToTray: boolean
+    update: {
+      checkOnStartup: boolean
+      lastCheckAt: string | null
+      latestKnownVersion: string | null
+      lastDismissedVersion: string | null
+    }
   }
   remoteAccess: {
     enabled: boolean
@@ -274,7 +280,13 @@ const DEFAULT_CONFIG: KiteConfig = {
   },
   system: {
     autoLaunch: false,
-    minimizeToTray: false
+    minimizeToTray: false,
+    update: {
+      checkOnStartup: true,
+      lastCheckAt: null,
+      latestKnownVersion: null,
+      lastDismissedVersion: null
+    }
   },
   remoteAccess: {
     enabled: false,
@@ -723,7 +735,14 @@ export function getConfig(): KiteConfig {
         ...parsed.appearance,
         theme: normalizeAppearanceTheme(parsed.appearance?.theme)
       },
-      system: { ...DEFAULT_CONFIG.system, ...parsed.system },
+      system: {
+        ...DEFAULT_CONFIG.system,
+        ...parsed.system,
+        update: {
+          ...DEFAULT_CONFIG.system.update,
+          ...(isPlainObject(parsed.system?.update) ? parsed.system.update : {})
+        }
+      },
       onboarding: { ...DEFAULT_CONFIG.onboarding, ...parsed.onboarding },
       // mcpServers is a flat map, just use parsed value or default
       mcpServers: parsed.mcpServers || DEFAULT_CONFIG.mcpServers,
@@ -801,7 +820,14 @@ export function saveConfig(config: Partial<KiteConfig>): KiteConfig {
     }
   }
   if (config.system) {
-    newConfig.system = { ...currentConfig.system, ...config.system }
+    newConfig.system = {
+      ...currentConfig.system,
+      ...config.system,
+      update: {
+        ...currentConfig.system.update,
+        ...(isPlainObject(config.system.update) ? config.system.update : {})
+      }
+    }
   }
   if (config.onboarding) {
     newConfig.onboarding = { ...currentConfig.onboarding, ...config.onboarding }
@@ -1024,7 +1050,14 @@ export function setAutoLaunch(enabled: boolean): void {
   })
 
   // Save to config
-  saveConfig({ system: { autoLaunch: enabled, minimizeToTray: getConfig().system.minimizeToTray } })
+  const current = getConfig().system
+  saveConfig({
+    system: {
+      autoLaunch: enabled,
+      minimizeToTray: current.minimizeToTray,
+      update: current.update
+    }
+  })
   console.log(`[Config] Auto launch set to: ${enabled}`)
 }
 
@@ -1040,7 +1073,14 @@ export function getAutoLaunch(): boolean {
  * Set minimize to tray behavior
  */
 export function setMinimizeToTray(enabled: boolean): void {
-  saveConfig({ system: { autoLaunch: getConfig().system.autoLaunch, minimizeToTray: enabled } })
+  const current = getConfig().system
+  saveConfig({
+    system: {
+      autoLaunch: current.autoLaunch,
+      minimizeToTray: enabled,
+      update: current.update
+    }
+  })
   console.log(`[Config] Minimize to tray set to: ${enabled}`)
 }
 

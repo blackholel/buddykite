@@ -1436,12 +1436,46 @@ export const api = {
     return window.kite.getVersion()
   },
 
+  getUpdaterState: async (): Promise<ApiResponse<{
+    status: 'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'manual-download' | 'error'
+    currentVersion: string
+    version?: string | null
+    latestVersion?: string | null
+    checkTime?: string | null
+    message?: string
+    percent?: number
+    releaseNotes?: string | { version: string; note: string }[]
+    downloadSource?: 'github' | 'baidu' | null
+    downloadUrl?: string | null
+    baiduExtractCode?: string | null
+    lastDismissedVersion?: string | null
+  }>> => {
+    if (!isElectron()) {
+      return { success: false, error: 'Only available in desktop app' }
+    }
+    return window.kite.getUpdaterState()
+  },
+
+  dismissUpdateVersion: async (version: string): Promise<ApiResponse> => {
+    if (!isElectron()) {
+      return { success: false, error: 'Only available in desktop app' }
+    }
+    return window.kite.dismissUpdateVersion(version)
+  },
+
   onUpdaterStatus: (callback: (data: {
-    status: 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'manual-download' | 'error'
-    version?: string
+    status: 'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'manual-download' | 'error'
+    currentVersion?: string
+    version?: string | null
+    latestVersion?: string | null
+    checkTime?: string | null
     percent?: number
     message?: string
     releaseNotes?: string | { version: string; note: string }[]
+    downloadSource?: 'github' | 'baidu' | null
+    downloadUrl?: string | null
+    baiduExtractCode?: string | null
+    lastDismissedVersion?: string | null
   }) => void) => {
     if (!isElectron()) {
       return () => {} // No-op in remote mode

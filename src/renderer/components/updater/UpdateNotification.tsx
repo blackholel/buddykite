@@ -1,43 +1,37 @@
 /**
  * Update Notification Component
- * Shows a toast-like notification for available updates
- *
- * Behavior:
- * - 'downloaded': Update ready to install (Windows: auto-install, macOS: manual download)
- * - 'manual-download': Need manual download (macOS platform or auto-download failed)
- *
- * The component shows the same UI for both states, with button text depending on the action.
+ * Notify-only strategy:
+ * - Show when a new version is available
+ * - Provide download link only (no auto install)
+ * - Same version is reminded only once after user dismisses it
  */
 
-import { useEffect, useState } from 'react'
-import { Download, X, RefreshCw, ExternalLink } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Download, ExternalLink, X } from 'lucide-react'
 import { api } from '../../api'
 import { useTranslation } from '../../i18n'
 
-const isMac = navigator.platform.includes('Mac')
-
-interface UpdateInfo {
-  status: 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'manual-download' | 'error'
-  version?: string
-  percent?: number
-  message?: string
+interface UpdaterStatusPayload {
+  status: 'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'manual-download' | 'error'
+  version?: string | null
   releaseNotes?: string | { version: string; note: string }[]
+  downloadUrl?: string | null
+  downloadSource?: 'github' | 'baidu' | null
+  baiduExtractCode?: string | null
+  lastDismissedVersion?: string | null
 }
 
-// Parse release notes to array of strings
 function parseReleaseNotes(notes: string | { version: string; note: string }[] | undefined): string[] {
   if (!notes) return []
 
   if (typeof notes === 'string') {
-    // Split by newlines and filter out empty lines
     return notes
       .split('\n')
       .map(line => line.trim())
       .filter(line => line.length > 0)
-      .map(line => line.replace(/^[-*]\s*/, '')) // Remove leading - or *
+      .map(line => line.replace(/^[-*]\s*/, ''))
   }
 
-  // Array format from electron-updater
   if (Array.isArray(notes)) {
     return notes.map(item => item.note)
   }
@@ -50,20 +44,42 @@ export function UpdateNotification() {
   const [dismissed, setDismissed] = useState(false)
   const [notificationVersion, setNotificationVersion] = useState<string | null>(null)
   const [releaseNotes, setReleaseNotes] = useState<string[]>([])
-  const [isManualDownload, setIsManualDownload] = useState(false)
+  const [downloadUrl, setDownloadUrl] = useState<string | null>(null)
+  const [downloadSource, setDownloadSource] = useState<'github' | 'baidu' | null>(null)
+  const [baiduExtractCode, setBaiduExtractCode] = useState<string | null>(null)
+  const dismissedVersionRef = useRef<string | null>(null)
+
+  const handleAvailableStatus = (data: UpdaterStatusPayload) => {
+    if (data.status !== 'available' || !data.version) return
+
+    if (dismissedVersionRef.current && dismissedVersionRef.current === data.version) {
+      return
+    }
+
+    setNotificationVersion(data.version)
+    setReleaseNotes(parseReleaseNotes(data.releaseNotes))
+    setDownloadUrl(data.downloadUrl || null)
+    setDownloadSource(data.downloadSource || null)
+    setBaiduExtractCode(data.baiduExtractCode || null)
+    setDismissed(false)
+  }
 
   useEffect(() => {
-    // Listen for updater status events
-    const unsubscribe = api.onUpdaterStatus((data) => {
-      console.log('[UpdateNotification] Received update status:', data)
-
-      // Show notification for both 'downloaded' and 'manual-download' states
-      if ((data.status === 'downloaded' || data.status === 'manual-download') && data.version) {
-        setNotificationVersion(data.version)
-        setReleaseNotes(parseReleaseNotes(data.releaseNotes))
-        setIsManualDownload(data.status === 'manual-download')
-        setDismissed(false)
+    void (async () => {
+      const stateRes = await api.getUpdaterState()
+      if (stateRes.success && stateRes.data) {
+        const state = stateRes.data as UpdaterStatusPayload
+        dismissedVersionRef.current = state.lastDismissedVersion || null
+        handleAvailableStatus(state)
       }
+    })()
+
+    const unsubscribe = api.onUpdaterStatus((data) => {
+      const payload = data as UpdaterStatusPayload
+      if (payload.lastDismissedVersion) {
+        dismissedVersionRef.current = payload.lastDismissedVersion
+      }
+      handleAvailableStatus(payload)
     })
 
     return () => {
@@ -71,26 +87,20 @@ export function UpdateNotification() {
     }
   }, [])
 
-  const handleInstall = () => {
-    if (isManualDownload || isMac) {
-      // Open GitHub release page for manual download (macOS always, or when manual-download status)
-      if (notificationVersion) {
-        window.open(
-          `https://github.com/openkursar/hello-halo/releases/tag/v${notificationVersion}`,
-          '_blank'
-        )
-      }
-    } else {
-      // Windows auto-install
-      api.installUpdate()
-    }
+  const handleDownload = async () => {
+    if (!notificationVersion) return
+    const targetUrl = downloadUrl || `https://github.com/openkursar/hello-halo/releases/tag/v${notificationVersion}`
+    await api.openExternal(targetUrl)
   }
 
-  const handleDismiss = () => {
+  const handleDismiss = async () => {
+    if (notificationVersion) {
+      dismissedVersionRef.current = notificationVersion
+      await api.dismissUpdateVersion(notificationVersion)
+    }
     setDismissed(true)
   }
 
-  // Show notification when we have a version to notify and not dismissed
   if (!notificationVersion || dismissed) {
     return null
   }
@@ -120,30 +130,25 @@ export function UpdateNotification() {
                 ))}
               </ul>
             ) : (
-              <p className="text-xs text-muted-foreground mt-1">
-                {isManualDownload || isMac ? t('Click to download') : t('Click to restart and complete update')}
+              <p className="text-xs text-muted-foreground mt-1">{t('Click to download')}</p>
+            )}
+
+            {downloadSource === 'baidu' && baiduExtractCode && (
+              <p className="text-xs text-muted-foreground mt-2">
+                {t('Extract code')}: <span className="font-mono">{baiduExtractCode}</span>
               </p>
             )}
 
             <div className="flex items-center gap-2 mt-3">
               <button
-                onClick={handleInstall}
+                onClick={() => void handleDownload()}
                 className="flex items-center gap-1.5 px-3.5 py-2 bg-kite-success hover:brightness-110 text-white text-xs font-medium rounded-xl transition-all duration-200"
               >
-                {isManualDownload || isMac ? (
-                  <>
-                    <ExternalLink className="w-3.5 h-3.5" />
-                    {t('Go to download')}
-                  </>
-                ) : (
-                  <>
-                    <RefreshCw className="w-3.5 h-3.5" />
-                    {t('Restart now')}
-                  </>
-                )}
+                <ExternalLink className="w-3.5 h-3.5" />
+                {t('Go to download')}
               </button>
               <button
-                onClick={handleDismiss}
+                onClick={() => void handleDismiss()}
                 className="px-3 py-1.5 btn-ghost text-xs"
               >
                 {t('Later')}
@@ -152,7 +157,7 @@ export function UpdateNotification() {
           </div>
 
           <button
-            onClick={handleDismiss}
+            onClick={() => void handleDismiss()}
             className="flex-shrink-0 p-1 rounded-lg text-muted-foreground/40 hover:text-foreground hover:bg-secondary/50 transition-all duration-200"
           >
             <X className="w-4 h-4" />

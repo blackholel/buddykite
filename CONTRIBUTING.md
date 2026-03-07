@@ -86,6 +86,29 @@ When adding a new IPC event, update these 3 files:
 6. Commit with clear message
 7. Push and create a Pull Request
 
+## Release Workflow
+
+Kite releases follow SemVer (`major.minor.patch`) and are version-driven.
+
+```bash
+# 1) Bump version
+npm version patch    # or minor / major
+
+# 2) Update release notes
+# edit .release-notes-current.md
+
+# 3) Update dual-source update manifest (required)
+# edit resources/update-manifest.json:
+# - latestVersion must match package.json version
+# - release entry for that version must exist
+# - per-platform github + baidu links must be filled
+
+# 4) Publish
+npm run release      # or release:mac / release:win / release:linux
+```
+
+`release*` scripts automatically run `npm run check:update-manifest`.
+
 ## Areas We Need Help
 
 - **Translations** - Add/improve translations in `src/renderer/i18n/`

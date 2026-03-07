@@ -119,6 +119,12 @@ export interface AppearanceConfig {
 export interface SystemConfig {
   autoLaunch: boolean;      // Launch on system startup
   minimizeToTray: boolean;  // Minimize to tray instead of quitting on window close
+  update?: {
+    checkOnStartup: boolean;
+    lastCheckAt: string | null;
+    latestKnownVersion: string | null;
+    lastDismissedVersion: string | null;
+  };
 }
 
 // Remote access configuration
@@ -806,7 +812,13 @@ export const DEFAULT_CONFIG: KiteConfig = {
   },
   system: {
     autoLaunch: false,
-    minimizeToTray: false
+    minimizeToTray: false,
+    update: {
+      checkOnStartup: true,
+      lastCheckAt: null,
+      latestKnownVersion: null,
+      lastDismissedVersion: null
+    }
   },
   remoteAccess: {
     enabled: false,
