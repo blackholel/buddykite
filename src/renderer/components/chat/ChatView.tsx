@@ -38,6 +38,101 @@ interface ChatViewProps {
   isCompact?: boolean
 }
 
+const SEARCH_HIGHLIGHT_CLASS = 'search-highlight'
+const SEARCH_TERM_HIGHLIGHT_CLASS = 'search-term-highlight'
+const SEARCH_TERM_HIGHLIGHT_MARK_CLASSES = `${SEARCH_TERM_HIGHLIGHT_CLASS} bg-yellow-400/30 font-semibold rounded px-0.5`
+
+function unwrapHighlightMark(markElement: Element) {
+  const parentNode = markElement.parentNode
+  if (!parentNode) return
+
+  while (markElement.firstChild) {
+    parentNode.insertBefore(markElement.firstChild, markElement)
+  }
+  parentNode.removeChild(markElement)
+  parentNode.normalize()
+}
+
+function clearTermHighlightsInContent(contentElement: Element | null) {
+  if (!contentElement) return
+
+  contentElement
+    .querySelectorAll(`mark.${SEARCH_TERM_HIGHLIGHT_CLASS}`)
+    .forEach((markElement) => unwrapHighlightMark(markElement))
+}
+
+function highlightQueryInContent(contentElement: Element, query: string): boolean {
+  const normalizedQuery = query.trim()
+  if (!normalizedQuery) return false
+
+  const escapedQuery = normalizedQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const regex = new RegExp(escapedQuery, 'gi')
+  const textNodes: Text[] = []
+  const walker = document.createTreeWalker(contentElement, NodeFilter.SHOW_TEXT, {
+    acceptNode: (node) => {
+      const textNode = node as Text
+      if (!textNode.textContent || !textNode.textContent.trim()) {
+        return NodeFilter.FILTER_REJECT
+      }
+
+      const parentElement = textNode.parentElement
+      if (!parentElement) {
+        return NodeFilter.FILTER_REJECT
+      }
+
+      if (parentElement.closest(`mark.${SEARCH_TERM_HIGHLIGHT_CLASS}`)) {
+        return NodeFilter.FILTER_REJECT
+      }
+
+      return NodeFilter.FILTER_ACCEPT
+    }
+  })
+
+  while (walker.nextNode()) {
+    textNodes.push(walker.currentNode as Text)
+  }
+
+  let hasHighlight = false
+  textNodes.forEach((textNode) => {
+    const text = textNode.textContent || ''
+    regex.lastIndex = 0
+    if (!regex.test(text)) {
+      return
+    }
+
+    regex.lastIndex = 0
+    const fragment = document.createDocumentFragment()
+    let lastIndex = 0
+    let match: RegExpExecArray | null = null
+
+    while ((match = regex.exec(text)) !== null) {
+      const matchText = match[0]
+      const matchStart = match.index
+      const matchEnd = matchStart + matchText.length
+
+      if (matchStart > lastIndex) {
+        fragment.appendChild(document.createTextNode(text.slice(lastIndex, matchStart)))
+      }
+
+      const markElement = document.createElement('mark')
+      markElement.className = SEARCH_TERM_HIGHLIGHT_MARK_CLASSES
+      markElement.textContent = matchText
+      fragment.appendChild(markElement)
+
+      lastIndex = matchEnd
+      hasHighlight = true
+    }
+
+    if (lastIndex < text.length) {
+      fragment.appendChild(document.createTextNode(text.slice(lastIndex)))
+    }
+
+    textNode.parentNode?.replaceChild(fragment, textNode)
+  })
+
+  return hasHighlight
+}
+
 export function ChatView({ isCompact = false }: ChatViewProps) {
   const { t } = useTranslation()
   const { currentSpace } = useSpaceStore()
@@ -85,6 +180,11 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
   const [mockUserMessage, setMockUserMessage] = useState<string | null>(null)
   const [mockAiResponse, setMockAiResponse] = useState<string | null>(null)
   const [mockStreamingContent, setMockStreamingContent] = useState<string>('')
+  const [mockUserTimestamp, setMockUserTimestamp] = useState<string | null>(null)
+  const [mockAiTimestamp, setMockAiTimestamp] = useState<string | null>(null)
+  const activeSearchMessageRef = useRef<HTMLElement | null>(null)
+  const activeSearchContentRef = useRef<Element | null>(null)
+  const searchHighlightTimeoutRef = useRef<number | null>(null)
 
   // Clear mock state when onboarding completes
   useEffect(() => {
@@ -92,29 +192,39 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
       setMockUserMessage(null)
       setMockAiResponse(null)
       setMockStreamingContent('')
+      setMockUserTimestamp(null)
+      setMockAiTimestamp(null)
     }
   }, [isOnboarding])
 
   // Handle search result navigation - scroll to message and highlight search term
   useEffect(() => {
+    const clearActiveSearchHighlights = () => {
+      if (searchHighlightTimeoutRef.current !== null) {
+        window.clearTimeout(searchHighlightTimeoutRef.current)
+        searchHighlightTimeoutRef.current = null
+      }
+
+      if (activeSearchMessageRef.current) {
+        activeSearchMessageRef.current.classList.remove(SEARCH_HIGHLIGHT_CLASS)
+        activeSearchMessageRef.current = null
+      }
+
+      if (activeSearchContentRef.current) {
+        clearTermHighlightsInContent(activeSearchContentRef.current)
+        activeSearchContentRef.current = null
+      }
+    }
+
     const handleNavigateToMessage = (event: Event) => {
       const customEvent = event as CustomEvent<{ messageId: string; query: string }>
       const { messageId, query } = customEvent.detail
 
       console.log(`[ChatView] Attempting to navigate to message: ${messageId}`)
-
-      // Remove previous highlights from all messages
-      document.querySelectorAll('.search-highlight').forEach(el => {
-        el.classList.remove('search-highlight')
-      })
-      // Replace each mark element with its text content (preserving surrounding content)
-      document.querySelectorAll('.search-term-highlight').forEach(el => {
-        const textNode = document.createTextNode(el.textContent || '')
-        el.replaceWith(textNode)
-      })
+      clearActiveSearchHighlights()
 
       // Find the message element
-      const messageElement = document.querySelector(`[data-message-id="${messageId}"]`)
+      const messageElement = document.querySelector<HTMLElement>(`[data-message-id="${messageId}"]`)
       if (!messageElement) {
         console.warn(`[ChatView] Message element not found for ID: ${messageId}`)
         return
@@ -126,25 +236,25 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
       messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
 
       // Add highlight animation
-      messageElement.classList.add('search-highlight')
-      setTimeout(() => {
-        messageElement.classList.remove('search-highlight')
+      activeSearchMessageRef.current = messageElement
+      messageElement.classList.add(SEARCH_HIGHLIGHT_CLASS)
+      searchHighlightTimeoutRef.current = window.setTimeout(() => {
+        messageElement.classList.remove(SEARCH_HIGHLIGHT_CLASS)
+        if (activeSearchMessageRef.current === messageElement) {
+          activeSearchMessageRef.current = null
+        }
+        searchHighlightTimeoutRef.current = null
       }, 2000)
 
-      // Highlight search terms in the message (simple text highlight)
-      const contentElement = messageElement.querySelector('[data-message-content]')
-      if (contentElement && query) {
+      // Highlight search terms in this message's text nodes only
+      const contentElement = messageElement.querySelector<HTMLElement>('[data-message-content]')
+      if (contentElement) {
+        activeSearchContentRef.current = contentElement
+      }
+      if (contentElement && query.trim()) {
         try {
-          // Create a regexp with word boundaries
-          const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi')
-          const originalHTML = contentElement.innerHTML
-
-          // Only highlight if we have content and haven't already highlighted
-          if (!originalHTML.includes('search-term-highlight')) {
-            contentElement.innerHTML = originalHTML.replace(
-              regex,
-              '<mark class="search-term-highlight bg-yellow-400/30 font-semibold rounded px-0.5">$1</mark>'
-            )
+          const hasHighlight = highlightQueryInContent(contentElement, query)
+          if (hasHighlight) {
             console.log(`[ChatView] Highlighted search term: "${query}"`)
           }
         } catch (error) {
@@ -156,14 +266,7 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
     // Clear all search highlights when requested
     const handleClearHighlights = () => {
       console.log(`[ChatView] Clearing all search highlights`)
-      document.querySelectorAll('.search-highlight').forEach(el => {
-        el.classList.remove('search-highlight')
-      })
-      // Replace each mark element with its text content (preserving surrounding content)
-      document.querySelectorAll('.search-term-highlight').forEach(el => {
-        const textNode = document.createTextNode(el.textContent || '')
-        el.replaceWith(textNode)
-      })
+      clearActiveSearchHighlights()
     }
 
     window.addEventListener('search:navigate-to-message', handleNavigateToMessage)
@@ -171,6 +274,7 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
     return () => {
       window.removeEventListener('search:navigate-to-message', handleNavigateToMessage)
       window.removeEventListener('search:clear-highlights', handleClearHighlights)
+      clearActiveSearchHighlights()
     }
   }, [])
 
@@ -257,6 +361,7 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
     if (!currentSpace) return
 
     // Step 1: Show user message immediately
+    setMockUserTimestamp(new Date().toISOString())
     setMockUserMessage(onboardingPrompt)
 
     // Step 2: Start "thinking" phase (2.5 seconds) - no spotlight during this time
@@ -273,6 +378,7 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
     }
 
     // Step 4: Complete response
+    setMockAiTimestamp(new Date().toISOString())
     setMockAiResponse(response)
     setMockStreamingContent('')
 
@@ -361,12 +467,17 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
 
   // Combine real messages with mock onboarding messages
   const realMessages = currentConversation?.messages || []
-  const displayMessages = mockUserMessage
+  const displayMessages = mockUserMessage && mockUserTimestamp
     ? [
         ...realMessages,
-        { id: 'onboarding-user', role: 'user' as const, content: mockUserMessage, timestamp: new Date().toISOString() },
-        ...(mockAiResponse
-          ? [{ id: 'onboarding-ai', role: 'assistant' as const, content: mockAiResponse, timestamp: new Date().toISOString() }]
+        {
+          id: 'onboarding-user',
+          role: 'user' as const,
+          content: mockUserMessage,
+          timestamp: mockUserTimestamp
+        },
+        ...(mockAiResponse && mockAiTimestamp
+          ? [{ id: 'onboarding-ai', role: 'assistant' as const, content: mockAiResponse, timestamp: mockAiTimestamp }]
           : [])
       ]
     : realMessages
