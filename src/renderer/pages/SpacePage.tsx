@@ -19,7 +19,7 @@ import { useSpaceStore } from '../stores/space.store'
 import { useChatStore } from '../stores/chat.store'
 import { useCanvasStore, useCanvasIsOpen, useCanvasIsMaximized } from '../stores/canvas.store'
 import { canvasLifecycle } from '../services/canvas-lifecycle'
-import { useSearchStore } from '../stores/search.store'
+import { useSearchStore, type SearchScope } from '../stores/search.store'
 import { ChatView } from '../components/chat/ChatView'
 import { ArtifactRail } from '../components/artifact/ArtifactRail'
 import { ConversationList } from '../components/chat/ConversationList'
@@ -33,6 +33,7 @@ import { useLayoutPreferences, LAYOUT_DEFAULTS } from '../hooks/useLayoutPrefere
 import { useWindowMaximize } from '../components/canvas/viewers/useWindowMaximize'
 import { useCanvasLifecycle } from '../hooks/useCanvasLifecycle'
 import { PanelLeftClose, PanelLeft, X, MessageSquare, Columns2, LayoutGrid } from 'lucide-react'
+import { shallow } from 'zustand/shallow'
 import { SearchIcon } from '../components/search/SearchIcon'
 import { useSearchShortcuts } from '../hooks/useSearchShortcuts'
 import { useTranslation } from '../i18n'
@@ -167,6 +168,8 @@ function matchesAlias(value: string, aliases: readonly string[]): boolean {
   return aliases.includes(value)
 }
 
+type PreloadResourceKind = 'skills' | 'agents' | 'commands'
+
 // Mobile breakpoint (matches Tailwind sm: 640px)
 const MOBILE_BREAKPOINT = 640
 
@@ -191,26 +194,40 @@ function useIsMobile() {
 
 export function SpacePage() {
   const { t } = useTranslation()
-  const { setView, mockBashMode, gitBashInstallProgress, startGitBashInstall } = useAppStore()
-  const { currentSpace } = useSpaceStore()
+  const { setView, mockBashMode, gitBashInstallProgress, startGitBashInstall } = useAppStore((state) => ({
+    setView: state.setView,
+    mockBashMode: state.mockBashMode,
+    gitBashInstallProgress: state.gitBashInstallProgress,
+    startGitBashInstall: state.startGitBashInstall
+  }), shallow)
+  const { currentSpace } = useSpaceStore((state) => ({
+    currentSpace: state.currentSpace
+  }), shallow)
   const {
     currentSpaceId,
     setCurrentSpace,
-    getConversations,
-    getCurrentConversation,
-    getCurrentConversationId,
+    conversations,
+    currentConversation,
+    currentConversationId,
     isLoading,
     loadConversations,
     createConversation,
     selectConversation,
     deleteConversation,
     renameConversation
-  } = useChatStore()
-
-  // Get current data from store
-  const conversations = getConversations()
-  const currentConversation = getCurrentConversation()
-  const currentConversationId = getCurrentConversationId()
+  } = useChatStore((state) => ({
+    currentSpaceId: state.currentSpaceId,
+    setCurrentSpace: state.setCurrentSpace,
+    conversations: state.getConversations(),
+    currentConversation: state.getCurrentConversation(),
+    currentConversationId: state.getCurrentConversationId(),
+    isLoading: state.isLoading,
+    loadConversations: state.loadConversations,
+    createConversation: state.createConversation,
+    selectConversation: state.selectConversation,
+    deleteConversation: state.deleteConversation,
+    renameConversation: state.renameConversation
+  }), shallow)
 
   // Show conversation list sidebar - default to true for better UX
   const [showConversationList, setShowConversationList] = useState(true)
@@ -404,19 +421,75 @@ export function SpacePage() {
     setIsAgentEditorOpen(true)
   }, [])
 
-  const { loadSkills } = useSkillsStore()
-  const { loadAgents } = useAgentsStore()
-  const { loadCommands } = useCommandsStore()
-  const { loadToolkit, isToolkitLoaded } = useToolkitStore()
+  const loadSkills = useSkillsStore(state => state.loadSkills)
+  const loadedSkillsWorkDir = useSkillsStore(state => state.loadedWorkDir)
+  const loadAgents = useAgentsStore(state => state.loadAgents)
+  const loadedAgentsWorkDir = useAgentsStore(state => state.loadedWorkDir)
+  const loadCommands = useCommandsStore(state => state.loadCommands)
+  const loadedCommandsWorkDir = useCommandsStore(state => state.loadedWorkDir)
+  const { loadToolkit, isToolkitLoaded } = useToolkitStore((state) => ({
+    loadToolkit: state.loadToolkit,
+    isToolkitLoaded: state.isToolkitLoaded
+  }), shallow)
+  const preloadedWorkDirRef = useRef<Record<PreloadResourceKind, string | null>>({
+    skills: null,
+    agents: null,
+    commands: null
+  })
+  const inFlightPreloadRef = useRef<Record<PreloadResourceKind, Map<string, Promise<void>>>>({
+    skills: new Map(),
+    agents: new Map(),
+    commands: new Map()
+  })
+
+  const preloadResource = useCallback((
+    kind: PreloadResourceKind,
+    workDir: string,
+    loadedWorkDir: string | null,
+    loader: (workDir?: string) => Promise<void>
+  ) => {
+    if (loadedWorkDir === workDir || preloadedWorkDirRef.current[kind] === workDir) {
+      return Promise.resolve()
+    }
+
+    const inFlight = inFlightPreloadRef.current[kind]
+    const existing = inFlight.get(workDir)
+    if (existing) return existing
+
+    const task = loader(workDir).finally(() => {
+      inFlight.delete(workDir)
+      const storeLoadedWorkDir = kind === 'skills'
+        ? useSkillsStore.getState().loadedWorkDir
+        : kind === 'agents'
+          ? useAgentsStore.getState().loadedWorkDir
+          : useCommandsStore.getState().loadedWorkDir
+      if (storeLoadedWorkDir === workDir) {
+        preloadedWorkDirRef.current[kind] = workDir
+      }
+    })
+
+    inFlight.set(workDir, task)
+    return task
+  }, [])
 
   // Preload skills/agents/commands when space changes
   useEffect(() => {
-    if (currentSpace?.path) {
-      loadSkills(currentSpace.path)
-      loadAgents(currentSpace.path)
-      loadCommands(currentSpace.path)
-    }
-  }, [currentSpace?.path, loadSkills, loadAgents, loadCommands])
+    const workDir = currentSpace?.path
+    if (!workDir) return
+
+    void preloadResource('skills', workDir, loadedSkillsWorkDir, loadSkills)
+    void preloadResource('agents', workDir, loadedAgentsWorkDir, loadAgents)
+    void preloadResource('commands', workDir, loadedCommandsWorkDir, loadCommands)
+  }, [
+    currentSpace?.path,
+    loadedAgentsWorkDir,
+    loadedCommandsWorkDir,
+    loadedSkillsWorkDir,
+    loadAgents,
+    loadCommands,
+    loadSkills,
+    preloadResource
+  ])
 
   useEffect(() => {
     if (!currentSpace || currentSpace.isTemp) return
@@ -473,16 +546,62 @@ export function SpacePage() {
   const [isDraggingChat, setIsDraggingChat] = useState(false)
   const [dragChatWidth, setDragChatWidth] = useState(effectiveChatWidth)
   const chatContainerRef = useRef<HTMLDivElement>(null)
+  const dragChatWidthRafRef = useRef<number | null>(null)
+  const pendingChatWidthRef = useRef<number | null>(null)
+  const latestDragChatWidthRef = useRef(effectiveChatWidth)
+  const spaceInitSeqRef = useRef(0)
 
   // Search UI state
-  const { openSearch } = useSearchStore()
+  const { openSearch } = useSearchStore((state) => ({
+    openSearch: state.openSearch
+  }), shallow)
+  const handleSearchShortcut = useCallback((scope: SearchScope) => {
+    openSearch(scope)
+  }, [openSearch])
 
   // Sync drag width with effective width when not dragging
   useEffect(() => {
     if (!isDraggingChat) {
+      latestDragChatWidthRef.current = effectiveChatWidth
       setDragChatWidth(effectiveChatWidth)
     }
   }, [effectiveChatWidth, isDraggingChat])
+
+  useEffect(() => {
+    latestDragChatWidthRef.current = dragChatWidth
+  }, [dragChatWidth])
+
+  const applyChatWidthUpdate = useCallback((nextWidth: number) => {
+    latestDragChatWidthRef.current = nextWidth
+    setDragChatWidth(prevWidth => (prevWidth === nextWidth ? prevWidth : nextWidth))
+  }, [])
+
+  const scheduleChatWidthUpdate = useCallback((nextWidth: number) => {
+    pendingChatWidthRef.current = nextWidth
+    if (dragChatWidthRafRef.current !== null) return
+
+    dragChatWidthRafRef.current = window.requestAnimationFrame(() => {
+      dragChatWidthRafRef.current = null
+      const pendingWidth = pendingChatWidthRef.current
+      pendingChatWidthRef.current = null
+      if (pendingWidth == null) return
+      applyChatWidthUpdate(pendingWidth)
+    })
+  }, [applyChatWidthUpdate])
+
+  const flushChatWidthUpdate = useCallback((): number => {
+    if (dragChatWidthRafRef.current !== null) {
+      window.cancelAnimationFrame(dragChatWidthRafRef.current)
+      dragChatWidthRafRef.current = null
+    }
+
+    const pendingWidth = pendingChatWidthRef.current
+    pendingChatWidthRef.current = null
+    if (pendingWidth == null) return latestDragChatWidthRef.current
+
+    applyChatWidthUpdate(pendingWidth)
+    return pendingWidth
+  }, [applyChatWidthUpdate])
 
   // Handle chat width drag
   const handleChatDragStart = useCallback((e: React.MouseEvent) => {
@@ -494,22 +613,32 @@ export function SpacePage() {
   useEffect(() => {
     if (!isDraggingChat) return
 
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!chatContainerRef.current) return
+    const clampWidthAtPosition = (clientX: number): number | null => {
+      if (!chatContainerRef.current) return null
 
       // Calculate width from left edge of chat container to mouse position
       const containerRect = chatContainerRef.current.getBoundingClientRect()
-      const newWidth = e.clientX - containerRect.left
+      const newWidth = clientX - containerRect.left
 
       // Clamp to constraints
-      const clampedWidth = Math.max(chatWidthMin, Math.min(chatWidthMax, newWidth))
-      setDragChatWidth(clampedWidth)
+      return Math.max(chatWidthMin, Math.min(chatWidthMax, newWidth))
     }
 
-    const handleMouseUp = () => {
+    const handleMouseMove = (e: MouseEvent) => {
+      const clampedWidth = clampWidthAtPosition(e.clientX)
+      if (clampedWidth == null) return
+      scheduleChatWidthUpdate(clampedWidth)
+    }
+
+    const handleMouseUp = (e: MouseEvent) => {
+      const clampedWidth = clampWidthAtPosition(e.clientX)
+      if (clampedWidth != null) {
+        pendingChatWidthRef.current = clampedWidth
+      }
+      const finalWidth = flushChatWidthUpdate()
       setIsDraggingChat(false)
       // Persist the final width
-      setChatWidth(dragChatWidth)
+      setChatWidth(finalWidth)
     }
 
     document.addEventListener('mousemove', handleMouseMove)
@@ -519,7 +648,24 @@ export function SpacePage() {
       document.removeEventListener('mousemove', handleMouseMove)
       document.removeEventListener('mouseup', handleMouseUp)
     }
-  }, [isDraggingChat, dragChatWidth, chatWidthMin, chatWidthMax, setChatWidth])
+  }, [
+    chatWidthMax,
+    chatWidthMin,
+    flushChatWidthUpdate,
+    isDraggingChat,
+    scheduleChatWidthUpdate,
+    setChatWidth
+  ])
+
+  useEffect(() => {
+    return () => {
+      if (dragChatWidthRafRef.current !== null) {
+        window.cancelAnimationFrame(dragChatWidthRafRef.current)
+      }
+      dragChatWidthRafRef.current = null
+      pendingChatWidthRef.current = null
+    }
+  }, [])
 
   // Close canvas when switching to mobile with canvas open
   useEffect(() => {
@@ -527,21 +673,6 @@ export function SpacePage() {
       // Keep canvas open on mobile but we'll show it as overlay
     }
   }, [isMobile, isCanvasOpen])
-
-  // Space isolation: clear canvas tabs when switching to a different space
-  useEffect(() => {
-    if (!currentSpace) return
-
-    let cancelled = false
-    void (async () => {
-      await canvasLifecycle.enterSpace(currentSpace.id)
-      if (cancelled) return
-    })()
-
-    return () => {
-      cancelled = true
-    }
-  }, [currentSpace?.id])
 
   // BrowserView visibility: hide when leaving SpacePage, show when returning
   useEffect(() => {
@@ -562,36 +693,46 @@ export function SpacePage() {
   useEffect(() => {
     if (!currentSpace) return
 
-    // Set current space in chat store
-    setCurrentSpace(currentSpace.id)
+    const seq = spaceInitSeqRef.current + 1
+    spaceInitSeqRef.current = seq
+    let cancelled = false
 
-    // Load conversations if not already loaded for this space
+    const isStale = (): boolean => cancelled || spaceInitSeqRef.current !== seq
+
     const initSpace = async () => {
-      await loadConversations(currentSpace.id)
+      await canvasLifecycle.enterSpace(currentSpace.id)
+      if (isStale()) return
 
-      // After loading, check state
+      setCurrentSpace(currentSpace.id)
+      if (isStale()) return
+
+      await loadConversations(currentSpace.id)
+      if (isStale()) return
+
       const store = useChatStore.getState()
       const spaceState = store.getSpaceState(currentSpace.id)
 
-      if (spaceState.conversations.length > 0) {
-        // If a conversation was previously selected (returning to space), keep it
-        // Otherwise, don't auto-select - show the welcome state instead
-        // This gives a clean entry experience
-      } else {
-        // No conversations exist - create a new one (will show empty/welcome state)
+      if (spaceState.conversations.length === 0) {
         await createConversation(currentSpace.id)
       }
     }
 
-    initSpace()
-  }, [currentSpace?.id]) // Only re-run when space ID changes
+    void initSpace()
+
+    return () => {
+      cancelled = true
+    }
+  }, [createConversation, currentSpace?.id, loadConversations, setCurrentSpace]) // Only re-run when space ID changes
 
   // In tabs-only mode, auto-open conversation in tab when entering space
   useEffect(() => {
     if (layoutMode !== 'tabs-only' || !currentSpace || isLoading) return
+    if (currentSpaceId !== currentSpace.id) return
 
-    // Wait for conversations to be loaded
-    if (conversations.length === 0) return
+    const store = useChatStore.getState()
+    const spaceState = store.getSpaceState(currentSpace.id)
+    const spaceConversations = spaceState.conversations
+    if (spaceConversations.length === 0) return
 
     // Check if any chat tab is already open for this space
     const tabs = canvasLifecycle.getTabs()
@@ -601,15 +742,15 @@ export function SpacePage() {
 
     // If no chat tab is open, open the current or first conversation
     if (!hasOpenChatTab) {
-      const convToOpen = currentConversationId
-        ? conversations.find(c => c.id === currentConversationId)
-        : conversations[0]
+      const convToOpen = spaceState.currentConversationId
+        ? spaceConversations.find(c => c.id === spaceState.currentConversationId)
+        : spaceConversations[0]
 
       if (convToOpen) {
         openChat(currentSpace.id, convToOpen.id, convToOpen.title, currentSpace.path)
       }
     }
-  }, [layoutMode, currentSpace?.id, conversations.length, isLoading])
+  }, [layoutMode, currentSpace?.id, currentSpaceId, isLoading, openChat])
 
   // Handle back
   const handleBack = () => {
@@ -710,7 +851,7 @@ export function SpacePage() {
   // Setup search shortcuts
   useSearchShortcuts({
     enabled: true,
-    onSearch: (scope) => openSearch(scope)
+    onSearch: handleSearchShortcut
   })
 
   return (

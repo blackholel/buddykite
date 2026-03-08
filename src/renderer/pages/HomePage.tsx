@@ -114,7 +114,15 @@ export function HomePage(): JSX.Element {
   const [showHomeOnboarding, setShowHomeOnboarding] = useState(true)
   const [showHomeOnboardingDialog, setShowHomeOnboardingDialog] = useState(false)
   const [showModelSetupHint, setShowModelSetupHint] = useState(true)
+  const [createSpaceSuccessPath, setCreateSpaceSuccessPath] = useState<string | null>(null)
   const aiSetupState = useMemo(() => getAiSetupState(config), [config])
+  const createSpacePathPreview = useMemo(() => {
+    if (useCustomPath && customPath) return customPath
+    if (!useCustomPath && defaultPath && newSpaceName.trim()) {
+      return `${defaultPath}/${newSpaceName.trim()}`
+    }
+    return null
+  }, [customPath, defaultPath, newSpaceName, useCustomPath])
 
   // Close dialogs on Escape key
   useEffect(() => {
@@ -172,6 +180,14 @@ export function HomePage(): JSX.Element {
     const dismissed = localStorage.getItem(MODEL_SETUP_HINT_DISMISSED_KEY) === 'dismissed'
     setShowModelSetupHint(!dismissed)
   }, [aiSetupState.configured])
+
+  useEffect(() => {
+    if (!createSpaceSuccessPath) return
+    const timer = window.setTimeout(() => {
+      setCreateSpaceSuccessPath(null)
+    }, 6000)
+    return () => window.clearTimeout(timer)
+  }, [createSpaceSuccessPath])
 
   // Load toolkit when editing space dialog opens
   useEffect(() => {
@@ -371,6 +387,7 @@ export function HomePage(): JSX.Element {
     const newSpace = await createSpace(input)
 
     if (newSpace) {
+      setCreateSpaceSuccessPath(newSpace.path)
       resetDialog()
     }
   }
@@ -545,6 +562,21 @@ export function HomePage(): JSX.Element {
           <main className="flex-1 overflow-auto">
             {activeTab === 'spaces' ? (
               <div className="max-w-6xl mx-auto px-6 py-8 lg:py-10">
+                {createSpaceSuccessPath && (
+                  <div className="mb-4 rounded-xl border border-border bg-card/85 px-4 py-3 text-sm flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="font-medium">{t('Space created')}</div>
+                      <div className="text-xs text-muted-foreground mt-1 break-all">{createSpaceSuccessPath}</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setCreateSpaceSuccessPath(null)}
+                      className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      {t('Dismiss')}
+                    </button>
+                  </div>
+                )}
                 <section className="space-y-4 mb-9">
                   {!aiSetupState.configured && showModelSetupHint && (
                     <div className="home-onboard-card stagger-item" style={{ animationDelay: '0ms' }}>
@@ -964,6 +996,12 @@ export function HomePage(): JSX.Element {
                     </button>
                   )}
                 </label>
+              </div>
+              <div className="mt-2 rounded-xl border border-border/80 bg-card/70 px-3 py-2">
+                <div className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1">{t('Final Directory')}</div>
+                <div className="text-xs font-mono break-all text-foreground/90">
+                  {createSpacePathPreview || t('Please choose location and enter space name')}
+                </div>
               </div>
             </div>
 

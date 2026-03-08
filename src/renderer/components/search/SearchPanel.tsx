@@ -13,7 +13,7 @@
  * - Click result to open conversation and scroll to message
  */
 
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { api } from '@/api'
@@ -21,6 +21,7 @@ import { useChatStore } from '@/stores/chat.store'
 import { useSpaceStore } from '@/stores/space.store'
 import { useSearchStore } from '@/stores/search.store'
 import { useTranslation } from '@/i18n'
+import { shallow } from 'zustand/shallow'
 
 export type SearchScope = 'conversation' | 'space' | 'global'
 
@@ -43,12 +44,70 @@ interface SearchPanelProps {
   onClose: () => void
 }
 
+async function waitForMessageElement(
+  messageId: string,
+  options: { signal: AbortSignal; timeoutMs?: number }
+): Promise<Element | null> {
+  const { signal, timeoutMs = 5000 } = options
+  const selector = `[data-message-id="${messageId}"]`
+  const existing = document.querySelector(selector)
+  if (existing) {
+    return existing
+  }
+  if (signal.aborted || typeof MutationObserver === 'undefined') {
+    return null
+  }
+
+  return new Promise((resolve) => {
+    const observer = new MutationObserver(() => {
+      const element = document.querySelector(selector)
+      if (element) {
+        cleanup()
+        resolve(element)
+      }
+    })
+    const timeoutId = window.setTimeout(() => {
+      cleanup()
+      resolve(null)
+    }, timeoutMs)
+    const handleAbort = () => {
+      cleanup()
+      resolve(null)
+    }
+    const cleanup = () => {
+      observer.disconnect()
+      window.clearTimeout(timeoutId)
+      signal.removeEventListener('abort', handleAbort)
+    }
+
+    signal.addEventListener('abort', handleAbort, { once: true })
+    observer.observe(document.body, { childList: true, subtree: true })
+  })
+}
+
 export function SearchPanel({ isOpen, onClose }: SearchPanelProps) {
   const inputRef = useRef<HTMLInputElement>(null)
+  const activeNavigationControllerRef = useRef<AbortController | null>(null)
   const { t } = useTranslation()
 
-  const { currentSpaceId, currentConversationId, selectConversation, setCurrentSpace, loadConversations } = useChatStore()
-  const { spaces, kiteSpace, setCurrentSpace: setSpaceStoreCurrentSpace } = useSpaceStore()
+  const {
+    currentSpaceId,
+    currentConversationId,
+    selectConversation,
+    setCurrentSpace,
+    loadConversations
+  } = useChatStore((state) => ({
+    currentSpaceId: state.currentSpaceId,
+    currentConversationId: state.currentConversationId,
+    selectConversation: state.selectConversation,
+    setCurrentSpace: state.setCurrentSpace,
+    loadConversations: state.loadConversations
+  }), shallow)
+  const { spaces, kiteSpace, setCurrentSpace: setSpaceStoreCurrentSpace } = useSpaceStore((state) => ({
+    spaces: state.spaces,
+    kiteSpace: state.kiteSpace,
+    setCurrentSpace: state.setCurrentSpace
+  }), shallow)
 
   // Use search store for state management
   const {
@@ -64,8 +123,42 @@ export function SearchPanel({ isOpen, onClose }: SearchPanelProps) {
     setResults,
     setIsSearching,
     setProgress,
-    showHighlightBar
-  } = useSearchStore()
+    showHighlightBar,
+    beginNavigationTask,
+    cancelNavigationTask,
+    finishNavigationTask,
+    isNavigationTaskActive
+  } = useSearchStore((state) => ({
+    query: state.query,
+    searchedQuery: state.searchedQuery,
+    searchScope: state.searchScope,
+    results: state.results,
+    isSearching: state.isSearching,
+    progress: state.progress,
+    setQuery: state.setQuery,
+    setSearchedQuery: state.setSearchedQuery,
+    setScope: state.setScope,
+    setResults: state.setResults,
+    setIsSearching: state.setIsSearching,
+    setProgress: state.setProgress,
+    showHighlightBar: state.showHighlightBar,
+    beginNavigationTask: state.beginNavigationTask,
+    cancelNavigationTask: state.cancelNavigationTask,
+    finishNavigationTask: state.finishNavigationTask,
+    isNavigationTaskActive: state.isNavigationTaskActive
+  }), shallow)
+
+  const cancelActiveNavigation = useCallback(() => {
+    if (activeNavigationControllerRef.current) {
+      activeNavigationControllerRef.current.abort()
+      activeNavigationControllerRef.current = null
+    }
+    cancelNavigationTask()
+  }, [cancelNavigationTask])
+
+  useEffect(() => {
+    return () => cancelActiveNavigation()
+  }, [cancelActiveNavigation])
 
   // Listen for progress updates
   useEffect(() => {
@@ -82,8 +175,7 @@ export function SearchPanel({ isOpen, onClose }: SearchPanelProps) {
   // Focus input when panel opens
   useEffect(() => {
     if (isOpen) {
-      // Small delay to ensure DOM is ready
-      setTimeout(() => inputRef.current?.focus(), 0)
+      requestAnimationFrame(() => inputRef.current?.focus())
     }
   }, [isOpen])
 
@@ -172,7 +264,16 @@ export function SearchPanel({ isOpen, onClose }: SearchPanelProps) {
   const handleResultClick = async (result: SearchResultItem) => {
     console.log(`[Search] Clicking result: conv=${result.conversationId}, space=${result.spaceId}, msg=${result.messageId}`)
 
+    cancelActiveNavigation()
+    const taskId = beginNavigationTask()
+    const controller = new AbortController()
+    activeNavigationControllerRef.current = controller
+    const { signal } = controller
+    const isTaskActive = () => isNavigationTaskActive(taskId) && !signal.aborted
+
     try {
+      if (!isTaskActive()) return
+
       // Step 1: If switching spaces, update BOTH stores to keep UI and chat state in sync
       if (result.spaceId !== currentSpaceId) {
         console.log(`[Search] Switching to space: ${result.spaceId}`)
@@ -191,25 +292,25 @@ export function SearchPanel({ isOpen, onClose }: SearchPanelProps) {
         }
 
         // Update spaceStore (this will trigger UI updates)
+        if (!isTaskActive()) return
         console.log(`[Search] Updating spaceStore.currentSpace to: ${targetSpace.name}`)
         setSpaceStoreCurrentSpace(targetSpace)
 
         // Update chatStore currentSpaceId
         console.log(`[Search] Updating chatStore.currentSpaceId to: ${result.spaceId}`)
         setCurrentSpace(result.spaceId)
-
-        // Give state time to update
-        await new Promise(resolve => setTimeout(resolve, 100))
       }
 
       // Step 2: Load conversations in the target space
       console.log(`[Search] Loading conversations in space: ${result.spaceId}`)
       await loadConversations(result.spaceId)
+      if (!isTaskActive()) return
       console.log(`[Search] Conversations loaded`)
 
       // Step 3: Navigate to conversation
       console.log(`[Search] Selecting conversation: ${result.conversationId}`)
       await selectConversation(result.conversationId)
+      if (!isTaskActive()) return
       console.log(`[Search] Conversation selected`)
 
       // Step 4: Show highlight bar with all results (enable navigation)
@@ -221,40 +322,30 @@ export function SearchPanel({ isOpen, onClose }: SearchPanelProps) {
       onClose()
 
       // Step 5: Wait for conversation data to load before navigating to message
-      // Poll for message element until it exists in DOM
-      let retries = 0
-      const maxRetries = 50 // 50 * 100ms = 5 seconds max wait
-
-      const waitForMessageElement = async () => {
-        while (retries < maxRetries) {
-          // Check if message element exists in DOM
-          const messageElement = document.querySelector(`[data-message-id="${result.messageId}"]`)
-          if (messageElement) {
-            console.log(`[Search] Message element found on retry ${retries}, navigating to message`)
-            // Dispatch scroll-to-message event with search query for highlighting
-            const event = new CustomEvent('search:navigate-to-message', {
-              detail: {
-                messageId: result.messageId,
-                query: searchedQuery
-              }
-            })
-            window.dispatchEvent(event)
-            return
-          }
-
-          retries++
-          if (retries % 10 === 0) {
-            console.log(`[Search] Waiting for message element... (${retries}/${maxRetries})`)
-          }
-          await new Promise(resolve => setTimeout(resolve, 100))
-        }
-
-        console.warn(`[Search] Message element not found after ${maxRetries} retries, navigation failed`)
+      const messageElement = await waitForMessageElement(result.messageId, { signal })
+      if (!messageElement || !isTaskActive()) {
+        console.warn(`[Search] Message element not found in timeout window`)
+        return
       }
 
-      waitForMessageElement()
+      console.log(`[Search] Message element found, navigating to message`)
+      // Dispatch scroll-to-message event with search query for highlighting
+      const event = new CustomEvent('search:navigate-to-message', {
+        detail: {
+          messageId: result.messageId,
+          query: searchedQuery
+        }
+      })
+      window.dispatchEvent(event)
     } catch (error) {
-      console.error(`[Search] Error navigating to result:`, error)
+      if (isTaskActive()) {
+        console.error(`[Search] Error navigating to result:`, error)
+      }
+    } finally {
+      if (activeNavigationControllerRef.current === controller) {
+        activeNavigationControllerRef.current = null
+      }
+      finishNavigationTask(taskId)
     }
   }
 
@@ -262,6 +353,17 @@ export function SearchPanel({ isOpen, onClose }: SearchPanelProps) {
     await api.cancelSearch()
     setIsSearching(false)
   }
+
+  const formattedResults = useMemo(() => {
+    if (!results) return null
+    return results.map((result) => {
+      const timestamp = new Date(result.messageTimestamp)
+      return {
+        ...result,
+        formattedTimestamp: `${timestamp.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })} ${timestamp.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}`
+      }
+    })
+  }, [results])
 
   if (!isOpen) {
     return null
@@ -342,12 +444,12 @@ export function SearchPanel({ isOpen, onClose }: SearchPanelProps) {
                 {t('Cancel search')}
               </button>
             </div>
-          ) : results !== null && results.length > 0 ? (
+          ) : formattedResults !== null && formattedResults.length > 0 ? (
             <div className="space-y-2.5">
               <div className="text-xs text-muted-foreground/50 font-medium">
-                {t('Found {{count}} results', { count: results.length })}
+                {t('Found {{count}} results', { count: formattedResults.length })}
               </div>
-              {results.map((result, idx) => (
+              {formattedResults.map((result, idx) => (
                 <button
                   key={idx}
                   onClick={() => handleResultClick(result)}
@@ -365,7 +467,7 @@ export function SearchPanel({ isOpen, onClose }: SearchPanelProps) {
                         </span>
                       </div>
                       <div className="text-[11px] text-muted-foreground/40 mt-1 tabular-nums">
-                        {new Date(result.messageTimestamp).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })} {new Date(result.messageTimestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
+                        {result.formattedTimestamp}
                       </div>
                     </div>
                     <span className="text-[11px] px-2 py-0.5 rounded-md bg-primary/8 text-primary/70 flex-shrink-0 font-medium">

@@ -9,7 +9,8 @@
  * - Compact mode (isCompact=true): Sidebar-style when Canvas is open
  */
 
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
+import { shallow } from 'zustand/shallow'
 import { useSpaceStore } from '../../stores/space.store'
 import { useChatStore } from '../../stores/chat.store'
 import { useAppStore } from '../../stores/app.store'
@@ -38,16 +39,116 @@ interface ChatViewProps {
   isCompact?: boolean
 }
 
+const SEARCH_HIGHLIGHT_CLASS = 'search-highlight'
+const SEARCH_TERM_HIGHLIGHT_CLASS = 'search-term-highlight'
+const SEARCH_TERM_HIGHLIGHT_MARK_CLASSES = `${SEARCH_TERM_HIGHLIGHT_CLASS} bg-yellow-400/30 font-semibold rounded px-0.5`
+
+function unwrapHighlightMark(markElement: Element) {
+  const parentNode = markElement.parentNode
+  if (!parentNode) return
+
+  while (markElement.firstChild) {
+    parentNode.insertBefore(markElement.firstChild, markElement)
+  }
+  parentNode.removeChild(markElement)
+  parentNode.normalize()
+}
+
+function clearTermHighlightsInContent(contentElement: Element | null) {
+  if (!contentElement) return
+
+  contentElement
+    .querySelectorAll(`mark.${SEARCH_TERM_HIGHLIGHT_CLASS}`)
+    .forEach((markElement) => unwrapHighlightMark(markElement))
+}
+
+function highlightQueryInContent(contentElement: Element, query: string): boolean {
+  const normalizedQuery = query.trim()
+  if (!normalizedQuery) return false
+
+  const escapedQuery = normalizedQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const regex = new RegExp(escapedQuery, 'gi')
+  const textNodes: Text[] = []
+  const walker = document.createTreeWalker(contentElement, NodeFilter.SHOW_TEXT, {
+    acceptNode: (node) => {
+      const textNode = node as Text
+      if (!textNode.textContent || !textNode.textContent.trim()) {
+        return NodeFilter.FILTER_REJECT
+      }
+
+      const parentElement = textNode.parentElement
+      if (!parentElement) {
+        return NodeFilter.FILTER_REJECT
+      }
+
+      if (parentElement.closest(`mark.${SEARCH_TERM_HIGHLIGHT_CLASS}`)) {
+        return NodeFilter.FILTER_REJECT
+      }
+
+      return NodeFilter.FILTER_ACCEPT
+    }
+  })
+
+  while (walker.nextNode()) {
+    textNodes.push(walker.currentNode as Text)
+  }
+
+  let hasHighlight = false
+  textNodes.forEach((textNode) => {
+    const text = textNode.textContent || ''
+    regex.lastIndex = 0
+    if (!regex.test(text)) {
+      return
+    }
+
+    regex.lastIndex = 0
+    const fragment = document.createDocumentFragment()
+    let lastIndex = 0
+    let match: RegExpExecArray | null = null
+
+    while ((match = regex.exec(text)) !== null) {
+      const matchText = match[0]
+      const matchStart = match.index
+      const matchEnd = matchStart + matchText.length
+
+      if (matchStart > lastIndex) {
+        fragment.appendChild(document.createTextNode(text.slice(lastIndex, matchStart)))
+      }
+
+      const markElement = document.createElement('mark')
+      markElement.className = SEARCH_TERM_HIGHLIGHT_MARK_CLASSES
+      markElement.textContent = matchText
+      fragment.appendChild(markElement)
+
+      lastIndex = matchEnd
+      hasHighlight = true
+    }
+
+    if (lastIndex < text.length) {
+      fragment.appendChild(document.createTextNode(text.slice(lastIndex)))
+    }
+
+    textNode.parentNode?.replaceChild(fragment, textNode)
+  })
+
+  return hasHighlight
+}
+
 export function ChatView({ isCompact = false }: ChatViewProps) {
   const { t } = useTranslation()
-  const { currentSpace } = useSpaceStore()
+  const { currentSpace } = useSpaceStore((state) => ({
+    currentSpace: state.currentSpace
+  }), shallow)
   const {
     currentSpaceId,
     changeSets,
-    getCurrentConversation,
-    getCurrentConversationMeta,
-    getCurrentConversationId,
-    getCurrentSession,
+    currentConversation,
+    currentConversationMeta,
+    currentConversationId,
+    session,
+    queuedTurnsByConversation,
+    queueErrorByConversation,
+    loadingConversationCounts,
     loadChangeSets,
     acceptChangeSet,
     rollbackChangeSet,
@@ -58,17 +159,42 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
     dismissAskUserQuestion,
     setConversationMode,
     getQueuedTurns,
+    getQueueError,
     sendQueuedTurn,
     removeQueuedTurn,
     clearConversationQueue,
-    getQueueError,
     clearQueueError
-  } = useChatStore()
+  } = useChatStore((state) => ({
+    currentSpaceId: state.currentSpaceId,
+    changeSets: state.changeSets,
+    currentConversation: state.getCurrentConversation(),
+    currentConversationMeta: state.getCurrentConversationMeta(),
+    currentConversationId: state.getCurrentConversationId(),
+    session: state.getCurrentSession(),
+    queuedTurnsByConversation: state.queuedTurnsByConversation,
+    queueErrorByConversation: state.queueErrorByConversation,
+    loadingConversationCounts: state.loadingConversationCounts,
+    loadChangeSets: state.loadChangeSets,
+    acceptChangeSet: state.acceptChangeSet,
+    rollbackChangeSet: state.rollbackChangeSet,
+    submitTurn: state.submitTurn,
+    executePlan: state.executePlan,
+    stopGeneration: state.stopGeneration,
+    answerQuestion: state.answerQuestion,
+    dismissAskUserQuestion: state.dismissAskUserQuestion,
+    setConversationMode: state.setConversationMode,
+    getQueuedTurns: state.getQueuedTurns,
+    getQueueError: state.getQueueError,
+    sendQueuedTurn: state.sendQueuedTurn,
+    removeQueuedTurn: state.removeQueuedTurn,
+    clearConversationQueue: state.clearConversationQueue,
+    clearQueueError: state.clearQueueError
+  }), shallow)
   const { openPlan } = useCanvasLifecycle()
   const { appConfig, setView } = useAppStore((state) => ({
     appConfig: state.config,
     setView: state.setView
-  }))
+  }), shallow)
 
   // Onboarding state
   const {
@@ -79,12 +205,25 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
     setMockThinking,
     isMockAnimating,
     isMockThinking
-  } = useOnboardingStore()
+  } = useOnboardingStore((state) => ({
+    isActive: state.isActive,
+    currentStep: state.currentStep,
+    nextStep: state.nextStep,
+    setMockAnimating: state.setMockAnimating,
+    setMockThinking: state.setMockThinking,
+    isMockAnimating: state.isMockAnimating,
+    isMockThinking: state.isMockThinking
+  }), shallow)
 
   // Mock onboarding state
   const [mockUserMessage, setMockUserMessage] = useState<string | null>(null)
   const [mockAiResponse, setMockAiResponse] = useState<string | null>(null)
   const [mockStreamingContent, setMockStreamingContent] = useState<string>('')
+  const [mockUserTimestamp, setMockUserTimestamp] = useState<string | null>(null)
+  const [mockAiTimestamp, setMockAiTimestamp] = useState<string | null>(null)
+  const activeSearchMessageRef = useRef<HTMLElement | null>(null)
+  const activeSearchContentRef = useRef<Element | null>(null)
+  const searchHighlightTimeoutRef = useRef<number | null>(null)
 
   // Clear mock state when onboarding completes
   useEffect(() => {
@@ -92,29 +231,39 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
       setMockUserMessage(null)
       setMockAiResponse(null)
       setMockStreamingContent('')
+      setMockUserTimestamp(null)
+      setMockAiTimestamp(null)
     }
   }, [isOnboarding])
 
   // Handle search result navigation - scroll to message and highlight search term
   useEffect(() => {
+    const clearActiveSearchHighlights = () => {
+      if (searchHighlightTimeoutRef.current !== null) {
+        window.clearTimeout(searchHighlightTimeoutRef.current)
+        searchHighlightTimeoutRef.current = null
+      }
+
+      if (activeSearchMessageRef.current) {
+        activeSearchMessageRef.current.classList.remove(SEARCH_HIGHLIGHT_CLASS)
+        activeSearchMessageRef.current = null
+      }
+
+      if (activeSearchContentRef.current) {
+        clearTermHighlightsInContent(activeSearchContentRef.current)
+        activeSearchContentRef.current = null
+      }
+    }
+
     const handleNavigateToMessage = (event: Event) => {
       const customEvent = event as CustomEvent<{ messageId: string; query: string }>
       const { messageId, query } = customEvent.detail
 
       console.log(`[ChatView] Attempting to navigate to message: ${messageId}`)
-
-      // Remove previous highlights from all messages
-      document.querySelectorAll('.search-highlight').forEach(el => {
-        el.classList.remove('search-highlight')
-      })
-      // Replace each mark element with its text content (preserving surrounding content)
-      document.querySelectorAll('.search-term-highlight').forEach(el => {
-        const textNode = document.createTextNode(el.textContent || '')
-        el.replaceWith(textNode)
-      })
+      clearActiveSearchHighlights()
 
       // Find the message element
-      const messageElement = document.querySelector(`[data-message-id="${messageId}"]`)
+      const messageElement = document.querySelector<HTMLElement>(`[data-message-id="${messageId}"]`)
       if (!messageElement) {
         console.warn(`[ChatView] Message element not found for ID: ${messageId}`)
         return
@@ -126,25 +275,25 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
       messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
 
       // Add highlight animation
-      messageElement.classList.add('search-highlight')
-      setTimeout(() => {
-        messageElement.classList.remove('search-highlight')
+      activeSearchMessageRef.current = messageElement
+      messageElement.classList.add(SEARCH_HIGHLIGHT_CLASS)
+      searchHighlightTimeoutRef.current = window.setTimeout(() => {
+        messageElement.classList.remove(SEARCH_HIGHLIGHT_CLASS)
+        if (activeSearchMessageRef.current === messageElement) {
+          activeSearchMessageRef.current = null
+        }
+        searchHighlightTimeoutRef.current = null
       }, 2000)
 
-      // Highlight search terms in the message (simple text highlight)
-      const contentElement = messageElement.querySelector('[data-message-content]')
-      if (contentElement && query) {
+      // Highlight search terms in this message's text nodes only
+      const contentElement = messageElement.querySelector<HTMLElement>('[data-message-content]')
+      if (contentElement) {
+        activeSearchContentRef.current = contentElement
+      }
+      if (contentElement && query.trim()) {
         try {
-          // Create a regexp with word boundaries
-          const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi')
-          const originalHTML = contentElement.innerHTML
-
-          // Only highlight if we have content and haven't already highlighted
-          if (!originalHTML.includes('search-term-highlight')) {
-            contentElement.innerHTML = originalHTML.replace(
-              regex,
-              '<mark class="search-term-highlight bg-yellow-400/30 font-semibold rounded px-0.5">$1</mark>'
-            )
+          const hasHighlight = highlightQueryInContent(contentElement, query)
+          if (hasHighlight) {
             console.log(`[ChatView] Highlighted search term: "${query}"`)
           }
         } catch (error) {
@@ -156,14 +305,7 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
     // Clear all search highlights when requested
     const handleClearHighlights = () => {
       console.log(`[ChatView] Clearing all search highlights`)
-      document.querySelectorAll('.search-highlight').forEach(el => {
-        el.classList.remove('search-highlight')
-      })
-      // Replace each mark element with its text content (preserving surrounding content)
-      document.querySelectorAll('.search-term-highlight').forEach(el => {
-        const textNode = document.createTextNode(el.textContent || '')
-        el.replaceWith(textNode)
-      })
+      clearActiveSearchHighlights()
     }
 
     window.addEventListener('search:navigate-to-message', handleNavigateToMessage)
@@ -171,15 +313,14 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
     return () => {
       window.removeEventListener('search:navigate-to-message', handleNavigateToMessage)
       window.removeEventListener('search:clear-highlights', handleClearHighlights)
+      clearActiveSearchHighlights()
     }
   }, [])
 
   // Get current conversation and its session state
-  const currentConversation = getCurrentConversation()
-  const currentConversationMeta = getCurrentConversationMeta()
-  const currentConversationId = getCurrentConversationId()
-  const queueItems = currentConversationId
-    ? getQueuedTurns(currentConversationId).map((turn) => ({
+  const queueItems = useMemo(() => {
+    if (!currentConversationId) return []
+    return getQueuedTurns(currentConversationId).map((turn) => ({
         id: turn.id,
         content: turn.content,
         images: turn.images,
@@ -187,18 +328,20 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
         hasImages: Boolean(turn.images && turn.images.length > 0),
         hasFileContexts: Boolean(turn.fileContexts && turn.fileContexts.length > 0)
       }))
-    : []
-  const queueError = currentConversationId ? getQueueError(currentConversationId) : null
+  }, [currentConversationId, getQueuedTurns, queuedTurnsByConversation])
+  const queueError = useMemo(() => {
+    if (!currentConversationId) return null
+    return getQueueError(currentConversationId)
+  }, [currentConversationId, getQueueError, queueErrorByConversation])
   const modelSwitcherConversation = currentConversationId
     ? {
         id: currentConversationId,
         ai: currentConversation?.ai ?? currentConversationMeta?.ai
       }
     : null
-  const isLoadingConversation = useChatStore(state =>
-    currentConversationId ? state.isConversationLoading(currentConversationId) : false
-  )
-  const session = getCurrentSession()
+  const isLoadingConversation = currentConversationId
+    ? (loadingConversationCounts.get(currentConversationId) || 0) > 0
+    : false
   const {
     isGenerating,
     activeRunId,
@@ -257,6 +400,7 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
     if (!currentSpace) return
 
     // Step 1: Show user message immediately
+    setMockUserTimestamp(new Date().toISOString())
     setMockUserMessage(onboardingPrompt)
 
     // Step 2: Start "thinking" phase (2.5 seconds) - no spotlight during this time
@@ -273,6 +417,7 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
     }
 
     // Step 4: Complete response
+    setMockAiTimestamp(new Date().toISOString())
     setMockAiResponse(response)
     setMockStreamingContent('')
 
@@ -301,7 +446,9 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
   }, [currentSpace, onboardingHtml, onboardingPrompt, onboardingResponse, setMockAnimating, setMockThinking])
 
   // AI Browser state
-  const { enabled: aiBrowserEnabled } = useAIBrowserStore()
+  const { enabled: aiBrowserEnabled } = useAIBrowserStore((state) => ({
+    enabled: state.enabled
+  }), shallow)
 
   // Handle send (with optional images for multi-modal messages, optional thinking mode, optional file contexts, optional plan mode)
   const handleSend = async (content: string, images?: ImageAttachment[], thinkingEnabled?: boolean, fileContexts?: FileContextAttachment[], mode?: ChatMode) => {
@@ -327,12 +474,11 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
   }
 
   const handleModeChange = useCallback((nextMode: ChatMode) => {
-    const conversationId = getCurrentConversationId()
-    if (!conversationId || !currentSpaceId) {
+    if (!currentConversationId || !currentSpaceId) {
       return
     }
-    void setConversationMode(currentSpaceId, conversationId, nextMode)
-  }, [currentSpaceId, getCurrentConversationId, setConversationMode])
+    void setConversationMode(currentSpaceId, currentConversationId, nextMode)
+  }, [currentConversationId, currentSpaceId, setConversationMode])
 
   // Handle stop - stops the current conversation's generation
   const handleStop = async () => {
@@ -342,31 +488,34 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
   }
 
   const handleOpenPlanInCanvas = async (planContent: string) => {
-    const conversationId = getCurrentConversationId()
-    if (!currentSpaceId || !conversationId) {
+    if (!currentSpaceId || !currentConversationId) {
       console.error('[ChatView] No active conversation to open plan in canvas')
       return
     }
 
-    await openPlan(planContent, t('Plan'), currentSpaceId, conversationId, currentSpace?.path)
+    await openPlan(planContent, t('Plan'), currentSpaceId, currentConversationId, currentSpace?.path)
   }
 
   const handleExecutePlan = useCallback(async (planContent: string) => {
-    const conversationId = getCurrentConversationId()
-    if (!currentSpaceId || !conversationId || isGenerating) {
+    if (!currentSpaceId || !currentConversationId || isGenerating) {
       return
     }
-    await executePlan(currentSpaceId, conversationId, planContent)
-  }, [currentSpaceId, executePlan, getCurrentConversationId, isGenerating])
+    await executePlan(currentSpaceId, currentConversationId, planContent)
+  }, [currentConversationId, currentSpaceId, executePlan, isGenerating])
 
   // Combine real messages with mock onboarding messages
   const realMessages = currentConversation?.messages || []
-  const displayMessages = mockUserMessage
+  const displayMessages = mockUserMessage && mockUserTimestamp
     ? [
         ...realMessages,
-        { id: 'onboarding-user', role: 'user' as const, content: mockUserMessage, timestamp: new Date().toISOString() },
-        ...(mockAiResponse
-          ? [{ id: 'onboarding-ai', role: 'assistant' as const, content: mockAiResponse, timestamp: new Date().toISOString() }]
+        {
+          id: 'onboarding-user',
+          role: 'user' as const,
+          content: mockUserMessage,
+          timestamp: mockUserTimestamp
+        },
+        ...(mockAiResponse && mockAiTimestamp
+          ? [{ id: 'onboarding-ai', role: 'assistant' as const, content: mockAiResponse, timestamp: mockAiTimestamp }]
           : [])
       ]
     : realMessages

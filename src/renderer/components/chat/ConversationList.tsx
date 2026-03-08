@@ -15,6 +15,7 @@ import { Plus } from '../icons/ToolIcons'
 import { ExternalLink, Pencil, Trash2, MessageCircle } from 'lucide-react'
 import { useCanvasLifecycle } from '../../hooks/useCanvasLifecycle'
 import { useTranslation } from '../../i18n'
+import { shallow } from 'zustand/shallow'
 import { SkillsPanel } from '../skills/SkillsPanel'
 import { AgentsPanel } from '../agents/AgentsPanel'
 import { CommandsPanel } from '../commands/CommandsPanel'
@@ -85,23 +86,26 @@ export function ConversationList({
   const [isDragging, setIsDragging] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingTitle, setEditingTitle] = useState('')
+  const dragWidthRafRef = useRef<number | null>(null)
+  const pendingDragWidthRef = useRef<number | null>(null)
+  const latestWidthRef = useRef(DEFAULT_WIDTH)
   const containerRef = useRef<HTMLDivElement>(null)
   const editInputRef = useRef<HTMLInputElement>(null)
   const { skills, loadedWorkDir: loadedSkillsWorkDir, loadSkills } = useSkillsStore((state) => ({
     skills: state.skills,
     loadedWorkDir: state.loadedWorkDir,
     loadSkills: state.loadSkills
-  }))
+  }), shallow)
   const { agents, loadedWorkDir: loadedAgentsWorkDir, loadAgents } = useAgentsStore((state) => ({
     agents: state.agents,
     loadedWorkDir: state.loadedWorkDir,
     loadAgents: state.loadAgents
-  }))
+  }), shallow)
   const { commands, loadedWorkDir: loadedCommandsWorkDir, loadCommands } = useCommandsStore((state) => ({
     commands: state.commands,
     loadedWorkDir: state.loadedWorkDir,
     loadCommands: state.loadCommands
-  }))
+  }), shallow)
 
   useEffect(() => {
     if (skills.length === 0 || loadedSkillsWorkDir !== (workDir ?? null)) {
@@ -170,6 +174,42 @@ export function ConversationList({
     return localized ? `${prefix}${localized}${tail}` : text
   }, [agentDisplayMap, commandDisplayMap, skillDisplayMap])
 
+  useEffect(() => {
+    latestWidthRef.current = width
+  }, [width])
+
+  const applyDragWidth = useCallback((nextWidth: number) => {
+    latestWidthRef.current = nextWidth
+    setWidth(prevWidth => (prevWidth === nextWidth ? prevWidth : nextWidth))
+  }, [])
+
+  const scheduleDragWidthUpdate = useCallback((nextWidth: number) => {
+    pendingDragWidthRef.current = nextWidth
+    if (dragWidthRafRef.current !== null) return
+
+    dragWidthRafRef.current = window.requestAnimationFrame(() => {
+      dragWidthRafRef.current = null
+      const pendingWidth = pendingDragWidthRef.current
+      pendingDragWidthRef.current = null
+      if (pendingWidth == null) return
+      applyDragWidth(pendingWidth)
+    })
+  }, [applyDragWidth])
+
+  const flushDragWidthUpdate = useCallback((): number => {
+    if (dragWidthRafRef.current !== null) {
+      window.cancelAnimationFrame(dragWidthRafRef.current)
+      dragWidthRafRef.current = null
+    }
+
+    const pendingWidth = pendingDragWidthRef.current
+    pendingDragWidthRef.current = null
+    if (pendingWidth == null) return latestWidthRef.current
+
+    applyDragWidth(pendingWidth)
+    return pendingWidth
+  }, [applyDragWidth])
+
   // Handle drag resize
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
@@ -179,15 +219,25 @@ export function ConversationList({
   useEffect(() => {
     if (!isDragging) return
 
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!containerRef.current) return
+    const clampWidthAtPosition = (clientX: number): number | null => {
+      if (!containerRef.current) return null
       const containerRect = containerRef.current.getBoundingClientRect()
-      const newWidth = e.clientX - containerRect.left
-      const clampedWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, newWidth))
-      setWidth(clampedWidth)
+      const nextWidth = clientX - containerRect.left
+      return Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, nextWidth))
     }
 
-    const handleMouseUp = () => {
+    const handleMouseMove = (e: MouseEvent) => {
+      const clampedWidth = clampWidthAtPosition(e.clientX)
+      if (clampedWidth == null) return
+      scheduleDragWidthUpdate(clampedWidth)
+    }
+
+    const handleMouseUp = (e: MouseEvent) => {
+      const clampedWidth = clampWidthAtPosition(e.clientX)
+      if (clampedWidth != null) {
+        pendingDragWidthRef.current = clampedWidth
+      }
+      flushDragWidthUpdate()
       setIsDragging(false)
     }
 
@@ -198,7 +248,17 @@ export function ConversationList({
       document.removeEventListener('mousemove', handleMouseMove)
       document.removeEventListener('mouseup', handleMouseUp)
     }
-  }, [isDragging])
+  }, [flushDragWidthUpdate, isDragging, scheduleDragWidthUpdate])
+
+  useEffect(() => {
+    return () => {
+      if (dragWidthRafRef.current !== null) {
+        window.cancelAnimationFrame(dragWidthRafRef.current)
+      }
+      dragWidthRafRef.current = null
+      pendingDragWidthRef.current = null
+    }
+  }, [])
 
   // Focus input when entering edit mode
   useEffect(() => {
