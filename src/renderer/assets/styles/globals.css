@@ -56,6 +56,17 @@
   --kite-success: 152 69% 45%;
   --kite-warning: 38 92% 50%;
   --kite-error: 0 62% 50%;
+
+  /* Syntax highlighting palette (light) */
+  --syntax-keyword: 262 83% 58%;
+  --syntax-string: 158 86% 32%;
+  --syntax-number: 30 95% 43%;
+  --syntax-function: 217 91% 52%;
+  --syntax-comment: 220 8% 46%;
+  --syntax-type: 193 95% 35%;
+  --syntax-builtin: 246 83% 56%;
+  --syntax-delete: 0 74% 45%;
+  --syntax-meta: 28 11% 45%;
 }
 
 .dark {
@@ -83,6 +94,17 @@
   --glass-border: 0 0% 28%;
   --glass-highlight: 0 0% 20%;
   --kite-glow: 0 0% 72%;
+
+  /* Syntax highlighting palette (dark) */
+  --syntax-keyword: 263 90% 76%;
+  --syntax-string: 155 65% 55%;
+  --syntax-number: 45 93% 64%;
+  --syntax-function: 212 96% 70%;
+  --syntax-comment: 215 14% 47%;
+  --syntax-type: 188 91% 61%;
+  --syntax-builtin: 236 91% 75%;
+  --syntax-delete: 0 84% 71%;
+  --syntax-meta: 32 10% 66%;
 }
 
 * {

@@ -11,12 +11,11 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { Copy, Check, Code, Eye, ExternalLink } from 'lucide-react'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import { highlightCodeSync } from '../../../lib/highlight-loader'
+import { dirname } from 'path-browserify'
 import { api } from '../../../api'
 import type { CanvasTab } from '../../../stores/canvas.store'
 import { useTranslation } from '../../../i18n'
+import { MarkdownRenderer } from '../../chat/MarkdownRenderer'
 
 interface MarkdownViewerProps {
   tab: CanvasTab
@@ -67,6 +66,7 @@ export function MarkdownViewer({ tab, onScrollChange }: MarkdownViewerProps) {
 
   const content = tab.content || ''
   const canOpenExternal = !api.isRemoteMode() && tab.path
+  const markdownBasePath = tab.path ? dirname(tab.path) : tab.workDir
 
   return (
     <div className="relative flex flex-col h-full bg-background">
@@ -138,85 +138,8 @@ export function MarkdownViewer({ tab, onScrollChange }: MarkdownViewerProps) {
         className="flex-1 overflow-auto"
       >
         {viewMode === 'rendered' ? (
-          <div className="prose prose-invert prose-sm max-w-none p-6">
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              components={{
-                code({ node, inline, className, children, ...props }: any) {
-                  const match = /language-(\w+)/.exec(className || '')
-                  const language = match ? match[1] : ''
-                  const code = String(children).replace(/\n$/, '')
-
-                  if (inline) {
-                    return (
-                      <code className="bg-muted px-1.5 py-0.5 rounded text-sm" {...props}>
-                        {children}
-                      </code>
-                    )
-                  }
-
-                  // Highlight code block (uses lazy-loaded hljs)
-                  const highlighted = highlightCodeSync(code, language)
-
-                  return (
-                    <div className="relative group">
-                      <pre className="bg-muted/50 rounded-lg p-4 overflow-x-auto">
-                        <code
-                          className={`hljs ${language ? `language-${language}` : ''}`}
-                          dangerouslySetInnerHTML={{ __html: highlighted }}
-                        />
-                      </pre>
-                      <CopyButton text={code} />
-                    </div>
-                  )
-                },
-                // Style tables
-                table({ children }) {
-                  return (
-                    <div className="overflow-x-auto">
-                      <table className="min-w-full">{children}</table>
-                    </div>
-                  )
-                },
-                // Style links
-                a({ href, children }) {
-                  return (
-                    <a
-                      href={href}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-primary hover:underline"
-                    >
-                      {children}
-                    </a>
-                  )
-                },
-                // Style images
-                img({ src, alt }) {
-                  return (
-                    <img
-                      src={src}
-                      alt={alt}
-                      className="max-w-full h-auto rounded-lg"
-                    />
-                  )
-                },
-                // Fix DOM nesting: <p> cannot contain block elements like <pre> or <div>
-                // When a paragraph contains only a code block, render as div instead
-                p({ children, node }) {
-                  // Check if children contains a code block (which renders as div>pre)
-                  const hasBlockElement = node?.children?.some(
-                    (child: any) => child.tagName === 'code' && child.properties?.className?.some?.((c: string) => c.startsWith('language-'))
-                  )
-                  if (hasBlockElement) {
-                    return <div className="my-4">{children}</div>
-                  }
-                  return <p>{children}</p>
-                }
-              }}
-            >
-              {content}
-            </ReactMarkdown>
+          <div className="p-6">
+            <MarkdownRenderer content={content} basePath={markdownBasePath} />
           </div>
         ) : (
           <SourceView content={content} />
@@ -248,37 +171,5 @@ function SourceView({ content }: { content: string }) {
         {content}
       </pre>
     </div>
-  )
-}
-
-/**
- * Copy button for code blocks
- */
-function CopyButton({ text }: { text: string }) {
-  const { t } = useTranslation()
-  const [copied, setCopied] = useState(false)
-
-  const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(text)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    } catch (err) {
-      console.error('Failed to copy:', err)
-    }
-  }
-
-  return (
-    <button
-      onClick={handleCopy}
-      className="absolute top-2 right-2 p-1.5 rounded bg-background/80 opacity-0 group-hover:opacity-100 transition-opacity"
-      title={t('Copy code')}
-    >
-      {copied ? (
-        <Check className="w-4 h-4 text-green-500" />
-      ) : (
-        <Copy className="w-4 h-4 text-muted-foreground" />
-      )}
-    </button>
   )
 }

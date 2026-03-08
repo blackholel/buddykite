@@ -2,11 +2,10 @@ import { useState, useCallback, useEffect } from 'react'
 import { Eye, Code, Copy, Save, Check, Hammer } from 'lucide-react'
 import Editor, { type OnMount, type OnChange, loader } from '@monaco-editor/react'
 import * as monaco from 'monaco-editor'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import { highlightCodeSync } from '../../../lib/highlight-loader'
+import { dirname } from 'path-browserify'
 import type { CanvasTab } from '../../../stores/canvas.store'
 import { useTranslation } from '../../../i18n'
+import { MarkdownRenderer } from '../../chat/MarkdownRenderer'
 
 loader.config({ monaco })
 
@@ -26,6 +25,7 @@ export function PlanEditor({ tab, onContentChange, onBuild }: PlanEditorProps) {
   const [saved, setSaved] = useState(false)
   const [building, setBuilding] = useState(false)
   const content = tab.content || ''
+  const markdownBasePath = tab.path ? dirname(tab.path) : tab.workDir
 
   useEffect(() => {
     const observer = new MutationObserver(() => {
@@ -195,45 +195,8 @@ export function PlanEditor({ tab, onContentChange, onBuild }: PlanEditorProps) {
           />
         ) : (
           <div className="h-full overflow-auto">
-            <div className={`prose prose-sm max-w-none p-6 ${isDarkTheme ? 'prose-invert' : ''}`}>
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
-                components={{
-                  code({ inline, className, children, ...props }: any) {
-                    const match = /language-(\w+)/.exec(className || '')
-                    const language = match ? match[1] : ''
-                    const code = String(children).replace(/\n$/, '')
-
-                    if (inline) {
-                      return (
-                        <code className="bg-muted px-1.5 py-0.5 rounded text-sm" {...props}>
-                          {children}
-                        </code>
-                      )
-                    }
-
-                    const highlighted = highlightCodeSync(code, language)
-
-                    return (
-                      <pre className="bg-muted/50 rounded-lg p-4 overflow-x-auto">
-                        <code
-                          className={`hljs ${language ? `language-${language}` : ''}`}
-                          dangerouslySetInnerHTML={{ __html: highlighted }}
-                        />
-                      </pre>
-                    )
-                  },
-                  table({ children }) {
-                    return (
-                      <div className="overflow-x-auto">
-                        <table className="min-w-full">{children}</table>
-                      </div>
-                    )
-                  },
-                }}
-              >
-                {content}
-              </ReactMarkdown>
+            <div className="p-6">
+              <MarkdownRenderer content={content} basePath={markdownBasePath} />
             </div>
           </div>
         )}
