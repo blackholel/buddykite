@@ -47,6 +47,8 @@ interface SearchState {
   currentResultIndex: number // 0-based index of currently highlighted result
   highlightQuery: string // The query that was used for current highlights
   highlightResults: SearchResult[] // Results for current highlights
+  activeNavigationTaskId: number | null
+  navigationTaskCounter: number
 
   // ===== Actions =====
   // Search panel (edit mode)
@@ -67,6 +69,10 @@ interface SearchState {
   navigateToResultIndex: (index: number) => void
   goToPreviousResult: () => void
   goToNextResult: () => void
+  beginNavigationTask: () => number
+  cancelNavigationTask: () => void
+  finishNavigationTask: (taskId: number) => void
+  isNavigationTaskActive: (taskId: number) => boolean
 }
 
 export const useSearchStore = create<SearchState>((set, get) => ({
@@ -85,6 +91,8 @@ export const useSearchStore = create<SearchState>((set, get) => ({
   currentResultIndex: 0,
   highlightQuery: '',
   highlightResults: [],
+  activeNavigationTaskId: null,
+  navigationTaskCounter: 0,
 
   // ===== Search Panel Actions (Edit Mode) =====
   /**
@@ -219,5 +227,25 @@ export const useSearchStore = create<SearchState>((set, get) => ({
     // Circular: if at last, go to 0
     const nextIndex = currentResultIndex === highlightResults.length - 1 ? 0 : currentResultIndex + 1
     get().navigateToResultIndex(nextIndex)
-  }
+  },
+
+  beginNavigationTask: () => {
+    const nextTaskId = get().navigationTaskCounter + 1
+    set({
+      navigationTaskCounter: nextTaskId,
+      activeNavigationTaskId: nextTaskId
+    })
+    return nextTaskId
+  },
+
+  cancelNavigationTask: () => {
+    set({ activeNavigationTaskId: null })
+  },
+
+  finishNavigationTask: (taskId) => {
+    if (get().activeNavigationTaskId !== taskId) return
+    set({ activeNavigationTaskId: null })
+  },
+
+  isNavigationTaskActive: (taskId) => get().activeNavigationTaskId === taskId
 }))

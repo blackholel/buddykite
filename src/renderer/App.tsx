@@ -2,7 +2,7 @@
  * Kite - Main App Component
  */
 
-import { useEffect, useRef, Suspense, lazy } from 'react'
+import { useCallback, useEffect, useRef, Suspense, lazy } from 'react'
 import { useAppStore } from './stores/app.store'
 import { useChatStore } from './stores/chat.store'
 import { useOnboardingStore } from './stores/onboarding.store'
@@ -22,6 +22,7 @@ import { SearchHighlightBar } from './components/search/SearchHighlightBar'
 import { OnboardingOverlay } from './components/onboarding'
 import { UpdateNotification } from './components/updater/UpdateNotification'
 import { api } from './api'
+import { shallow } from 'zustand/shallow'
 import type {
   AgentEventBase,
   AgentCompleteEvent,
@@ -76,8 +77,58 @@ function applyTheme(theme: ThemeMode) {
   })
 }
 
+async function waitForMessageElement(
+  messageId: string,
+  options: { signal: AbortSignal; timeoutMs?: number }
+): Promise<Element | null> {
+  const { signal, timeoutMs = 5000 } = options
+  const selector = `[data-message-id="${messageId}"]`
+  const existing = document.querySelector(selector)
+  if (existing) {
+    return existing
+  }
+  if (signal.aborted || typeof MutationObserver === 'undefined') {
+    return null
+  }
+
+  return new Promise((resolve) => {
+    const observer = new MutationObserver(() => {
+      const element = document.querySelector(selector)
+      if (element) {
+        cleanup()
+        resolve(element)
+      }
+    })
+    const timeoutId = window.setTimeout(() => {
+      cleanup()
+      resolve(null)
+    }, timeoutMs)
+    const handleAbort = () => {
+      cleanup()
+      resolve(null)
+    }
+    const cleanup = () => {
+      observer.disconnect()
+      window.clearTimeout(timeoutId)
+      signal.removeEventListener('abort', handleAbort)
+    }
+
+    signal.addEventListener('abort', handleAbort, { once: true })
+    observer.observe(document.body, { childList: true, subtree: true })
+  })
+}
+
 export default function App() {
-  const { view, config, initialize, setMcpStatus, setView, setConfig } = useAppStore()
+  const { view, config } = useAppStore((state) => ({
+    view: state.view,
+    config: state.config
+  }), shallow)
+  const { initialize, setMcpStatus, setView, setConfig } = useAppStore((state) => ({
+    initialize: state.initialize,
+    setMcpStatus: state.setMcpStatus,
+    setView: state.setView,
+    setConfig: state.setConfig
+  }), shallow)
   const {
     handleAgentRunStart,
     handleAgentMessage,
@@ -94,13 +145,63 @@ export default function App() {
     setCurrentSpace: setChatCurrentSpace,
     loadConversations,
     selectConversation
-  } = useChatStore()
-  const { handleAgentComplete: handleWorkflowAgentComplete } = useWorkflowsStore()
-  const { initialize: initializeOnboarding } = useOnboardingStore()
-  const { isSearchOpen, closeSearch, isHighlightBarVisible, hideHighlightBar, goToPreviousResult, goToNextResult, openSearch } = useSearchStore()
+  } = useChatStore((state) => ({
+    handleAgentRunStart: state.handleAgentRunStart,
+    handleAgentMessage: state.handleAgentMessage,
+    handleAgentProcess: state.handleAgentProcess,
+    handleAgentToolCall: state.handleAgentToolCall,
+    handleAgentToolResult: state.handleAgentToolResult,
+    handleAgentError: state.handleAgentError,
+    handleAgentComplete: state.handleAgentComplete,
+    handleAgentMode: state.handleAgentMode,
+    handleAgentThought: state.handleAgentThought,
+    handleAgentCompact: state.handleAgentCompact,
+    handleAgentToolsAvailable: state.handleAgentToolsAvailable,
+    currentSpaceId: state.currentSpaceId,
+    setCurrentSpace: state.setCurrentSpace,
+    loadConversations: state.loadConversations,
+    selectConversation: state.selectConversation
+  }), shallow)
+  const { handleAgentComplete: handleWorkflowAgentComplete } = useWorkflowsStore(
+    (state) => ({ handleAgentComplete: state.handleAgentComplete }),
+    shallow
+  )
+  const { initialize: initializeOnboarding } = useOnboardingStore(
+    (state) => ({ initialize: state.initialize }),
+    shallow
+  )
+  const {
+    isSearchOpen,
+    closeSearch,
+    isHighlightBarVisible,
+    hideHighlightBar,
+    goToPreviousResult,
+    goToNextResult,
+    openSearch,
+    beginNavigationTask,
+    cancelNavigationTask,
+    finishNavigationTask,
+    isNavigationTaskActive
+  } = useSearchStore((state) => ({
+    isSearchOpen: state.isSearchOpen,
+    closeSearch: state.closeSearch,
+    isHighlightBarVisible: state.isHighlightBarVisible,
+    hideHighlightBar: state.hideHighlightBar,
+    goToPreviousResult: state.goToPreviousResult,
+    goToNextResult: state.goToNextResult,
+    openSearch: state.openSearch,
+    beginNavigationTask: state.beginNavigationTask,
+    cancelNavigationTask: state.cancelNavigationTask,
+    finishNavigationTask: state.finishNavigationTask,
+    isNavigationTaskActive: state.isNavigationTaskActive
+  }), shallow)
 
   // For search result navigation
-  const { spaces, kiteSpace, setCurrentSpace: setSpaceStoreCurrentSpace } = useSpaceStore()
+  const { spaces, kiteSpace, setCurrentSpace: setSpaceStoreCurrentSpace } = useSpaceStore((state) => ({
+    spaces: state.spaces,
+    kiteSpace: state.kiteSpace,
+    setCurrentSpace: state.setCurrentSpace
+  }), shallow)
 
   // Initialize app on mount
   useEffect(() => {
@@ -321,6 +422,19 @@ export default function App() {
 
   // Handle search result navigation from highlight bar
   // This handles the complete navigation flow when user clicks [↑][↓] or uses arrow keys
+  const activeNavigationControllerRef = useRef<AbortController | null>(null)
+  const cancelActiveNavigation = useCallback(() => {
+    if (activeNavigationControllerRef.current) {
+      activeNavigationControllerRef.current.abort()
+      activeNavigationControllerRef.current = null
+    }
+    cancelNavigationTask()
+  }, [cancelNavigationTask])
+
+  useEffect(() => {
+    return () => cancelActiveNavigation()
+  }, [cancelActiveNavigation])
+
   useEffect(() => {
     const handleNavigateToResult = async (event: Event) => {
       const customEvent = event as CustomEvent<{
@@ -335,7 +449,16 @@ export default function App() {
 
       console.log(`[App] search:navigate-to-result event - space=${spaceId}, conv=${conversationId}, msg=${messageId}`)
 
+      cancelActiveNavigation()
+      const taskId = beginNavigationTask()
+      const controller = new AbortController()
+      activeNavigationControllerRef.current = controller
+      const { signal } = controller
+      const isTaskActive = () => isNavigationTaskActive(taskId) && !signal.aborted
+
       try {
+        if (!isTaskActive()) return
+
         // Step 1: If switching spaces, update both stores
         if (spaceId !== currentSpaceId) {
           console.log(`[App] Switching to space: ${spaceId}`)
@@ -354,64 +477,68 @@ export default function App() {
           }
 
           // Update spaceStore
+          if (!isTaskActive()) return
           console.log(`[App] Updating space to: ${targetSpace.name}`)
           setSpaceStoreCurrentSpace(targetSpace)
 
           // Update chatStore
           setChatCurrentSpace(spaceId)
-
-          // Give state time to update
-          await new Promise(resolve => setTimeout(resolve, 50))
         }
 
         // Step 2: Load conversations if needed
         console.log(`[App] Loading conversations for space: ${spaceId}`)
         await loadConversations(spaceId)
+        if (!isTaskActive()) return
 
         // Step 3: Select conversation
         console.log(`[App] Selecting conversation: ${conversationId}`)
         await selectConversation(conversationId)
+        if (!isTaskActive()) return
 
         // Step 4: Wait for message element to render and navigate
         console.log(`[App] Waiting for message element: ${messageId}`)
-        let retries = 0
-        const maxRetries = 50
-
-        const waitAndNavigate = async () => {
-          while (retries < maxRetries) {
-            const messageElement = document.querySelector(`[data-message-id="${messageId}"]`)
-            if (messageElement) {
-              console.log(`[App] Message element found, dispatching navigate event`)
-              // Dispatch the actual navigation event
-              const navEvent = new CustomEvent('search:navigate-to-message', {
-                detail: {
-                  messageId,
-                  query
-                }
-              })
-              window.dispatchEvent(navEvent)
-              return
-            }
-
-            retries++
-            if (retries % 10 === 0) {
-              console.log(`[App] Waiting for message... (${retries}/${maxRetries})`)
-            }
-            await new Promise(resolve => setTimeout(resolve, 100))
-          }
-
-          console.warn(`[App] Message element not found after retries`)
+        const messageElement = await waitForMessageElement(messageId, { signal })
+        if (!messageElement || !isTaskActive()) {
+          console.warn(`[App] Message element not found within timeout`)
+          return
         }
 
-        waitAndNavigate()
+        console.log(`[App] Message element found, dispatching navigate event`)
+        // Dispatch the actual navigation event
+        const navEvent = new CustomEvent('search:navigate-to-message', {
+          detail: {
+            messageId,
+            query
+          }
+        })
+        window.dispatchEvent(navEvent)
       } catch (error) {
-        console.error(`[App] Error navigating to result:`, error)
+        if (isTaskActive()) {
+          console.error(`[App] Error navigating to result:`, error)
+        }
+      } finally {
+        if (activeNavigationControllerRef.current === controller) {
+          activeNavigationControllerRef.current = null
+        }
+        finishNavigationTask(taskId)
       }
     }
 
     window.addEventListener('search:navigate-to-result', handleNavigateToResult)
     return () => window.removeEventListener('search:navigate-to-result', handleNavigateToResult)
-  }, [currentSpaceId, spaces, kiteSpace, setSpaceStoreCurrentSpace, setChatCurrentSpace, loadConversations, selectConversation])
+  }, [
+    cancelActiveNavigation,
+    currentSpaceId,
+    spaces,
+    kiteSpace,
+    setSpaceStoreCurrentSpace,
+    setChatCurrentSpace,
+    loadConversations,
+    selectConversation,
+    beginNavigationTask,
+    isNavigationTaskActive,
+    finishNavigationTask
+  ])
 
   // Handle Git Bash setup completion
   const handleGitBashSetupComplete = async (installed: boolean) => {
