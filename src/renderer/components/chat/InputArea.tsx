@@ -20,6 +20,7 @@
 
 import { useState, useRef, useEffect, useCallback, useMemo, KeyboardEvent, ClipboardEvent, DragEvent } from 'react'
 import { Plus, ImagePlus, Loader2, AlertCircle, Atom, Globe, ClipboardList, X, Bot, Zap, Terminal, Trash2, Pencil } from 'lucide-react'
+import { useShallow } from 'zustand/react/shallow'
 import { useOnboardingStore } from '../../stores/onboarding.store'
 import { useAIBrowserStore } from '../../stores/ai-browser.store'
 import { getComposerMruMap, touchComposerMru } from '../../stores/composer-mru.store'
@@ -160,40 +161,59 @@ export function InputArea({
   const dequeueInsert = useComposerStore(state => state.dequeueInsert)
 
   // AI Browser state
-  const { enabled: aiBrowserEnabled, setEnabled: setAIBrowserEnabled } = useAIBrowserStore()
-  const { currentSpace, spaces, haloSpace, getSpacePreferences } = useSpaceStore((state) => ({
-    currentSpace: state.currentSpace,
-    spaces: state.spaces,
-    haloSpace: state.haloSpace,
-    getSpacePreferences: state.getSpacePreferences
-  }))
+  const { enabled: aiBrowserEnabled, setEnabled: setAIBrowserEnabled } = useAIBrowserStore(
+    useShallow((state) => ({
+      enabled: state.enabled,
+      setEnabled: state.setEnabled
+    }))
+  )
+  const { currentSpace, spaces, haloSpace, getSpacePreferences } = useSpaceStore(
+    useShallow((state) => ({
+      currentSpace: state.currentSpace,
+      spaces: state.spaces,
+      haloSpace: state.haloSpace,
+      getSpacePreferences: state.getSpacePreferences
+    }))
+  )
   const {
     skills,
     loadedWorkDir: loadedSkillsWorkDir,
     loadSkills
-  } = useSkillsStore((state) => ({
-    skills: state.skills,
-    loadedWorkDir: state.loadedWorkDir,
-    loadSkills: state.loadSkills
-  }))
+  } = useSkillsStore(
+    useShallow((state) => ({
+      skills: state.skills,
+      loadedWorkDir: state.loadedWorkDir,
+      loadSkills: state.loadSkills
+    }))
+  )
   const {
     commands,
     loadedWorkDir: loadedCommandsWorkDir,
     loadCommands
-  } = useCommandsStore((state) => ({
-    commands: state.commands,
-    loadedWorkDir: state.loadedWorkDir,
-    loadCommands: state.loadCommands
-  }))
+  } = useCommandsStore(
+    useShallow((state) => ({
+      commands: state.commands,
+      loadedWorkDir: state.loadedWorkDir,
+      loadCommands: state.loadCommands
+    }))
+  )
   const {
     agents,
     loadedWorkDir: loadedAgentsWorkDir,
     loadAgents
-  } = useAgentsStore((state) => ({
-    agents: state.agents,
-    loadedWorkDir: state.loadedWorkDir,
-    loadAgents: state.loadAgents
-  }))
+  } = useAgentsStore(
+    useShallow((state) => ({
+      agents: state.agents,
+      loadedWorkDir: state.loadedWorkDir,
+      loadAgents: state.loadAgents
+    }))
+  )
+  const skillsLoadInFlightWorkDirRef = useRef<string | null>(null)
+  const commandsLoadInFlightWorkDirRef = useRef<string | null>(null)
+  const agentsLoadInFlightWorkDirRef = useRef<string | null>(null)
+  const lastRequestedSkillsWorkDirRef = useRef<string | null>(null)
+  const lastRequestedCommandsWorkDirRef = useRef<string | null>(null)
+  const lastRequestedAgentsWorkDirRef = useRef<string | null>(null)
   const resolvedSpace = useMemo(() => {
     if (!spaceId) return null
     if (currentSpace?.id === spaceId) return currentSpace
@@ -213,21 +233,63 @@ export function InputArea({
   const triggerQuery = triggerContext?.query.trim().toLowerCase() || ''
 
   useEffect(() => {
-    if (loadedSkillsWorkDir !== (workDir ?? null) || skills.length === 0) {
-      void loadSkills(workDir)
-    }
+    const targetWorkDir = workDir ?? null
+    const shouldLoad = loadedSkillsWorkDir !== targetWorkDir || skills.length === 0
+    if (!shouldLoad) return
+    if (skillsLoadInFlightWorkDirRef.current === targetWorkDir) return
+    if (lastRequestedSkillsWorkDirRef.current === targetWorkDir) return
+
+    lastRequestedSkillsWorkDirRef.current = targetWorkDir
+    skillsLoadInFlightWorkDirRef.current = targetWorkDir
+    void loadSkills(workDir).finally(() => {
+      const loadedWorkDir = useSkillsStore.getState().loadedWorkDir
+      if (skillsLoadInFlightWorkDirRef.current === targetWorkDir) {
+        skillsLoadInFlightWorkDirRef.current = null
+      }
+      if (loadedWorkDir !== targetWorkDir && lastRequestedSkillsWorkDirRef.current === targetWorkDir) {
+        lastRequestedSkillsWorkDirRef.current = null
+      }
+    })
   }, [loadedSkillsWorkDir, loadSkills, skills.length, workDir])
 
   useEffect(() => {
-    if (loadedCommandsWorkDir !== (workDir ?? null) || commands.length === 0) {
-      void loadCommands(workDir)
-    }
+    const targetWorkDir = workDir ?? null
+    const shouldLoad = loadedCommandsWorkDir !== targetWorkDir || commands.length === 0
+    if (!shouldLoad) return
+    if (commandsLoadInFlightWorkDirRef.current === targetWorkDir) return
+    if (lastRequestedCommandsWorkDirRef.current === targetWorkDir) return
+
+    lastRequestedCommandsWorkDirRef.current = targetWorkDir
+    commandsLoadInFlightWorkDirRef.current = targetWorkDir
+    void loadCommands(workDir).finally(() => {
+      const loadedWorkDir = useCommandsStore.getState().loadedWorkDir
+      if (commandsLoadInFlightWorkDirRef.current === targetWorkDir) {
+        commandsLoadInFlightWorkDirRef.current = null
+      }
+      if (loadedWorkDir !== targetWorkDir && lastRequestedCommandsWorkDirRef.current === targetWorkDir) {
+        lastRequestedCommandsWorkDirRef.current = null
+      }
+    })
   }, [commands.length, loadCommands, loadedCommandsWorkDir, workDir])
 
   useEffect(() => {
-    if (loadedAgentsWorkDir !== (workDir ?? null) || agents.length === 0) {
-      void loadAgents(workDir)
-    }
+    const targetWorkDir = workDir ?? null
+    const shouldLoad = loadedAgentsWorkDir !== targetWorkDir || agents.length === 0
+    if (!shouldLoad) return
+    if (agentsLoadInFlightWorkDirRef.current === targetWorkDir) return
+    if (lastRequestedAgentsWorkDirRef.current === targetWorkDir) return
+
+    lastRequestedAgentsWorkDirRef.current = targetWorkDir
+    agentsLoadInFlightWorkDirRef.current = targetWorkDir
+    void loadAgents(workDir).finally(() => {
+      const loadedWorkDir = useAgentsStore.getState().loadedWorkDir
+      if (agentsLoadInFlightWorkDirRef.current === targetWorkDir) {
+        agentsLoadInFlightWorkDirRef.current = null
+      }
+      if (loadedWorkDir !== targetWorkDir && lastRequestedAgentsWorkDirRef.current === targetWorkDir) {
+        lastRequestedAgentsWorkDirRef.current = null
+      }
+    })
   }, [agents.length, loadAgents, loadedAgentsWorkDir, workDir])
 
   // Auto-clear error after 3 seconds
@@ -244,7 +306,12 @@ export function InputArea({
   }
 
   // Onboarding state
-  const { isActive: isOnboarding, currentStep } = useOnboardingStore()
+  const { isActive: isOnboarding, currentStep } = useOnboardingStore(
+    useShallow((state) => ({
+      isActive: state.isActive,
+      currentStep: state.currentStep
+    }))
+  )
   const isOnboardingSendStep = isOnboarding && currentStep === 'send-message'
 
   // In onboarding send step, show prefilled prompt

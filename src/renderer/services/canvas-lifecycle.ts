@@ -1168,7 +1168,22 @@ class CanvasLifecycle {
     const sequence = ++this.enterSpaceSequence
     const previousSpaceId = this.currentSpaceId
 
-    if (previousSpaceId && previousSpaceId !== spaceId && this.tabs.size > 0) {
+    const hasTabs = this.tabs.size > 0
+    const hasForeignSpaceBoundTabs = hasTabs && Array.from(this.tabs.values()).some(
+      (tab) => Boolean(tab.spaceId) && tab.spaceId !== spaceId
+    )
+    const shouldClearTabs =
+      hasTabs &&
+      (
+        // Normal space switch: clear all tabs.
+        (previousSpaceId !== null && previousSpaceId !== spaceId) ||
+        // Recovery path: lifecycle lost currentSpaceId but stale tabs still exist.
+        previousSpaceId === null ||
+        // Safety net: tab metadata already proves these tabs belong to other space.
+        hasForeignSpaceBoundTabs
+      )
+
+    if (shouldClearTabs) {
       // Switching to different space with existing tabs - clear all
       await this.closeAll()
       if (sequence !== this.enterSpaceSequence) {

@@ -9,7 +9,8 @@
  * - Compact mode (isCompact=true): Sidebar-style when Canvas is open
  */
 
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
+import { shallow } from 'zustand/shallow'
 import { useSpaceStore } from '../../stores/space.store'
 import { useChatStore } from '../../stores/chat.store'
 import { useAppStore } from '../../stores/app.store'
@@ -135,14 +136,19 @@ function highlightQueryInContent(contentElement: Element, query: string): boolea
 
 export function ChatView({ isCompact = false }: ChatViewProps) {
   const { t } = useTranslation()
-  const { currentSpace } = useSpaceStore()
+  const { currentSpace } = useSpaceStore((state) => ({
+    currentSpace: state.currentSpace
+  }), shallow)
   const {
     currentSpaceId,
     changeSets,
-    getCurrentConversation,
-    getCurrentConversationMeta,
-    getCurrentConversationId,
-    getCurrentSession,
+    currentConversation,
+    currentConversationMeta,
+    currentConversationId,
+    session,
+    queuedTurnsByConversation,
+    queueErrorByConversation,
+    loadingConversationCounts,
     loadChangeSets,
     acceptChangeSet,
     rollbackChangeSet,
@@ -153,17 +159,42 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
     dismissAskUserQuestion,
     setConversationMode,
     getQueuedTurns,
+    getQueueError,
     sendQueuedTurn,
     removeQueuedTurn,
     clearConversationQueue,
-    getQueueError,
     clearQueueError
-  } = useChatStore()
+  } = useChatStore((state) => ({
+    currentSpaceId: state.currentSpaceId,
+    changeSets: state.changeSets,
+    currentConversation: state.getCurrentConversation(),
+    currentConversationMeta: state.getCurrentConversationMeta(),
+    currentConversationId: state.getCurrentConversationId(),
+    session: state.getCurrentSession(),
+    queuedTurnsByConversation: state.queuedTurnsByConversation,
+    queueErrorByConversation: state.queueErrorByConversation,
+    loadingConversationCounts: state.loadingConversationCounts,
+    loadChangeSets: state.loadChangeSets,
+    acceptChangeSet: state.acceptChangeSet,
+    rollbackChangeSet: state.rollbackChangeSet,
+    submitTurn: state.submitTurn,
+    executePlan: state.executePlan,
+    stopGeneration: state.stopGeneration,
+    answerQuestion: state.answerQuestion,
+    dismissAskUserQuestion: state.dismissAskUserQuestion,
+    setConversationMode: state.setConversationMode,
+    getQueuedTurns: state.getQueuedTurns,
+    getQueueError: state.getQueueError,
+    sendQueuedTurn: state.sendQueuedTurn,
+    removeQueuedTurn: state.removeQueuedTurn,
+    clearConversationQueue: state.clearConversationQueue,
+    clearQueueError: state.clearQueueError
+  }), shallow)
   const { openPlan } = useCanvasLifecycle()
   const { appConfig, setView } = useAppStore((state) => ({
     appConfig: state.config,
     setView: state.setView
-  }))
+  }), shallow)
 
   // Onboarding state
   const {
@@ -174,7 +205,15 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
     setMockThinking,
     isMockAnimating,
     isMockThinking
-  } = useOnboardingStore()
+  } = useOnboardingStore((state) => ({
+    isActive: state.isActive,
+    currentStep: state.currentStep,
+    nextStep: state.nextStep,
+    setMockAnimating: state.setMockAnimating,
+    setMockThinking: state.setMockThinking,
+    isMockAnimating: state.isMockAnimating,
+    isMockThinking: state.isMockThinking
+  }), shallow)
 
   // Mock onboarding state
   const [mockUserMessage, setMockUserMessage] = useState<string | null>(null)
@@ -279,11 +318,9 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
   }, [])
 
   // Get current conversation and its session state
-  const currentConversation = getCurrentConversation()
-  const currentConversationMeta = getCurrentConversationMeta()
-  const currentConversationId = getCurrentConversationId()
-  const queueItems = currentConversationId
-    ? getQueuedTurns(currentConversationId).map((turn) => ({
+  const queueItems = useMemo(() => {
+    if (!currentConversationId) return []
+    return getQueuedTurns(currentConversationId).map((turn) => ({
         id: turn.id,
         content: turn.content,
         images: turn.images,
@@ -291,18 +328,20 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
         hasImages: Boolean(turn.images && turn.images.length > 0),
         hasFileContexts: Boolean(turn.fileContexts && turn.fileContexts.length > 0)
       }))
-    : []
-  const queueError = currentConversationId ? getQueueError(currentConversationId) : null
+  }, [currentConversationId, getQueuedTurns, queuedTurnsByConversation])
+  const queueError = useMemo(() => {
+    if (!currentConversationId) return null
+    return getQueueError(currentConversationId)
+  }, [currentConversationId, getQueueError, queueErrorByConversation])
   const modelSwitcherConversation = currentConversationId
     ? {
         id: currentConversationId,
         ai: currentConversation?.ai ?? currentConversationMeta?.ai
       }
     : null
-  const isLoadingConversation = useChatStore(state =>
-    currentConversationId ? state.isConversationLoading(currentConversationId) : false
-  )
-  const session = getCurrentSession()
+  const isLoadingConversation = currentConversationId
+    ? (loadingConversationCounts.get(currentConversationId) || 0) > 0
+    : false
   const {
     isGenerating,
     activeRunId,
@@ -407,7 +446,9 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
   }, [currentSpace, onboardingHtml, onboardingPrompt, onboardingResponse, setMockAnimating, setMockThinking])
 
   // AI Browser state
-  const { enabled: aiBrowserEnabled } = useAIBrowserStore()
+  const { enabled: aiBrowserEnabled } = useAIBrowserStore((state) => ({
+    enabled: state.enabled
+  }), shallow)
 
   // Handle send (with optional images for multi-modal messages, optional thinking mode, optional file contexts, optional plan mode)
   const handleSend = async (content: string, images?: ImageAttachment[], thinkingEnabled?: boolean, fileContexts?: FileContextAttachment[], mode?: ChatMode) => {
@@ -433,12 +474,11 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
   }
 
   const handleModeChange = useCallback((nextMode: ChatMode) => {
-    const conversationId = getCurrentConversationId()
-    if (!conversationId || !currentSpaceId) {
+    if (!currentConversationId || !currentSpaceId) {
       return
     }
-    void setConversationMode(currentSpaceId, conversationId, nextMode)
-  }, [currentSpaceId, getCurrentConversationId, setConversationMode])
+    void setConversationMode(currentSpaceId, currentConversationId, nextMode)
+  }, [currentConversationId, currentSpaceId, setConversationMode])
 
   // Handle stop - stops the current conversation's generation
   const handleStop = async () => {
@@ -448,22 +488,20 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
   }
 
   const handleOpenPlanInCanvas = async (planContent: string) => {
-    const conversationId = getCurrentConversationId()
-    if (!currentSpaceId || !conversationId) {
+    if (!currentSpaceId || !currentConversationId) {
       console.error('[ChatView] No active conversation to open plan in canvas')
       return
     }
 
-    await openPlan(planContent, t('Plan'), currentSpaceId, conversationId, currentSpace?.path)
+    await openPlan(planContent, t('Plan'), currentSpaceId, currentConversationId, currentSpace?.path)
   }
 
   const handleExecutePlan = useCallback(async (planContent: string) => {
-    const conversationId = getCurrentConversationId()
-    if (!currentSpaceId || !conversationId || isGenerating) {
+    if (!currentSpaceId || !currentConversationId || isGenerating) {
       return
     }
-    await executePlan(currentSpaceId, conversationId, planContent)
-  }, [currentSpaceId, executePlan, getCurrentConversationId, isGenerating])
+    await executePlan(currentSpaceId, currentConversationId, planContent)
+  }, [currentConversationId, currentSpaceId, executePlan, isGenerating])
 
   // Combine real messages with mock onboarding messages
   const realMessages = currentConversation?.messages || []
