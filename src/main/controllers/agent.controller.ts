@@ -19,6 +19,8 @@ import {
 import type { AskUserQuestionAnswerInput, ChatMode } from '../services/agent'
 import type { InvocationContext } from '../../shared/resource-access'
 import type { LocaleCode } from '../../shared/i18n/locale'
+import { buildSessionKey } from '../../shared/session-key'
+import { executeIdempotentOperation } from '../services/agent/op-id.service'
 
 // Image attachment type for multi-modal messages
 interface ImageAttachment {
@@ -34,6 +36,7 @@ export interface SendMessageRequest {
   spaceId: string
   conversationId: string
   message: string
+  opId?: string
   responseLanguage?: LocaleCode | string
   resumeSessionId?: string
   modelOverride?: string
@@ -70,6 +73,7 @@ export interface GuideMessageRequest {
   spaceId: string
   conversationId: string
   message: string
+  opId?: string
   runId?: string
   clientMessageId?: string
 }
@@ -90,6 +94,21 @@ function toErrorResponse(error: unknown): ControllerResponse {
   }
 }
 
+function withReplayMeta<T>(result: { replayed: boolean; result: T }): ControllerResponse<T> {
+  return {
+    success: true,
+    data: result.result,
+    ...(result.replayed ? { errorCode: 'OP_DUPLICATE_REPLAYED' } : {})
+  }
+}
+
+function buildScopeKey(spaceId: string, conversationId?: string): string {
+  if (conversationId && conversationId.trim().length > 0) {
+    return buildSessionKey(spaceId, conversationId)
+  }
+  return `space:${spaceId}`
+}
+
 /**
  * Send a message to the agent
  */
@@ -98,18 +117,26 @@ export async function sendMessage(
   request: SendMessageRequest
 ): Promise<ControllerResponse> {
   try {
-    if (request.invocationContext && request.invocationContext !== 'interactive') {
-      console.warn(
-        `[AgentController] Ignoring non-interactive invocationContext from external request: ${request.invocationContext}`
-      )
-    }
+    const execution = await executeIdempotentOperation({
+      scopeKey: buildScopeKey(request.spaceId, request.conversationId),
+      operation: 'send',
+      opId: request.opId,
+      execute: async () => {
+        if (request.invocationContext && request.invocationContext !== 'interactive') {
+          console.warn(
+            `[AgentController] Ignoring non-interactive invocationContext from external request: ${request.invocationContext}`
+          )
+        }
 
-    const normalizedModelOverride = request.modelOverride || request.model
-    const normalizedRequest = normalizedModelOverride
-      ? { ...request, modelOverride: normalizedModelOverride, invocationContext: 'interactive' as InvocationContext }
-      : { ...request, invocationContext: 'interactive' as InvocationContext }
-    await agentSendMessage(mainWindow, normalizedRequest)
-    return { success: true }
+        const normalizedModelOverride = request.modelOverride || request.model
+        const normalizedRequest = normalizedModelOverride
+          ? { ...request, modelOverride: normalizedModelOverride, invocationContext: 'interactive' as InvocationContext }
+          : { ...request, invocationContext: 'interactive' as InvocationContext }
+        await agentSendMessage(mainWindow, normalizedRequest)
+        return { accepted: true as const }
+      }
+    })
+    return withReplayMeta(execution)
   } catch (error: unknown) {
     return toErrorResponse(error)
   }
@@ -123,12 +150,20 @@ export async function sendWorkflowStepMessage(
   request: SendMessageRequest
 ): Promise<ControllerResponse> {
   try {
-    const normalizedModelOverride = request.modelOverride || request.model
-    const normalizedRequest = normalizedModelOverride
-      ? { ...request, modelOverride: normalizedModelOverride, invocationContext: 'workflow-step' as InvocationContext }
-      : { ...request, invocationContext: 'workflow-step' as InvocationContext }
-    await agentSendMessage(mainWindow, normalizedRequest)
-    return { success: true }
+    const execution = await executeIdempotentOperation({
+      scopeKey: buildScopeKey(request.spaceId, request.conversationId),
+      operation: 'workflow-step-send',
+      opId: request.opId,
+      execute: async () => {
+        const normalizedModelOverride = request.modelOverride || request.model
+        const normalizedRequest = normalizedModelOverride
+          ? { ...request, modelOverride: normalizedModelOverride, invocationContext: 'workflow-step' as InvocationContext }
+          : { ...request, invocationContext: 'workflow-step' as InvocationContext }
+        await agentSendMessage(mainWindow, normalizedRequest)
+        return { accepted: true as const }
+      }
+    })
+    return withReplayMeta(execution)
   } catch (error: unknown) {
     return toErrorResponse(error)
   }
@@ -139,8 +174,13 @@ export async function guideMessage(
   request: GuideMessageRequest
 ): Promise<ControllerResponse<{ delivery: 'session_send' | 'ask_user_question_answer' }>> {
   try {
-    const data = await agentGuideLiveInput(request)
-    return { success: true, data }
+    const execution = await executeIdempotentOperation({
+      scopeKey: buildScopeKey(request.spaceId, request.conversationId),
+      operation: 'guide-message',
+      opId: request.opId,
+      execute: () => agentGuideLiveInput(request)
+    })
+    return withReplayMeta(execution)
   } catch (error: unknown) {
     return toErrorResponse(error)
   }
@@ -159,10 +199,22 @@ export async function setMode(request: SetModeRequest): Promise<ControllerRespon
 /**
  * Stop generation for a specific conversation or all
  */
-export async function stopGeneration(spaceId: string, conversationId?: string): Promise<ControllerResponse> {
+export async function stopGeneration(
+  spaceId: string,
+  conversationId?: string,
+  opId?: string
+): Promise<ControllerResponse> {
   try {
-    await agentStopGeneration(spaceId, conversationId)
-    return { success: true }
+    const execution = await executeIdempotentOperation({
+      scopeKey: buildScopeKey(spaceId, conversationId),
+      operation: 'stop',
+      opId,
+      execute: async () => {
+        await agentStopGeneration(spaceId, conversationId)
+        return { stopped: true as const }
+      }
+    })
+    return withReplayMeta(execution)
   } catch (error: unknown) {
     return toErrorResponse(error)
   }
@@ -171,10 +223,22 @@ export async function stopGeneration(spaceId: string, conversationId?: string): 
 /**
  * Approve tool execution for a conversation
  */
-export function approveTool(spaceId: string, conversationId: string): ControllerResponse {
+export async function approveTool(
+  spaceId: string,
+  conversationId: string,
+  opId?: string
+): Promise<ControllerResponse> {
   try {
-    agentHandleToolApproval(spaceId, conversationId, true)
-    return { success: true }
+    const execution = await executeIdempotentOperation({
+      scopeKey: buildScopeKey(spaceId, conversationId),
+      operation: 'approve',
+      opId,
+      execute: () => {
+        agentHandleToolApproval(spaceId, conversationId, true)
+        return { approved: true as const }
+      }
+    })
+    return withReplayMeta(execution)
   } catch (error: unknown) {
     return toErrorResponse(error)
   }
@@ -183,10 +247,22 @@ export function approveTool(spaceId: string, conversationId: string): Controller
 /**
  * Reject tool execution for a conversation
  */
-export function rejectTool(spaceId: string, conversationId: string): ControllerResponse {
+export async function rejectTool(
+  spaceId: string,
+  conversationId: string,
+  opId?: string
+): Promise<ControllerResponse> {
   try {
-    agentHandleToolApproval(spaceId, conversationId, false)
-    return { success: true }
+    const execution = await executeIdempotentOperation({
+      scopeKey: buildScopeKey(spaceId, conversationId),
+      operation: 'reject',
+      opId,
+      execute: () => {
+        agentHandleToolApproval(spaceId, conversationId, false)
+        return { rejected: true as const }
+      }
+    })
+    return withReplayMeta(execution)
   } catch (error: unknown) {
     return toErrorResponse(error)
   }
@@ -198,11 +274,20 @@ export function rejectTool(spaceId: string, conversationId: string): ControllerR
 export async function answerQuestion(
   spaceId: string,
   conversationId: string,
-  answer: AskUserQuestionAnswerInput
+  answer: AskUserQuestionAnswerInput,
+  opId?: string
 ): Promise<ControllerResponse> {
   try {
-    await agentHandleAskUserQuestionResponse(spaceId, conversationId, answer)
-    return { success: true }
+    const execution = await executeIdempotentOperation({
+      scopeKey: buildScopeKey(spaceId, conversationId),
+      operation: 'answer-question',
+      opId,
+      execute: async () => {
+        await agentHandleAskUserQuestionResponse(spaceId, conversationId, answer)
+        return { answered: true as const }
+      }
+    })
+    return withReplayMeta(execution)
   } catch (error: unknown) {
     return toErrorResponse(error)
   }

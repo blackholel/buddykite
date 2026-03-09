@@ -7,12 +7,50 @@ import { WebSocket, WebSocketServer } from 'ws'
 import { IncomingMessage } from 'http'
 import { v4 as uuidv4 } from 'uuid'
 import { validateToken } from './auth'
+import { assertValidSessionKey, buildSessionKey } from '../../shared/session-key'
 
 interface WebSocketClient {
   id: string
   ws: WebSocket
   authenticated: boolean
-  subscriptions: Set<string> // conversationIds this client is subscribed to
+  subscriptions: Set<string> // session keys this client is subscribed to
+}
+
+const WS_ERROR_CODES = {
+  NOT_AUTHENTICATED: 'WS_NOT_AUTHENTICATED',
+  SUBSCRIBE_SCHEMA_DEPRECATED: 'WS_SUBSCRIBE_SCHEMA_DEPRECATED',
+  SUBSCRIBE_SCHEMA_INVALID: 'WS_SUBSCRIBE_SCHEMA_INVALID',
+  UNSUBSCRIBE_SCHEMA_INVALID: 'WS_UNSUBSCRIBE_SCHEMA_INVALID'
+} as const
+
+function toSessionSubscriptionKey(payload: unknown): { key?: string; code?: string; error?: string; deprecated?: boolean } {
+  if (!payload || typeof payload !== 'object') {
+    return {
+      code: WS_ERROR_CODES.SUBSCRIBE_SCHEMA_INVALID,
+      error: 'subscribe payload must include { spaceId, conversationId }'
+    }
+  }
+
+  const record = payload as Record<string, unknown>
+  const spaceId = typeof record.spaceId === 'string' ? record.spaceId.trim() : ''
+  const conversationId = typeof record.conversationId === 'string' ? record.conversationId.trim() : ''
+
+  if (spaceId && conversationId) {
+    return { key: buildSessionKey(spaceId, conversationId) }
+  }
+
+  if (!spaceId && conversationId) {
+    return {
+      code: WS_ERROR_CODES.SUBSCRIBE_SCHEMA_DEPRECATED,
+      error: 'conversationId-only subscribe payload is deprecated; use { spaceId, conversationId }',
+      deprecated: true
+    }
+  }
+
+  return {
+    code: WS_ERROR_CODES.SUBSCRIBE_SCHEMA_INVALID,
+    error: 'subscribe payload must include non-empty spaceId and conversationId'
+  }
 }
 
 // Store all connected clients
@@ -91,19 +129,42 @@ function handleClientMessage(
     case 'subscribe':
       // Subscribe to conversation events (requires authentication)
       if (!client.authenticated) {
-        sendToClient(client, { type: 'error', error: 'Not authenticated' })
+        sendToClient(client, {
+          type: 'error',
+          code: WS_ERROR_CODES.NOT_AUTHENTICATED,
+          error: 'Not authenticated'
+        })
         break
       }
-      if (message.payload?.conversationId) {
-        client.subscriptions.add(message.payload.conversationId)
-        console.log(`[WS] Client ${client.id} subscribed to ${message.payload.conversationId}`)
+      {
+        const resolved = toSessionSubscriptionKey(message.payload)
+        if (!resolved.key) {
+          sendToClient(client, {
+            type: 'error',
+            code: resolved.code,
+            error: resolved.error,
+            ...(resolved.deprecated ? { deprecated: true } : {})
+          })
+          break
+        }
+        client.subscriptions.add(resolved.key)
+        console.log(`[WS] Client ${client.id} subscribed to ${resolved.key}`)
       }
       break
 
     case 'unsubscribe':
-      // Unsubscribe from conversation events
-      if (message.payload?.conversationId) {
-        client.subscriptions.delete(message.payload.conversationId)
+      {
+        const resolved = toSessionSubscriptionKey(message.payload)
+        if (!resolved.key) {
+          sendToClient(client, {
+            type: 'error',
+            code: resolved.code || WS_ERROR_CODES.UNSUBSCRIBE_SCHEMA_INVALID,
+            error: resolved.error || 'unsubscribe payload must include { spaceId, conversationId }',
+            ...(resolved.deprecated ? { deprecated: true } : {})
+          })
+          break
+        }
+        client.subscriptions.delete(resolved.key)
       }
       break
 
@@ -133,17 +194,41 @@ export function broadcastToWebSocket(
   channel: string,
   data: Record<string, unknown>
 ): void {
-  const conversationId = data.conversationId
-  if (typeof conversationId !== 'string' || conversationId.length === 0) {
-    // This function is strictly conversation-scoped. Missing conversationId would otherwise
-    // silently drop events (no client can be subscribed to "undefined").
-    console.warn(`[WS] broadcastToWebSocket called without conversationId for channel: ${channel}`)
+  const sessionKeyFromPayload = typeof data.sessionKey === 'string' ? data.sessionKey : ''
+  const spaceId = typeof data.spaceId === 'string' ? data.spaceId : ''
+  const conversationId = typeof data.conversationId === 'string' ? data.conversationId : ''
+  const derivedSessionKey = spaceId && conversationId ? buildSessionKey(spaceId, conversationId) : ''
+
+  const sessionKey = (() => {
+    if (sessionKeyFromPayload) {
+      try {
+        assertValidSessionKey(sessionKeyFromPayload)
+      } catch (error) {
+        console.warn('[WS] Invalid payload sessionKey rejected', {
+          channel,
+          errorCode: (error as { errorCode?: string })?.errorCode || 'SESSION_KEY_INVALID'
+        })
+        return ''
+      }
+      if (derivedSessionKey && sessionKeyFromPayload !== derivedSessionKey) {
+        console.warn(
+          `[WS] broadcastToWebSocket sessionKey mismatch for channel=${channel}; payload sessionKey ignored`
+        )
+        return ''
+      }
+      return sessionKeyFromPayload
+    }
+    return derivedSessionKey
+  })()
+
+  if (!sessionKey) {
+    console.warn(`[WS] broadcastToWebSocket called without valid session scope for channel: ${channel}`)
     return
   }
 
   for (const client of Array.from(clients.values())) {
-    // Only send to authenticated clients subscribed to this conversation
-    if (client.authenticated && client.subscriptions.has(conversationId)) {
+    // Only send to authenticated clients subscribed to this exact session scope.
+    if (client.authenticated && client.subscriptions.has(sessionKey)) {
       sendToClient(client, {
         type: 'event',
         channel,

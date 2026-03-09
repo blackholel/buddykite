@@ -644,6 +644,8 @@ export interface AgentEventBase {
   conversationId: string;
   sessionKey?: string;
   runId?: string;
+  runEpoch?: number;
+  seq?: number;
 }
 
 export type AgentRunLifecycle = 'idle' | 'running' | 'completed' | 'stopped' | 'error';

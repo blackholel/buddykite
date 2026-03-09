@@ -266,6 +266,8 @@ export interface SessionState {
   spaceId: string
   conversationId: string
   runId: string
+  runEpoch: number
+  eventSeq: number
   mode: ChatMode
   startedAt: number
   latestAssistantContent: string

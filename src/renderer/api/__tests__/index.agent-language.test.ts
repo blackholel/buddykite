@@ -41,8 +41,11 @@ describe('renderer api language passthrough', () => {
     }
     await api.sendMessage(request)
 
-    expect(subscribeToConversationMock).toHaveBeenCalledWith('conv-1')
-    expect(httpRequestMock).toHaveBeenCalledWith('POST', '/api/agent/message', request)
+    expect(subscribeToConversationMock).toHaveBeenCalledWith('space-1', 'conv-1')
+    expect(httpRequestMock).toHaveBeenCalledWith('POST', '/api/agent/message', {
+      ...request,
+      opId: expect.any(String)
+    })
   })
 
   it('sendWorkflowStepMessage 在 HTTP fallback 保留 responseLanguage 且强制 interactive', async () => {
@@ -61,6 +64,7 @@ describe('renderer api language passthrough', () => {
       conversationId: 'conv-2',
       message: 'run',
       responseLanguage: 'ja',
+      opId: expect.any(String),
       invocationContext: 'interactive'
     })
   })

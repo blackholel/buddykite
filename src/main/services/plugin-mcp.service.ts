@@ -1,7 +1,7 @@
 /**
  * Plugin MCP Service
  *
- * Handles plugin MCP configuration and per-conversation enablement.
+ * Handles plugin MCP configuration and per-session enablement.
  */
 
 import { join } from 'path'
@@ -12,7 +12,7 @@ import { getEnabledPluginByFullName, listEnabledPlugins, type PluginInfo } from 
 // Cache for plugin MCP configs (by file path)
 const pluginMcpCache = new FileCache<Record<string, unknown> | null>()
 
-// In-memory per-conversation enabled plugin MCPs
+// In-memory per-session enabled plugin MCPs (sessionKey => plugin full names)
 const enabledPluginMcps = new Map<string, Set<string>>()
 
 const DANGEROUS_KEYS = ['__proto__', 'constructor', 'prototype'] as const
@@ -107,27 +107,27 @@ export function pluginHasMcp(plugin: PluginInfo): boolean {
   return !!config && Object.keys(config).length > 0
 }
 
-export function enablePluginMcp(conversationId: string, pluginFullName: string): boolean {
-  const existing = enabledPluginMcps.get(conversationId) || new Set<string>()
+export function enablePluginMcp(sessionScopeKey: string, pluginFullName: string): boolean {
+  const existing = enabledPluginMcps.get(sessionScopeKey) || new Set<string>()
   const before = existing.size
   existing.add(pluginFullName)
-  enabledPluginMcps.set(conversationId, existing)
+  enabledPluginMcps.set(sessionScopeKey, existing)
   return existing.size > before
 }
 
-export function getEnabledPluginMcpList(conversationId: string): string[] {
-  const set = enabledPluginMcps.get(conversationId)
+export function getEnabledPluginMcpList(sessionScopeKey: string): string[] {
+  const set = enabledPluginMcps.get(sessionScopeKey)
   if (!set || set.size === 0) return []
   return Array.from(set).sort()
 }
 
-export function getEnabledPluginMcpHash(conversationId: string): string {
-  const list = getEnabledPluginMcpList(conversationId)
+export function getEnabledPluginMcpHash(sessionScopeKey: string): string {
+  const list = getEnabledPluginMcpList(sessionScopeKey)
   return list.join('|')
 }
 
-export function clearEnabledPluginMcps(conversationId: string): void {
-  enabledPluginMcps.delete(conversationId)
+export function clearEnabledPluginMcps(sessionScopeKey: string): void {
+  enabledPluginMcps.delete(sessionScopeKey)
 }
 
 export function buildPluginMcpServers(

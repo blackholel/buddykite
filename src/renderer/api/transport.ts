@@ -170,23 +170,23 @@ export function disconnectWebSocket(): void {
   }
 }
 
-export function subscribeToConversation(conversationId: string): void {
+export function subscribeToConversation(spaceId: string, conversationId: string): void {
   if (wsConnection?.readyState === WebSocket.OPEN) {
     wsConnection.send(
       JSON.stringify({
         type: 'subscribe',
-        payload: { conversationId }
+        payload: { spaceId, conversationId }
       })
     )
   }
 }
 
-export function unsubscribeFromConversation(conversationId: string): void {
+export function unsubscribeFromConversation(spaceId: string, conversationId: string): void {
   if (wsConnection?.readyState === WebSocket.OPEN) {
     wsConnection.send(
       JSON.stringify({
         type: 'unsubscribe',
-        payload: { conversationId }
+        payload: { spaceId, conversationId }
       })
     )
   }

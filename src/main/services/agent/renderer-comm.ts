@@ -15,6 +15,7 @@ import { extractToolPath } from './resource-dir-guard.service'
 import { buildSessionKey } from '../../../shared/session-key'
 import { ASK_USER_QUESTION_ERROR_CODES } from './types'
 import { getSpaceResourcePolicy, isStrictSpaceOnlyPolicy } from './space-resource-policy.service'
+import { nextRunEventSeq, resolveRunEpoch } from './runtime-journal.service'
 import type {
   ToolCall,
   SessionState,
@@ -565,12 +566,35 @@ export function sendToRenderer(
   conversationId: string,
   data: Record<string, unknown>
 ): void {
+  const sessionKey = buildSessionKey(spaceId, conversationId)
+  const runId = typeof data.runId === 'string' && data.runId.trim().length > 0
+    ? data.runId.trim()
+    : null
+  const inlineRunEpoch = typeof data.runEpoch === 'number' && Number.isFinite(data.runEpoch)
+    ? Math.floor(data.runEpoch)
+    : null
+  const resolvedRunEpoch = inlineRunEpoch ?? (runId ? resolveRunEpoch(sessionKey, runId) : null)
+  const shouldPersistEvent = !(channel === 'agent:message' && data.isStreaming === true)
+  const seq = (() => {
+    if (!runId || resolvedRunEpoch == null || resolvedRunEpoch <= 0) return null
+    return nextRunEventSeq({
+      spaceId,
+      conversationId,
+      runEpoch: resolvedRunEpoch,
+      runId,
+      channel,
+      persist: shouldPersistEvent
+    })
+  })()
+
   // Always include spaceId and conversationId in event data
   const eventData = {
     ...data,
     spaceId,
     conversationId,
-    sessionKey: buildSessionKey(spaceId, conversationId)
+    sessionKey,
+    ...(resolvedRunEpoch != null && resolvedRunEpoch > 0 ? { runEpoch: resolvedRunEpoch } : {}),
+    ...(seq != null ? { seq } : {})
   }
 
   // 1. Send to Electron renderer via IPC

@@ -38,8 +38,16 @@ interface GuideMessageRequest {
   spaceId: string
   conversationId: string
   message: string
+  opId?: string
   runId?: string
   clientMessageId?: string
+}
+
+function createOpId(prefix: string): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return `${prefix}-${crypto.randomUUID()}`
+  }
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
 }
 
 /**
@@ -332,6 +340,7 @@ export const api = {
     spaceId: string
     conversationId: string
     message: string
+    opId?: string
     responseLanguage?: LocaleCode | string
     resumeSessionId?: string
     modelOverride?: string
@@ -374,15 +383,19 @@ export const api = {
       extension: string
     }>
   }): Promise<ApiResponse> => {
+    const normalizedRequest = {
+      ...request,
+      opId: request.opId || createOpId('send')
+    }
     // Subscribe to conversation events before sending
     if (!isElectron()) {
-      subscribeToConversation(request.conversationId)
+      subscribeToConversation(normalizedRequest.spaceId, normalizedRequest.conversationId)
     }
 
     if (isElectron()) {
-      return window.kite.sendMessage(request)
+      return window.kite.sendMessage(normalizedRequest)
     }
-    return httpRequest('POST', '/api/agent/message', request)
+    return httpRequest('POST', '/api/agent/message', normalizedRequest)
   },
 
   setAgentMode: async (
@@ -401,6 +414,7 @@ export const api = {
     spaceId: string
     conversationId: string
     message: string
+    opId?: string
     responseLanguage?: LocaleCode | string
     resumeSessionId?: string
     modelOverride?: string
@@ -442,17 +456,21 @@ export const api = {
       extension: string
     }>
   }): Promise<ApiResponse> => {
+    const normalizedRequest = {
+      ...request,
+      opId: request.opId || createOpId('workflow-step-send')
+    }
     if (!isElectron()) {
-      subscribeToConversation(request.conversationId)
+      subscribeToConversation(normalizedRequest.spaceId, normalizedRequest.conversationId)
     }
 
     if (isElectron()) {
-      return window.kite.sendWorkflowStepMessage(request)
+      return window.kite.sendWorkflowStepMessage(normalizedRequest)
     }
     // Security boundary: remote HTTP requests must not escalate to workflow-step.
     // Keep invocationContext forced to interactive for untrusted external clients.
     return httpRequest('POST', '/api/agent/message', {
-      ...request,
+      ...normalizedRequest,
       invocationContext: 'interactive'
     })
   },
@@ -460,6 +478,10 @@ export const api = {
   guideMessage: async (
     request: GuideMessageRequest
   ): Promise<ApiResponse<{ delivery: 'session_send' | 'ask_user_question_answer' }>> => {
+    const normalizedRequest = {
+      ...request,
+      opId: request.opId || createOpId('guide-message')
+    }
     if (isElectron()) {
       const bridge = (window as unknown as { kite?: { guideMessage?: (payload: GuideMessageRequest) => Promise<ApiResponse<{ delivery: 'session_send' | 'ask_user_question_answer' }>> } }).kite
       if (!bridge || typeof bridge.guideMessage !== 'function') {
@@ -503,7 +525,7 @@ export const api = {
 
             electronBridge.on(replyChannel, onReply)
             electronBridge.send('agent:guide-message-fallback', {
-              ...request,
+              ...normalizedRequest,
               replyChannel
             })
           })
@@ -513,44 +535,50 @@ export const api = {
           error: 'IPC bridge unavailable: guideMessage'
         }
       }
-      return bridge.guideMessage(request)
+      return bridge.guideMessage(normalizedRequest)
     }
-    return httpRequest('POST', '/api/agent/guide-message', request)
+    return httpRequest('POST', '/api/agent/guide-message', normalizedRequest)
   },
 
-  stopGeneration: async (spaceId: string, conversationId?: string): Promise<ApiResponse> => {
+  stopGeneration: async (spaceId: string, conversationId?: string, opId?: string): Promise<ApiResponse> => {
+    const normalizedOpId = opId || createOpId('stop')
     if (isElectron()) {
-      return window.kite.stopGeneration(spaceId, conversationId)
+      return window.kite.stopGeneration(spaceId, conversationId, normalizedOpId)
     }
-    return httpRequest('POST', '/api/agent/stop', { spaceId, conversationId })
+    return httpRequest('POST', '/api/agent/stop', { spaceId, conversationId, opId: normalizedOpId })
   },
 
-  approveTool: async (spaceId: string, conversationId: string): Promise<ApiResponse> => {
+  approveTool: async (spaceId: string, conversationId: string, opId?: string): Promise<ApiResponse> => {
+    const normalizedOpId = opId || createOpId('approve')
     if (isElectron()) {
-      return window.kite.approveTool(spaceId, conversationId)
+      return window.kite.approveTool(spaceId, conversationId, normalizedOpId)
     }
-    return httpRequest('POST', '/api/agent/approve', { spaceId, conversationId })
+    return httpRequest('POST', '/api/agent/approve', { spaceId, conversationId, opId: normalizedOpId })
   },
 
-  rejectTool: async (spaceId: string, conversationId: string): Promise<ApiResponse> => {
+  rejectTool: async (spaceId: string, conversationId: string, opId?: string): Promise<ApiResponse> => {
+    const normalizedOpId = opId || createOpId('reject')
     if (isElectron()) {
-      return window.kite.rejectTool(spaceId, conversationId)
+      return window.kite.rejectTool(spaceId, conversationId, normalizedOpId)
     }
-    return httpRequest('POST', '/api/agent/reject', { spaceId, conversationId })
+    return httpRequest('POST', '/api/agent/reject', { spaceId, conversationId, opId: normalizedOpId })
   },
 
   answerQuestion: async (
     spaceId: string,
     conversationId: string,
-    answer: string | AskUserQuestionAnswerPayload
+    answer: string | AskUserQuestionAnswerPayload,
+    opId?: string
   ): Promise<ApiResponse> => {
+    const normalizedOpId = opId || createOpId('answer')
     if (isElectron()) {
       const bridge = (window as unknown as {
         kite?: {
           answerQuestion?: (
             spaceId: string,
             id: string,
-            payload: string | AskUserQuestionAnswerPayload
+            payload: string | AskUserQuestionAnswerPayload,
+            opId?: string
           ) => Promise<ApiResponse>
         }
       }).kite
@@ -560,12 +588,22 @@ export const api = {
           error: 'IPC bridge unavailable: answerQuestion'
         }
       }
-      return bridge.answerQuestion(spaceId, conversationId, answer)
+      return bridge.answerQuestion(spaceId, conversationId, answer, normalizedOpId)
     }
     if (typeof answer === 'string') {
-      return httpRequest('POST', '/api/agent/answer-question', { spaceId, conversationId, answer })
+      return httpRequest('POST', '/api/agent/answer-question', {
+        spaceId,
+        conversationId,
+        answer,
+        opId: normalizedOpId
+      })
     }
-    return httpRequest('POST', '/api/agent/answer-question', { spaceId, conversationId, payload: answer })
+    return httpRequest('POST', '/api/agent/answer-question', {
+      spaceId,
+      conversationId,
+      payload: answer,
+      opId: normalizedOpId
+    })
   },
 
   // Get current session state for recovery after refresh

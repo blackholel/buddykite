@@ -96,6 +96,8 @@ import { normalizeLocale, type LocaleCode } from '../../../shared/i18n/locale'
 import { buildSessionKey } from '../../../shared/session-key'
 import { assertAiProfileConfigured } from './ai-setup-guard'
 import { trackChangeFileFromToolUse } from './change-tracking'
+import { acquireSendDispatchSlot } from './dispatch-throttle.service'
+import { allocateRunEpoch } from './runtime-journal.service'
 
 interface McpDirectiveResult {
   text: string
@@ -759,7 +761,7 @@ function finalizeSession(params: FinalizeSessionParams): boolean {
 
 function processMcpLine(
   line: string,
-  conversationId: string | null,
+  sessionScopeKey: string | null,
   enablePlugins: boolean
 ): { text: string; enabled?: string; missing?: string } {
   const trimmed = line.trim()
@@ -790,13 +792,13 @@ function processMcpLine(
     return { text: '<!-- injected: mcp -->', missing: pluginInput }
   }
 
-  if (conversationId) {
-    enablePluginMcp(conversationId, plugin.fullName)
+  if (sessionScopeKey) {
+    enablePluginMcp(sessionScopeKey, plugin.fullName)
   }
   return { text: '<!-- injected: mcp -->', enabled: plugin.fullName }
 }
 
-function extractMcpDirectives(input: string, conversationId: string): McpDirectiveResult {
+function extractMcpDirectives(input: string, sessionScopeKey: string): McpDirectiveResult {
   const lines = input.split(/\r?\n/)
   const enabled: string[] = []
   const missing: string[] = []
@@ -810,7 +812,7 @@ function extractMcpDirectives(input: string, conversationId: string): McpDirecti
     }
     if (inFence) return line
 
-    const result = processMcpLine(line, conversationId, true)
+    const result = processMcpLine(line, sessionScopeKey, true)
     if (result.enabled) enabled.push(result.enabled)
     if (result.missing) missing.push(result.missing)
     return result.text
@@ -1006,6 +1008,7 @@ export async function sendMessage(
     resolvedWorkDir: workDir,
     configDir: null
   })
+  const sessionKey = toSessionKey(spaceId, conversationId)
   beginChangeSet(spaceId, conversationId, workDir)
   const spaceConfig = getSpaceConfig(workDir)
   const { effectiveLazyLoad: skillsLazyLoad, toolkit } = getEffectiveSkillsLazyLoad(workDir, config)
@@ -1015,7 +1018,7 @@ export async function sendMessage(
   const mcpDirectiveResult = (effectiveMode === 'ask')
     ? stripMcpDirectives(message)
     : (skillsLazyLoad
-      ? extractMcpDirectives(message, conversationId)
+      ? extractMcpDirectives(message, sessionKey)
       : { text: message, enabled: [], missing: [] })
   const messageForSend = mcpDirectiveResult.text
 
@@ -1054,16 +1057,18 @@ export async function sendMessage(
     })
   }
 
+  const releaseDispatchSlot = acquireSendDispatchSlot(spaceId)
+
   // Create abort controller for this session
   const abortController = new AbortController()
   const runId = createRunId()
+  const runEpoch = allocateRunEpoch(spaceId, conversationId, runId)
   const startedAtIso = new Date().toISOString()
 
   // Accumulate stderr for detailed error messages
   let stderrBuffer = ''
 
   // Register this session in the active sessions map
-  const sessionKey = toSessionKey(spaceId, conversationId)
   const textClarificationFallbackUsedInConversation =
     textClarificationFallbackUsedByConversation.get(sessionKey) === true
   const sessionState: SessionState = {
@@ -1071,6 +1076,8 @@ export async function sendMessage(
     spaceId,
     conversationId,
     runId,
+    runEpoch,
+    eventSeq: 0,
     mode: effectiveMode,
     startedAt: Date.now(),
     latestAssistantContent: '',
@@ -1099,6 +1106,7 @@ export async function sendMessage(
   sendToRenderer('agent:run-start', spaceId, conversationId, {
     type: 'run_start',
     runId,
+    runEpoch,
     startedAt: startedAtIso,
     mode: effectiveMode
   })
@@ -1206,7 +1214,7 @@ export async function sendMessage(
           )
         }
       }),
-      enabledPluginMcps: getEnabledPluginMcpList(conversationId)
+      enabledPluginMcps: getEnabledPluginMcpList(sessionKey)
     })
 
     // Override stderr handler to accumulate buffer for error reporting
@@ -1228,7 +1236,7 @@ export async function sendMessage(
     } else {
       const enabledMcpServers = getEnabledMcpServers(config.mcpServers || {}, workDir)
       const pluginMcpServers = buildPluginMcpServers(
-        getEnabledPluginMcpList(conversationId),
+        getEnabledPluginMcpList(sessionKey),
         enabledMcpServers || {}
       )
       const mcpServerNames = [
@@ -1250,7 +1258,7 @@ export async function sendMessage(
       profileId: effectiveAi.profileId,
       providerSignature: effectiveAi.providerSignature,
       effectiveModel: effectiveAi.effectiveModel,
-      enabledPluginMcpsHash: getEnabledPluginMcpHash(conversationId),
+      enabledPluginMcpsHash: getEnabledPluginMcpHash(sessionKey),
       resourceIndexHash: getResourceIndexHash(workDir),
       hasCanUseTool: true // Session has canUseTool callback
     }
@@ -2235,6 +2243,7 @@ If the user asks about this project/codebase, inspect files in current workspace
     // Close V2 session on error (it may be in a bad state)
     closeV2Session(spaceId, conversationId)
   } finally {
+    releaseDispatchSlot()
     if (idleTimeoutId) {
       clearTimeout(idleTimeoutId)
       idleTimeoutId = null

@@ -271,6 +271,7 @@ export function registerApiRoutes(app: Express, mainWindow: BrowserWindow | null
       spaceId,
       conversationId,
       message,
+      opId,
       responseLanguage,
       resumeSessionId,
       modelOverride,
@@ -287,6 +288,7 @@ export function registerApiRoutes(app: Express, mainWindow: BrowserWindow | null
       spaceId,
       conversationId,
       message,
+      opId,
       responseLanguage,
       resumeSessionId,
       modelOverride,
@@ -303,11 +305,12 @@ export function registerApiRoutes(app: Express, mainWindow: BrowserWindow | null
   })
 
   app.post('/api/agent/guide-message', async (req: Request, res: Response) => {
-    const { spaceId, conversationId, message, runId, clientMessageId } = req.body
+    const { spaceId, conversationId, message, opId, runId, clientMessageId } = req.body
     const result = await agentController.guideMessage(mainWindow, {
       spaceId,
       conversationId,
       message,
+      opId,
       runId,
       clientMessageId
     })
@@ -332,12 +335,12 @@ export function registerApiRoutes(app: Express, mainWindow: BrowserWindow | null
   })
 
   app.post('/api/agent/stop', async (req: Request, res: Response) => {
-    const { spaceId, conversationId } = req.body
+    const { spaceId, conversationId, opId } = req.body
     if (typeof spaceId !== 'string') {
       res.status(400).json({ success: false, error: 'spaceId is required' })
       return
     }
-    const result = await agentController.stopGeneration(spaceId, conversationId)
+    const result = await agentController.stopGeneration(spaceId, conversationId, opId)
     res.json(result)
   })
 
@@ -381,32 +384,32 @@ export function registerApiRoutes(app: Express, mainWindow: BrowserWindow | null
   }))
 
   app.post('/api/agent/approve', async (req: Request, res: Response) => {
-    const { spaceId, conversationId } = req.body
+    const { spaceId, conversationId, opId } = req.body
     if (typeof spaceId !== 'string' || typeof conversationId !== 'string') {
       res.status(400).json({ success: false, error: 'spaceId and conversationId are required' })
       return
     }
-    const result = agentController.approveTool(spaceId, conversationId)
+    const result = await agentController.approveTool(spaceId, conversationId, opId)
     res.json(result)
   })
 
   app.post('/api/agent/reject', async (req: Request, res: Response) => {
-    const { spaceId, conversationId } = req.body
+    const { spaceId, conversationId, opId } = req.body
     if (typeof spaceId !== 'string' || typeof conversationId !== 'string') {
       res.status(400).json({ success: false, error: 'spaceId and conversationId are required' })
       return
     }
-    const result = agentController.rejectTool(spaceId, conversationId)
+    const result = await agentController.rejectTool(spaceId, conversationId, opId)
     res.json(result)
   })
 
   app.post('/api/agent/answer-question', async (req: Request, res: Response) => {
-    const { spaceId, conversationId, answer, payload } = req.body
+    const { spaceId, conversationId, answer, payload, opId } = req.body
     if (typeof spaceId !== 'string' || typeof conversationId !== 'string') {
       res.status(400).json({ success: false, error: 'spaceId and conversationId are required' })
       return
     }
-    const result = await agentController.answerQuestion(spaceId, conversationId, payload ?? answer)
+    const result = await agentController.answerQuestion(spaceId, conversationId, payload ?? answer, opId)
     res.json(result)
   })
 

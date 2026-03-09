@@ -74,6 +74,8 @@ function createSessionState(overrides: Partial<SessionState> = {}): SessionState
     spaceId: 'space-1',
     conversationId: 'conv-1',
     runId: 'run-1',
+    runEpoch: 1,
+    eventSeq: 0,
     mode: 'code',
     startedAt: Date.now(),
     latestAssistantContent: '',

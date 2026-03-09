@@ -6,6 +6,7 @@
 
 import { unstable_v2_createSession } from '@anthropic-ai/claude-agent-sdk'
 import { resolve } from 'path'
+import { cpus } from 'os'
 import { getConfig, onApiConfigChange } from '../config.service'
 import { clearSessionId, getConversation } from '../conversation.service'
 import { getHeadlessElectronPath } from './electron-path'
@@ -28,6 +29,7 @@ import { getEnabledPluginMcpHash, getEnabledPluginMcpList } from '../plugin-mcp.
 import { getResourceIndexHash } from '../resource-index.service'
 import { normalizeLocale, type LocaleCode } from '../../../shared/i18n/locale'
 import { buildSessionKey } from '../../../shared/session-key'
+import { flushRuntimeJournalSnapshot } from './runtime-journal.service'
 
 // V2 Session management: Map of sessionKey -> persistent V2 session
 const v2Sessions = new Map<string, V2SessionInfo>()
@@ -36,8 +38,9 @@ const v2Sessions = new Map<string, V2SessionInfo>()
 const activeSessions = new Map<string, SessionState>()
 
 // Session cleanup defaults
-const DEFAULT_SESSION_IDLE_TIMEOUT_MS = 30 * 60 * 1000
+const DEFAULT_SESSION_IDLE_TIMEOUT_MS = 15 * 60 * 1000
 const MIN_SESSION_IDLE_TIMEOUT_MS = 1000
+const DEFAULT_MAX_WORKERS = Math.min(8, Math.max(2, cpus().length || 1))
 const RESOURCE_INDEX_REBUILD_DEBOUNCE_MS = 3000
 let cleanupIntervalId: NodeJS.Timeout | null = null
 const lastResourceIndexRebuildAt = new Map<string, number>()
@@ -131,6 +134,24 @@ function withSessionAcquireLock<T>(
   }
 
   return run()
+}
+
+function createSessionLimitError(errorCode: string, message: string): Error & { errorCode: string } {
+  const error = new Error(message) as Error & { errorCode: string }
+  error.errorCode = errorCode
+  return error
+}
+
+function resolveMaxWorkers(): number {
+  const rawValue = (getConfig().claudeCode as { maxWorkers?: unknown } | undefined)?.maxWorkers
+  if (typeof rawValue !== 'number' || !Number.isFinite(rawValue)) {
+    return DEFAULT_MAX_WORKERS
+  }
+  const normalized = Math.floor(rawValue)
+  if (normalized <= 0) {
+    return DEFAULT_MAX_WORKERS
+  }
+  return normalized
 }
 
 export function classifyResumeError(error: unknown): {
@@ -358,6 +379,13 @@ export async function getOrCreateV2Session(
   }
 
   console.log(`[Agent][${sessionKey}] Creating new V2 session${sessionId ? ` with resume: ${sessionId}` : ''}`)
+  const maxWorkers = resolveMaxWorkers()
+  if (v2Sessions.size >= maxWorkers) {
+    throw createSessionLimitError(
+      'WORKER_LIMIT_REACHED',
+      `Worker limit reached (${v2Sessions.size}/${maxWorkers})`
+    )
+  }
   const startTime = Date.now()
 
   if (sessionId) {
@@ -654,7 +682,7 @@ export async function ensureSessionWarm(
       conversationId,
       getActiveSession
     ),
-    enabledPluginMcps: getEnabledPluginMcpList(conversationId)
+    enabledPluginMcps: getEnabledPluginMcpList(sessionKey)
   })
 
   try {
@@ -676,7 +704,7 @@ export async function ensureSessionWarm(
         profileId: effectiveAi.profileId,
         providerSignature: effectiveAi.providerSignature,
         effectiveModel: effectiveAi.effectiveModel,
-        enabledPluginMcpsHash: getEnabledPluginMcpHash(conversationId),
+        enabledPluginMcpsHash: getEnabledPluginMcpHash(sessionKey),
         resourceIndexHash: getResourceIndexHash(workDir),
         hasCanUseTool: true // Session has canUseTool callback
       }
@@ -718,6 +746,8 @@ export function closeAllV2Sessions(): void {
     clearInterval(cleanupIntervalId)
     cleanupIntervalId = null
   }
+
+  flushRuntimeJournalSnapshot()
 }
 
 /**

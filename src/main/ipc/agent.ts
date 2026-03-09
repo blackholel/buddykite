@@ -3,13 +3,9 @@
  */
 
 import { ipcMain, BrowserWindow } from 'electron'
+import * as agentController from '../controllers/agent.controller'
 import {
-  sendMessage,
-  guideLiveInput,
   setAgentMode,
-  stopGeneration,
-  handleToolApproval,
-  handleAskUserQuestionResponse,
   getSessionState,
   ensureSessionWarm,
   testMcpConnections,
@@ -22,6 +18,8 @@ import type { AskUserQuestionAnswerInput } from '../services/agent'
 import type { InvocationContext } from '../../shared/resource-access'
 import type { LocaleCode } from '../../shared/i18n/locale'
 import { getResourceIndexHash } from '../services/resource-index.service'
+import { executeIdempotentOperation } from '../services/agent/op-id.service'
+import { buildSessionKey } from '../../shared/session-key'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -42,6 +40,7 @@ type SendMessageIpcRequest = {
   spaceId: string
   conversationId: string
   message: string
+  opId?: string
   responseLanguage?: LocaleCode | string
   resumeSessionId?: string
   modelOverride?: string
@@ -78,6 +77,7 @@ type GuideMessageIpcRequest = {
   spaceId: string
   conversationId: string
   message: string
+  opId?: string
   runId?: string
   clientMessageId?: string
 }
@@ -104,8 +104,7 @@ export function registerAgentHandlers(window: BrowserWindow | null): void {
         const normalizedRequest = normalizedModelOverride
           ? { ...request, modelOverride: normalizedModelOverride, invocationContext: 'interactive' as InvocationContext }
           : { ...request, invocationContext: 'interactive' as InvocationContext }
-        await sendMessage(mainWindow, normalizedRequest)
-        return { success: true }
+        return await agentController.sendMessage(mainWindow, normalizedRequest)
       } catch (error: unknown) {
         return toErrorResponse(error)
       }
@@ -132,8 +131,7 @@ export function registerAgentHandlers(window: BrowserWindow | null): void {
     'agent:guide-message',
     async (_event, request: GuideMessageIpcRequest) => {
       try {
-        const data = await guideLiveInput(request)
-        return { success: true, data }
+        return await agentController.guideMessage(mainWindow, request)
       } catch (error: unknown) {
         return toErrorResponse(error)
       }
@@ -158,9 +156,16 @@ export function registerAgentHandlers(window: BrowserWindow | null): void {
       }
 
       try {
-        const { spaceId, conversationId, message, runId, clientMessageId } = payload || {}
-        const data = await guideLiveInput({ spaceId, conversationId, message, runId, clientMessageId })
-        event.sender.send(replyChannel, { success: true, data })
+        const { spaceId, conversationId, message, opId, runId, clientMessageId } = payload || {}
+        const response = await agentController.guideMessage(mainWindow, {
+          spaceId,
+          conversationId,
+          message,
+          opId,
+          runId,
+          clientMessageId
+        })
+        event.sender.send(replyChannel, response)
       } catch (error: unknown) {
         event.sender.send(replyChannel, toErrorResponse(error))
       }
@@ -168,30 +173,27 @@ export function registerAgentHandlers(window: BrowserWindow | null): void {
   )
 
   // Stop generation for a specific conversation (or all in space if not specified)
-  ipcMain.handle('agent:stop', async (_event, request: { spaceId: string; conversationId?: string }) => {
+  ipcMain.handle('agent:stop', async (_event, request: { spaceId: string; conversationId?: string; opId?: string }) => {
     try {
-      await stopGeneration(request.spaceId, request.conversationId)
-      return { success: true }
+      return await agentController.stopGeneration(request.spaceId, request.conversationId, request.opId)
     } catch (error: unknown) {
       return toErrorResponse(error)
     }
   })
 
   // Approve tool execution for a specific conversation
-  ipcMain.handle('agent:approve-tool', async (_event, request: { spaceId: string; conversationId: string }) => {
+  ipcMain.handle('agent:approve-tool', async (_event, request: { spaceId: string; conversationId: string; opId?: string }) => {
     try {
-      handleToolApproval(request.spaceId, request.conversationId, true)
-      return { success: true }
+      return await agentController.approveTool(request.spaceId, request.conversationId, request.opId)
     } catch (error: unknown) {
       return toErrorResponse(error)
     }
   })
 
   // Reject tool execution for a specific conversation
-  ipcMain.handle('agent:reject-tool', async (_event, request: { spaceId: string; conversationId: string }) => {
+  ipcMain.handle('agent:reject-tool', async (_event, request: { spaceId: string; conversationId: string; opId?: string }) => {
     try {
-      handleToolApproval(request.spaceId, request.conversationId, false)
-      return { success: true }
+      return await agentController.rejectTool(request.spaceId, request.conversationId, request.opId)
     } catch (error: unknown) {
       return toErrorResponse(error)
     }
@@ -200,11 +202,15 @@ export function registerAgentHandlers(window: BrowserWindow | null): void {
   // Answer AskUserQuestion for a specific conversation
   ipcMain.handle('agent:answer-question', async (
     _event,
-    request: { spaceId: string; conversationId: string; answer: AskUserQuestionAnswerInput }
+    request: { spaceId: string; conversationId: string; answer: AskUserQuestionAnswerInput; opId?: string }
   ) => {
     try {
-      await handleAskUserQuestionResponse(request.spaceId, request.conversationId, request.answer)
-      return { success: true }
+      return await agentController.answerQuestion(
+        request.spaceId,
+        request.conversationId,
+        request.answer,
+        request.opId
+      )
     } catch (error: unknown) {
       return toErrorResponse(error)
     }
@@ -287,11 +293,19 @@ export function registerAgentHandlers(window: BrowserWindow | null): void {
   // Reconnect a failed MCP server
   ipcMain.handle('agent:reconnect-mcp', async (
     _event,
-    request: { spaceId: string; conversationId: string; serverName: string }
+    request: { spaceId: string; conversationId: string; serverName: string; opId?: string }
   ) => {
     try {
-      const result = await reconnectMcpServer(request.spaceId, request.conversationId, request.serverName)
-      return result
+      const execution = await executeIdempotentOperation({
+        scopeKey: buildSessionKey(request.spaceId, request.conversationId),
+        operation: 'reconnect-mcp',
+        opId: request.opId,
+        execute: () => reconnectMcpServer(request.spaceId, request.conversationId, request.serverName)
+      })
+      return {
+        ...execution.result,
+        ...(execution.replayed ? { errorCode: 'OP_DUPLICATE_REPLAYED' } : {})
+      }
     } catch (error: unknown) {
       return toErrorResponse(error)
     }

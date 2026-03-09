@@ -10,7 +10,7 @@ import {
   updateWorkflow,
   deleteWorkflow
 } from '../services/workflow.service'
-import { sendMessage } from '../services/agent'
+import * as agentController from '../controllers/agent.controller'
 import type { InvocationContext } from '../../shared/resource-access'
 import type { LocaleCode } from '../../shared/i18n/locale'
 
@@ -18,6 +18,7 @@ interface WorkflowStepSendRequest {
   spaceId: string
   conversationId: string
   message: string
+  opId?: string
   responseLanguage?: LocaleCode | string
   resumeSessionId?: string
   modelOverride?: string
@@ -114,8 +115,7 @@ export function registerWorkflowHandlers(mainWindow: BrowserWindow | null): void
       const normalizedRequest = normalizedModelOverride
         ? { ...request, modelOverride: normalizedModelOverride, invocationContext: 'workflow-step' as InvocationContext }
         : { ...request, invocationContext: 'workflow-step' as InvocationContext }
-      await sendMessage(mainWindow, normalizedRequest)
-      return { success: true }
+      return await agentController.sendWorkflowStepMessage(mainWindow, normalizedRequest)
     } catch (error: unknown) {
       const err = error as Error
       return { success: false, error: err.message }

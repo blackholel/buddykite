@@ -63,7 +63,7 @@ import {
 } from '../session.manager'
 import type { SessionConfig, SessionState } from '../types'
 
-const DEFAULT_SESSION_IDLE_TIMEOUT_MS = 30 * 60 * 1000
+const DEFAULT_SESSION_IDLE_TIMEOUT_MS = 15 * 60 * 1000
 
 function createRunningSessionState(conversationId: string): SessionState {
   return {
@@ -71,6 +71,8 @@ function createRunningSessionState(conversationId: string): SessionState {
     spaceId: 'space-1',
     conversationId,
     runId: `run-${conversationId}`,
+    runEpoch: 1,
+    eventSeq: 0,
     mode: 'code',
     startedAt: Date.now(),
     latestAssistantContent: '',
@@ -429,7 +431,7 @@ describe('session.manager cleanup', () => {
     vi.mocked(unstable_v2_createSession).mockResolvedValueOnce({ close } as any)
 
     await getOrCreateV2Session('space-1', 'conv-touch', {}, undefined, baseConfig)
-    await vi.advanceTimersByTimeAsync(29 * 60 * 1000)
+    await vi.advanceTimersByTimeAsync(14 * 60 * 1000)
     touchV2Session('space-1', 'conv-touch')
 
     await vi.advanceTimersByTimeAsync(2 * 60 * 1000)
@@ -437,6 +439,28 @@ describe('session.manager cleanup', () => {
 
     await vi.advanceTimersByTimeAsync(DEFAULT_SESSION_IDLE_TIMEOUT_MS + 60 * 1000)
     expect(close).toHaveBeenCalledTimes(1)
+  })
+
+  it('maxWorkers 达到上限时拒绝新建会话', async () => {
+    const closeA = vi.fn()
+    const closeB = vi.fn()
+    vi.mocked(getConfig).mockReturnValue({
+      claudeCode: {
+        maxWorkers: 1
+      }
+    } as any)
+    vi.mocked(unstable_v2_createSession)
+      .mockResolvedValueOnce({ close: closeA } as any)
+      .mockResolvedValueOnce({ close: closeB } as any)
+
+    await getOrCreateV2Session('space-1', 'conv-limit-a', {}, undefined, baseConfig)
+    await expect(
+      getOrCreateV2Session('space-1', 'conv-limit-b', {}, undefined, baseConfig)
+    ).rejects.toMatchObject({
+      errorCode: 'WORKER_LIMIT_REACHED'
+    })
+
+    expect(unstable_v2_createSession).toHaveBeenCalledTimes(1)
   })
 
   it.each([

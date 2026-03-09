@@ -882,7 +882,7 @@ async function ensureConversationLoadedImpl(
   }
 
   if (subscribe) {
-    api.subscribeToConversation(conversationId)
+    api.subscribeToConversation(spaceId, conversationId)
   }
 
   if (setCurrent) {
