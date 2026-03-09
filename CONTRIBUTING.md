@@ -88,7 +88,26 @@ When adding a new IPC event, update these 3 files:
 
 ## Release Workflow
 
-Kite releases follow SemVer (`major.minor.patch`) and are version-driven.
+Kite Desktop releases must always satisfy all of these:
+
+1. GitHub-reachable users can download from GitHub Releases.
+2. Users who cannot reach GitHub can fallback to Baidu Netdisk.
+3. In-app update surfaces ("Settings > About" and update modal) show correct version + links.
+
+### Key Files
+
+1. Version: `package.json`
+2. Release notes: `.release-notes-current.md`
+3. Dual-source manifest: `resources/update-manifest.json`
+4. Manifest validator: `scripts/validate-update-manifest.mjs`
+5. Release process doc: `CONTRIBUTING.md`
+
+### One-Time Prerequisites
+
+1. Set `GH_TOKEN` for GitHub Release publishing.
+2. Prepare Baidu Netdisk account access for installer upload + share links.
+
+### Per-Release Checklist
 
 ```bash
 # 1) Bump version
@@ -97,17 +116,46 @@ npm version patch    # or minor / major
 # 2) Update release notes
 # edit .release-notes-current.md
 
-# 3) Update dual-source update manifest (required)
-# edit resources/update-manifest.json:
-# - latestVersion must match package.json version
-# - release entry for that version must exist
-# - per-platform github + baidu links must be filled
+# 3) Build installers as needed
+npm run build:mac
+npm run build:win
+npm run build:linux
 
-# 4) Publish
+# 4) Upload installers to Baidu Netdisk
+# collect:
+# - baidu.url
+# - baidu.extractCode
+
+# 5) Update resources/update-manifest.json
+# - latestVersion == package.json version
+# - add a release node for that version
+# - fill platforms: darwin-arm64, win32-x64, linux-x64, default
+# - each platform must have github + baidu(url/extractCode)
+
+# 6) Validate manifest before publishing
+npm run check:update-manifest
+
+# 7) Publish release
 npm run release      # or release:mac / release:win / release:linux
 ```
 
-`release*` scripts automatically run `npm run check:update-manifest`.
+`release*` scripts run `npm run check:update-manifest` automatically, but run it manually before publish anyway.
+
+### Post-Release Verification
+
+1. Open app: "Settings > About", click "Check for updates".
+2. In GitHub-reachable network, download target should be GitHub.
+3. In GitHub-blocked network, download target should fallback to Baidu.
+4. For the same version, after clicking "Later", update reminder should not repeat immediately.
+
+### Common Failures
+
+1. `latestVersion must match package.json version`:
+   version mismatch between `package.json` and `resources/update-manifest.json`.
+2. `platform "...": baidu.url is required`:
+   missing Baidu URL for one or more required platforms.
+3. App still shows old version after publish:
+   `latestVersion` not updated or published tag does not match `vX.Y.Z`.
 
 ## Areas We Need Help
 
