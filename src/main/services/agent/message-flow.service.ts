@@ -1356,6 +1356,7 @@ export async function sendMessage(
       allowSources: allowedDirectiveSources,
       bypassToolkitAllowlist: true,
       invocationContext: runtimeInvocationContext,
+      locale: effectiveResponseLanguage,
       resourceExposureEnabled: false,
       allowLegacyWorkflowInternalDirect: exposureFlags.allowLegacyInternalDirect,
       legacyDependencyRegexEnabled: exposureFlags.legacyDependencyRegexEnabled

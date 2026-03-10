@@ -46,7 +46,7 @@ vi.mock('../../resource-index.service', () => ({
 }))
 
 import { unstable_v2_createSession } from '@anthropic-ai/claude-agent-sdk'
-import { getConfig } from '../../config.service'
+import { getConfig, onApiConfigChange } from '../../config.service'
 import { clearSessionId, getConversation } from '../../conversation.service'
 import { resolveEffectiveConversationAi } from '../ai-config-resolver'
 import { resolveProvider } from '../provider-resolver'
@@ -64,6 +64,7 @@ import {
 import type { SessionConfig, SessionState } from '../types'
 
 const DEFAULT_SESSION_IDLE_TIMEOUT_MS = 15 * 60 * 1000
+const apiConfigChangeHandler = vi.mocked(onApiConfigChange).mock.calls.at(-1)?.[0] as (() => void) | undefined
 
 function createRunningSessionState(conversationId: string): SessionState {
   return {
@@ -205,6 +206,38 @@ describe('session.manager rebuild', () => {
     expect(unstable_v2_createSession).toHaveBeenCalledTimes(2)
     expect(closeA).toHaveBeenCalledTimes(1)
     expect(closeB).not.toHaveBeenCalled()
+  })
+
+  it('API 配置变化时仅回收非运行会话，运行中会话延后切换', async () => {
+    const closeA = vi.fn()
+    const closeB = vi.fn()
+    vi.mocked(unstable_v2_createSession)
+      .mockReset()
+      .mockResolvedValueOnce({ close: closeA } as any)
+      .mockResolvedValueOnce({ close: closeB } as any)
+
+    const config: SessionConfig = {
+      aiBrowserEnabled: false,
+      skillsLazyLoad: false,
+      responseLanguage: 'en',
+      profileId: 'profile-a',
+      providerSignature: 'sig-a',
+      effectiveModel: 'model-a',
+      enabledPluginMcpsHash: 'mcp-1',
+      hasCanUseTool: true
+    }
+
+    await getOrCreateV2Session('space-1', 'conv-running', {}, undefined, config)
+    await getOrCreateV2Session('space-1', 'conv-idle', {}, undefined, config)
+    setActiveSession('space-1', 'conv-running', createRunningSessionState('conv-running'))
+
+    expect(apiConfigChangeHandler).toBeTypeOf('function')
+    apiConfigChangeHandler?.()
+
+    expect(closeA).not.toHaveBeenCalled()
+    expect(closeB).toHaveBeenCalledTimes(1)
+
+    deleteActiveSession('space-1', 'conv-running')
   })
 
   it('warmup 对缺少 scope 的旧 sessionId 不做 resume，并清理持久化 sessionId', async () => {

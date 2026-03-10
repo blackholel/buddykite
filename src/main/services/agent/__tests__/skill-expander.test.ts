@@ -153,6 +153,28 @@ describe('expandStructuredDirectives', () => {
     expect(result.text).toContain('&lt;script&gt;')
     expect(result.text).not.toContain('<script>')
   })
+
+  it('structured skill 不会被同名 command 覆盖', () => {
+    const directives: DirectiveRef[] = [
+      { id: 's2', type: 'skill', name: 'deploy' }
+    ]
+    const result = expandStructuredDirectives(directives)
+    expect(result.text).toContain('<!-- injected: skill (structured) -->')
+    expect(result.text).toContain('<skill name="deploy">')
+    expect(result.text).not.toContain('<command name="deploy">')
+    expect(result.expanded.skills).toEqual(['deploy'])
+  })
+
+  it('structured command 按定义注入依赖 skill', () => {
+    const directives: DirectiveRef[] = [
+      { id: 'c2', type: 'command', name: 'deploy' }
+    ]
+    const result = expandStructuredDirectives(directives)
+    expect(result.text).toContain('<command name="deploy">')
+    expect(result.text).toContain('<skill name="deploy">')
+    expect(result.expanded.commands).toEqual(['deploy'])
+    expect(result.expanded.skills).toEqual(['deploy'])
+  })
 })
 
 describe('expandLazyDirectives with skip', () => {
@@ -177,6 +199,36 @@ describe('expandLazyDirectives with skip', () => {
     expect(result.expanded.agents).toEqual([])
     expect(result.text).toContain('<skill name="tdd-workflow">')
     expect(result.text).not.toContain('<skill name="coding-standards">')
+  })
+
+  it('支持两段解析场景：skip mcp，避免 pass-2 重入', () => {
+    const result = expandLazyDirectives('/mcp plugin-x\n/coding-standards', undefined, {
+      skip: new Set(['mcp'])
+    })
+    expect(result.text).toContain('/mcp plugin-x')
+    expect(result.text).toContain('<skill name="coding-standards">')
+    expect(result.expanded.skills).toEqual(['coding-standards'])
+  })
+
+  it('全行指令优先：同一行命中 /mcp 时不再解析 inline token', () => {
+    const result = expandLazyDirectives('/mcp plugin-x /coding-standards @code-reviewer', undefined, {
+      skip: new Set(['mcp'])
+    })
+    expect(result.text).toContain('/mcp plugin-x /coding-standards @code-reviewer')
+    expect(result.expanded.skills).toEqual([])
+    expect(result.expanded.agents).toEqual([])
+  })
+
+  it('inline token 按出现顺序注入并去重', () => {
+    const input = '请先 /coding-standards 再找 @code-reviewer，然后再 /coding-standards'
+    const result = expandLazyDirectives(input)
+    const skillIndex = result.text.indexOf('<skill name="coding-standards">')
+    const agentIndex = result.text.indexOf('<task-request name="code-reviewer">')
+    expect(skillIndex).toBeGreaterThan(-1)
+    expect(agentIndex).toBeGreaterThan(-1)
+    expect(skillIndex).toBeLessThan(agentIndex)
+    expect(result.expanded.skills).toEqual(['coding-standards'])
+    expect(result.expanded.agents).toEqual(['code-reviewer'])
   })
 
   it('does not expand directives inside code fences', () => {

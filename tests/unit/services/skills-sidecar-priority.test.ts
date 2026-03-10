@@ -32,12 +32,14 @@ vi.mock('../../../src/main/services/resource-exposure.service', () => ({
 }))
 
 import { getLockedUserConfigRootDir } from '../../../src/main/services/config-source-mode.service'
-import { clearSkillsCache, listSkills } from '../../../src/main/services/skills.service'
+import { listEnabledPlugins } from '../../../src/main/services/plugins.service'
+import { clearSkillsCache, getSkillDefinition, listSkills } from '../../../src/main/services/skills.service'
 
 describe('skills sidecar priority', () => {
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'kite-skill-sidecar-'))
 
   afterEach(() => {
+    vi.mocked(listEnabledPlugins).mockReturnValue([])
     clearSkillsCache()
   })
 
@@ -111,5 +113,68 @@ describe('skills sidecar priority', () => {
     expect(skills).toHaveLength(1)
     expect(skills[0].displayName).toBe('空间技能')
     expect(skills[0].description).toBe('空间描述')
+  })
+
+  it('resolves localized skill displayName for runtime lookup', () => {
+    vi.mocked(getLockedUserConfigRootDir).mockReturnValue(tempRoot)
+
+    const skillDir = path.join(tempRoot, 'skills', 'brainstorming')
+    fs.mkdirSync(skillDir, { recursive: true })
+    fs.writeFileSync(path.join(skillDir, 'SKILL.md'), [
+      '---',
+      'name: Brainstorming',
+      'description: Ideation helper',
+      '---',
+      '# Body'
+    ].join('\n'))
+
+    const sidecarPath = path.join(tempRoot, 'i18n', 'resource-display.i18n.json')
+    fs.mkdirSync(path.dirname(sidecarPath), { recursive: true })
+    fs.writeFileSync(sidecarPath, JSON.stringify({
+      version: 1,
+      defaultLocale: 'en',
+      resources: {
+        skills: {
+          brainstorming: {
+            title: { 'zh-CN': '头脑风暴' }
+          }
+        }
+      }
+    }, null, 2))
+
+    const byAlias = getSkillDefinition('头脑风暴', undefined, { locale: 'zh-CN' })
+    expect(byAlias?.name).toBe('brainstorming')
+  })
+
+  it('resolves plugin skill by localized alias and namespaced alias', () => {
+    const appRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'kite-app-root-empty-'))
+    vi.mocked(getLockedUserConfigRootDir).mockReturnValue(appRoot)
+
+    const pluginRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'kite-plugin-superpowers-'))
+    vi.mocked(listEnabledPlugins).mockReturnValue([
+      {
+        name: 'superpowers',
+        installPath: pluginRoot
+      } as any
+    ])
+
+    const skillDir = path.join(pluginRoot, 'skills', 'brainstorming')
+    fs.mkdirSync(skillDir, { recursive: true })
+    fs.writeFileSync(path.join(skillDir, 'SKILL.md'), [
+      '---',
+      'name: Brainstorming',
+      'triggers:',
+      '  - 头脑风暴',
+      '---',
+      '# Body'
+    ].join('\n'))
+
+    const byAlias = getSkillDefinition('头脑风暴', undefined, { locale: 'zh-CN' })
+    expect(byAlias?.name).toBe('brainstorming')
+    expect(byAlias?.namespace).toBe('superpowers')
+
+    const byNamespacedAlias = getSkillDefinition('superpowers:头脑风暴', undefined, { locale: 'zh-CN' })
+    expect(byNamespacedAlias?.name).toBe('brainstorming')
+    expect(byNamespacedAlias?.namespace).toBe('superpowers')
   })
 })

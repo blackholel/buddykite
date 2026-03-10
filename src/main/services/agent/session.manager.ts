@@ -754,8 +754,10 @@ export function closeAllV2Sessions(): void {
  * Invalidate all V2 sessions due to API config change.
  * Called by config.service via callback when API config changes.
  *
- * Sessions are closed immediately, but users are not interrupted.
- * New sessions will be created with updated config on next message.
+ * Two-phase switch behavior:
+ * - Phase A (default): running sessions keep current strategy until they finish.
+ * - New sessions use latest config immediately.
+ * - Non-running sessions are closed eagerly to reduce stale reuse.
  */
 function invalidateAllSessions(): void {
   const count = v2Sessions.size
@@ -764,16 +766,33 @@ function invalidateAllSessions(): void {
     return
   }
 
-  console.log(`[Agent] Invalidating ${count} sessions due to API config change`)
+  let closedCount = 0
+  let deferredCount = 0
+  console.log(`[Agent] Applying API config change to ${count} V2 sessions (two-phase switch)`)
 
   for (const [sessionKey, info] of Array.from(v2Sessions.entries())) {
-    console.log(`[Agent] Closing session: ${sessionKey}`)
-    closeSessionSafely(info.session, `[Agent][${sessionKey}]`)
-  }
+    const activeSession = activeSessions.get(sessionKey)
+    if (activeSession?.lifecycle === 'running') {
+      deferredCount += 1
+      console.log(`[Agent] Deferring config switch for running session: ${sessionKey}`)
+      continue
+    }
 
-  v2Sessions.clear()
-  lastResourceIndexRebuildAt.clear()
-  console.log('[Agent] All sessions invalidated, will use new config on next message')
+    console.log(`[Agent] Closing non-running session for config switch: ${sessionKey}`)
+    closeSessionSafely(info.session, `[Agent][${sessionKey}][config-switch]`)
+    closedCount += 1
+    v2Sessions.delete(sessionKey)
+  }
+  for (const sessionKey of Array.from(lastResourceIndexRebuildAt.keys())) {
+    if (!v2Sessions.has(sessionKey)) {
+      lastResourceIndexRebuildAt.delete(sessionKey)
+    }
+  }
+  console.log('[Agent] API config switch summary', {
+    closedCount,
+    deferredCount,
+    remainingSessionCount: v2Sessions.size
+  })
 }
 
 // Register for API config change notifications

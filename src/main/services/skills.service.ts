@@ -91,12 +91,75 @@ function resolveWorkDirForSkillPath(skillMdPath: string): string | null {
 }
 
 function findSkill(skills: SkillDefinition[], name: string): SkillDefinition | undefined {
-  if (name.includes(':')) {
-    const [namespace, skillName] = name.split(':', 2)
-    return skills.find(s => s.name === skillName && s.namespace === namespace)
+  const lookup = name.trim()
+  if (!lookup) return undefined
+
+  if (lookup.includes(':')) {
+    const [namespace, skillName] = lookup.split(':', 2)
+    if (!namespace || !skillName) return undefined
+
+    const exact = skills.find((skill) => skill.name === skillName && skill.namespace === namespace)
+    if (exact) return exact
+
+    const byAlias = findSkillByAlias(skills, skillName, namespace)
+    return resolveAliasedSkill(byAlias, lookup)
   }
-  return skills.find(s => s.name === name && !s.namespace)
-    ?? skills.find(s => s.name === name)
+
+  const exactWithoutNamespace = skills.find((skill) => skill.name === lookup && !skill.namespace)
+  if (exactWithoutNamespace) return exactWithoutNamespace
+
+  const exactWithNamespace = skills.find((skill) => skill.name === lookup)
+  if (exactWithNamespace) return exactWithNamespace
+
+  const byAlias = findSkillByAlias(skills, lookup)
+  return resolveAliasedSkill(byAlias, lookup)
+}
+
+function normalizeLookupValue(value: string): string {
+  return value.trim().toLocaleLowerCase()
+}
+
+function findSkillByAlias(
+  skills: SkillDefinition[],
+  lookup: string,
+  namespace?: string
+): SkillDefinition[] {
+  const normalizedLookup = normalizeLookupValue(lookup)
+  if (!normalizedLookup) return []
+
+  return skills.filter((skill) => {
+    if (namespace && skill.namespace !== namespace) return false
+
+    const candidates: string[] = []
+    if (skill.displayName) candidates.push(skill.displayName)
+    if (Array.isArray(skill.triggers)) candidates.push(...skill.triggers)
+    if (namespace && skill.namespace) {
+      if (skill.displayName) candidates.push(`${skill.namespace}:${skill.displayName}`)
+      if (Array.isArray(skill.triggers)) {
+        for (const trigger of skill.triggers) {
+          candidates.push(`${skill.namespace}:${trigger}`)
+        }
+      }
+    }
+
+    return candidates.some((candidate) => normalizeLookupValue(candidate) === normalizedLookup)
+  })
+}
+
+function resolveAliasedSkill(matches: SkillDefinition[], lookup: string): SkillDefinition | undefined {
+  if (matches.length === 0) return undefined
+  if (matches.length === 1) return matches[0]
+
+  const withoutNamespace = matches.filter((skill) => !skill.namespace)
+  if (withoutNamespace.length === 1) return withoutNamespace[0]
+
+  const uniqueKeys = new Set(matches.map(skillKey))
+  if (uniqueKeys.size === 1) return matches[0]
+
+  console.warn(
+    `[Skills] Ambiguous aliased skill lookup "${lookup}", fallback to first match: ${matches.map(skillKey).join(', ')}`
+  )
+  return matches[0]
 }
 
 function findSkillByRef(skills: SkillDefinition[], ref: ResourceRef): SkillDefinition | undefined {
@@ -228,10 +291,15 @@ function buildGlobalSkills(locale?: string): SkillDefinition[] {
   }
 
   // 0. Enabled plugins - lowest priority
-  for (const plugin of listEnabledPlugins()) {
+  const enabledPlugins = listEnabledPlugins()
+  console.log(`[Skills] Building global skills, found ${enabledPlugins.length} enabled plugins`)
+  for (const plugin of enabledPlugins) {
     const skillsSubdir = join(plugin.installPath, 'skills')
+    console.log(`[Skills] Checking plugin ${plugin.name} at ${skillsSubdir}, exists: ${existsSync(skillsSubdir)}`)
     if (existsSync(skillsSubdir)) {
-      addSkills(scanSkillDir(skillsSubdir, 'installed', plugin.installPath, plugin.installPath, plugin.name, undefined, locale))
+      const scanned = scanSkillDir(skillsSubdir, 'installed', plugin.installPath, plugin.installPath, plugin.name, undefined, locale)
+      console.log(`[Skills] Scanned ${scanned.length} skills from plugin ${plugin.name}`)
+      addSkills(scanned)
     }
   }
 
@@ -336,22 +404,32 @@ function listSkillsForRefLookup(workDir: string): SkillDefinition[] {
 export function getSkillDefinition(
   name: string,
   workDir?: string,
-  opts?: { allowedSources?: SkillDefinition['source'][] }
+  opts?: { allowedSources?: SkillDefinition['source'][]; locale?: string }
 ): SkillDefinition | null {
-  const skill = findSkill(listSkillsUnfiltered(workDir), name)
-  if (!skill) return null
-
-  if (opts?.allowedSources && !opts.allowedSources.includes(skill.source)) {
-    return null
+  const localeCandidates = opts?.locale ? [opts.locale, undefined] : [undefined]
+  for (const locale of localeCandidates) {
+    const allSkills = listSkillsUnfiltered(workDir, locale)
+    const lookupSkills = opts?.allowedSources
+      ? allSkills.filter((skill) => opts.allowedSources?.includes(skill.source))
+      : allSkills
+    const skill = findSkill(lookupSkills, name)
+    if (skill) {
+      return skill
+    }
   }
-  return skill
+
+  return null
 }
 
 /**
  * Get skill content by name
  */
-export function getSkillContent(name: string, workDir?: string): SkillContent | null {
-  const skill = getSkillDefinition(name, workDir)
+export function getSkillContent(
+  name: string,
+  workDir?: string,
+  opts?: { locale?: string; allowedSources?: SkillDefinition['source'][] }
+): SkillContent | null {
+  const skill = getSkillDefinition(name, workDir, opts)
   if (!skill) {
     console.warn(`[Skills] Skill not found: ${name}`)
     return null

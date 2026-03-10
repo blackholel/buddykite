@@ -5,8 +5,10 @@
  * and ensure paths point to valid directories.
  */
 
-import { lstatSync } from 'fs'
-import { resolve, relative, isAbsolute } from 'path'
+import { lstatSync, existsSync, realpathSync, statSync, type Stats } from 'fs'
+import { resolve, relative, isAbsolute, dirname } from 'path'
+
+export const FS_BOUNDARY_VIOLATION = 'FS_BOUNDARY_VIOLATION'
 
 /**
  * Normalize a file path for cross-platform comparison.
@@ -97,4 +99,130 @@ export function isFileNotFoundError(error: unknown): boolean {
     return code === 'ENOENT' || code === 'ENOTDIR'
   }
   return false
+}
+
+function safeRealpath(pathValue: string): string | null {
+  try {
+    return normalizePlatformPath(realpathSync(pathValue))
+  } catch {
+    return null
+  }
+}
+
+function safeStat(pathValue: string): Stats | null {
+  try {
+    return statSync(pathValue)
+  } catch {
+    return null
+  }
+}
+
+function findNearestExistingAncestor(pathValue: string): string | null {
+  let current = normalizePlatformPath(pathValue)
+  while (true) {
+    if (existsSync(current)) return current
+    const parent = dirname(current)
+    if (parent === current) return null
+    current = parent
+  }
+}
+
+function isPathInsideRoot(targetPath: string, rootPath: string): boolean {
+  if (targetPath === rootPath) return true
+  const rel = relative(rootPath, targetPath)
+  return !!rel && !rel.startsWith('..') && !isAbsolute(rel)
+}
+
+function createBoundaryDenyResult(
+  reason: string,
+  resolvedPath: string,
+  rootRealPath: string
+): WorkspaceBoundaryValidationResult {
+  return {
+    allowed: false,
+    errorCode: FS_BOUNDARY_VIOLATION,
+    reason,
+    resolvedPath,
+    rootRealPath
+  }
+}
+
+export interface WorkspaceBoundaryValidationResult {
+  allowed: boolean
+  resolvedPath: string
+  rootRealPath: string
+  inspectedRealPath?: string
+  errorCode?: typeof FS_BOUNDARY_VIOLATION
+  reason?: string
+}
+
+/**
+ * Validate candidate path against workspace root using realpath + inode checks.
+ * - Rejects traversal/symlink escapes outside workspace root.
+ * - Rejects cross-device inode access against workspace root.
+ * - For non-existing target paths, validates nearest existing ancestor.
+ */
+export function validatePathWithinWorkspaceBoundary(
+  candidatePath: string,
+  workspaceRoot: string
+): WorkspaceBoundaryValidationResult {
+  const resolvedPath = normalizePlatformPath(candidatePath)
+  const normalizedRoot = normalizePlatformPath(workspaceRoot)
+  const rootExists = existsSync(normalizedRoot)
+  if (!rootExists) {
+    if (!isPathWithinBasePaths(resolvedPath, [normalizedRoot])) {
+      return createBoundaryDenyResult(
+        `Target path is outside workspace root: ${resolvedPath}`,
+        resolvedPath,
+        normalizedRoot
+      )
+    }
+    return {
+      allowed: true,
+      resolvedPath,
+      rootRealPath: normalizedRoot,
+      inspectedRealPath: normalizedRoot
+    }
+  }
+
+  const rootRealPath = safeRealpath(normalizedRoot) || normalizedRoot
+  const rootStat = safeStat(rootRealPath)
+
+  const candidateExists = existsSync(resolvedPath)
+  const inspectedPath = candidateExists
+    ? resolvedPath
+    : findNearestExistingAncestor(resolvedPath)
+
+  if (!inspectedPath) {
+    return createBoundaryDenyResult(
+      'Target path has no existing ancestor to validate',
+      resolvedPath,
+      rootRealPath
+    )
+  }
+
+  const inspectedRealPath = safeRealpath(inspectedPath) || normalizePlatformPath(inspectedPath)
+  if (!isPathInsideRoot(inspectedRealPath, rootRealPath)) {
+    return createBoundaryDenyResult(
+      `Resolved path escapes workspace root: ${inspectedRealPath}`,
+      resolvedPath,
+      rootRealPath
+    )
+  }
+
+  const inspectedStat = safeStat(inspectedRealPath)
+  if (rootStat && inspectedStat && rootStat.dev !== inspectedStat.dev) {
+    return createBoundaryDenyResult(
+      `Cross-root inode/device access detected: root(dev=${rootStat.dev}) target(dev=${inspectedStat.dev})`,
+      resolvedPath,
+      rootRealPath
+    )
+  }
+
+  return {
+    allowed: true,
+    resolvedPath,
+    rootRealPath,
+    inspectedRealPath
+  }
 }

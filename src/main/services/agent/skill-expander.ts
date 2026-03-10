@@ -9,12 +9,14 @@
  * Only active when skillsLazyLoad is enabled.
  */
 
+import { createHash } from 'crypto'
 import { getSkillContent, getSkillDefinition } from '../skills.service'
 import { getCommand, getCommandContent } from '../commands.service'
 import { getAgent, getAgentContent } from '../agents.service'
 import { toolkitContains } from '../toolkit.service'
 import type { SpaceToolkit } from '../space-config.service'
 import type { InvocationContext, ResourceExposure } from '../../../shared/resource-access'
+import type { DirectiveRef } from './types'
 
 const SLASH_LINE_RE = /^\/([\p{L}\p{N}._:-]+)(?:\s+(.+))?$/u
 const AT_LINE_RE = /^@([\p{L}\p{N}._:-]+)(?:\s+(.+))?$/u
@@ -55,6 +57,7 @@ interface ExpandLazyDirectiveOptions {
   skip?: Set<string>
   allowSources?: string[]
   invocationContext?: InvocationContext
+  locale?: string
   resourceExposureEnabled?: boolean
   allowLegacyWorkflowInternalDirect?: boolean
   legacyDependencyRegexEnabled?: boolean
@@ -72,6 +75,23 @@ export interface LazyExpansionResult {
     skills: string[]
     commands: string[]
     agents: string[]
+  }
+}
+
+function createEmptyExpansionState(): ExpansionState {
+  return {
+    expanded: { skills: [], commands: [], agents: [] },
+    missing: { skills: [], commands: [], agents: [] },
+    expandedSeen: {
+      skills: new Set<string>(),
+      commands: new Set<string>(),
+      agents: new Set<string>()
+    },
+    missingSeen: {
+      skills: new Set<string>(),
+      commands: new Set<string>(),
+      agents: new Set<string>()
+    }
   }
 }
 
@@ -249,7 +269,7 @@ function buildSkillInjectionBlock(
   tokenRaw: string,
   content: string,
   args?: string,
-  injectedType: 'skill' | 'command-skill' = 'skill'
+  injectedType = 'skill'
 ): string {
   const argsAttr = buildArgsAttr(args)
   return [
@@ -260,10 +280,30 @@ function buildSkillInjectionBlock(
   ].join('\n')
 }
 
-function buildAgentInjectionBlock(tokenRaw: string, content: string, args?: string): string {
+function buildCommandInjectionBlock(
+  tokenRaw: string,
+  content: string,
+  args?: string,
+  injectedType = 'command'
+): string {
   const argsAttr = buildArgsAttr(args)
   return [
-    '<!-- injected: agent -->',
+    `<!-- injected: ${injectedType} -->`,
+    `<command name="${tokenRaw}"${argsAttr}>`,
+    content.trimEnd(),
+    '</command>'
+  ].join('\n')
+}
+
+function buildAgentInjectionBlock(
+  tokenRaw: string,
+  content: string,
+  args?: string,
+  injectedType = 'agent'
+): string {
+  const argsAttr = buildArgsAttr(args)
+  return [
+    `<!-- injected: ${injectedType} -->`,
     `<task-request name="${tokenRaw}"${argsAttr}>`,
     content.trimEnd(),
     '</task-request>'
@@ -283,7 +323,7 @@ function expandRequiredSkillDependency(
     return null
   }
 
-  const skillDefinition = getSkillDefinition(token.raw, workDir)
+  const skillDefinition = getSkillDefinition(token.raw, workDir, { locale: options?.locale })
   if (!skillDefinition || !isAllowedSource(options?.allowSources, skillDefinition.source)) {
     pushMissing(state, 'skills', token.raw)
     return null
@@ -294,7 +334,7 @@ function expandRequiredSkillDependency(
     return null
   }
 
-  const skill = getSkillContent(token.raw, workDir)
+  const skill = getSkillContent(token.raw, workDir, { locale: options?.locale })
   if (!skill) {
     pushMissing(state, 'skills', token.raw)
     return null
@@ -335,6 +375,143 @@ function expandRequiredAgentDependency(
 
   pushExpanded(state, 'agents', token.raw)
   return buildAgentInjectionBlock(token.raw, agentContent)
+}
+
+function expandSkillDirective(
+  token: ParsedDirectiveToken,
+  state: ExpansionState,
+  workDir?: string,
+  toolkit?: SpaceToolkit | null,
+  args?: string,
+  options?: ExpandLazyDirectiveOptions,
+  injectedType = 'skill'
+): string | null {
+  if (shouldSkipToken(token, options)) {
+    return null
+  }
+
+  if (!canUseFromToolkit(toolkit, 'skill', token, options)) {
+    pushMissing(state, 'skills', token.raw)
+    return null
+  }
+
+  const skillDefinition = getSkillDefinition(token.raw, workDir, { locale: options?.locale })
+  if (!skillDefinition || !isAllowedSource(options?.allowSources, skillDefinition.source)) {
+    pushMissing(state, 'skills', token.raw)
+    return null
+  }
+  const invocationContext = options?.invocationContext || 'interactive'
+  if (!canUseExposure(skillDefinition.exposure, invocationContext, options)) {
+    emitResourceExposureBlockEvent('skill', token, invocationContext, skillDefinition.exposure)
+    pushMissing(state, 'skills', token.raw)
+    return null
+  }
+  warnWorkflowLegacyInternal('skill', token, invocationContext, skillDefinition.exposure, options)
+
+  const skill = getSkillContent(token.raw, workDir, { locale: options?.locale })
+  if (!skill) {
+    pushMissing(state, 'skills', token.raw)
+    return null
+  }
+
+  pushExpanded(state, 'skills', token.raw)
+  return buildSkillInjectionBlock(token.raw, skill.content, args, injectedType)
+}
+
+function expandCommandDirective(
+  token: ParsedDirectiveToken,
+  state: ExpansionState,
+  workDir?: string,
+  toolkit?: SpaceToolkit | null,
+  args?: string,
+  options?: ExpandLazyDirectiveOptions,
+  injectedType = 'command',
+  fallbackToSkill = false
+): string | null {
+  if (shouldSkipToken(token, options)) {
+    return null
+  }
+
+  const commandDefinition = getCommand(token.raw, workDir)
+  const command = commandDefinition ? getCommandContent(token.raw, workDir, { silent: true }) : null
+
+  if (!commandDefinition || !command) {
+    if (fallbackToSkill) {
+      return expandSkillDirective(token, state, workDir, toolkit, args, options, 'skill')
+    }
+    pushMissing(state, 'commands', token.raw)
+    return null
+  }
+
+  if (!isAllowedSource(options?.allowSources, commandDefinition.source)) {
+    pushMissing(state, 'commands', token.raw)
+    return null
+  }
+
+  const invocationContext = options?.invocationContext || 'interactive'
+  if (!canUseExposure(commandDefinition.exposure, invocationContext, options)) {
+    emitResourceExposureBlockEvent('command', token, invocationContext, commandDefinition.exposure)
+    pushMissing(state, 'commands', token.raw)
+    return null
+  }
+  warnWorkflowLegacyInternal('command', token, invocationContext, commandDefinition.exposure, options)
+
+  if (!canUseFromToolkit(toolkit, 'command', token, options)) {
+    pushMissing(state, 'commands', token.raw)
+    return null
+  }
+
+  const explicitRequiredSkills = commandDefinition.requiresSkills || []
+  const explicitRequiredAgents = commandDefinition.requiresAgents || []
+  const hasExplicitDependencies = explicitRequiredSkills.length > 0 || explicitRequiredAgents.length > 0
+  const dependencyBlocks: string[] = []
+
+  for (const requiredSkillRaw of explicitRequiredSkills) {
+    const parsedSkill = parseDirectiveToken(requiredSkillRaw)
+    if (!parsedSkill) continue
+    const block = expandRequiredSkillDependency(parsedSkill, state, workDir, toolkit, options, args)
+    if (!block) return null
+    dependencyBlocks.push(block)
+  }
+
+  for (const requiredAgentRaw of explicitRequiredAgents) {
+    const parsedAgent = parseDirectiveToken(requiredAgentRaw)
+    if (!parsedAgent) continue
+    const block = expandRequiredAgentDependency(parsedAgent, state, workDir, toolkit, options)
+    if (!block) return null
+    dependencyBlocks.push(block)
+  }
+
+  const commandBlock = buildCommandInjectionBlock(token.raw, command, args, injectedType)
+
+  if (hasExplicitDependencies) {
+    pushExpanded(state, 'commands', token.raw)
+    return [...dependencyBlocks, commandBlock].join('\n\n')
+  }
+
+  if (options?.legacyDependencyRegexEnabled !== false) {
+    const referencedSkillRaw = findReferencedSkill(command)
+    if (referencedSkillRaw) {
+      const referencedSkillToken = parseDirectiveToken(referencedSkillRaw)
+      if (referencedSkillToken) {
+        const commandSkillBlock = expandRequiredSkillDependency(
+          referencedSkillToken,
+          state,
+          workDir,
+          toolkit,
+          options,
+          args
+        )
+        if (commandSkillBlock) {
+          return commandSkillBlock
+        }
+        return null
+      }
+    }
+  }
+
+  pushExpanded(state, 'commands', token.raw)
+  return commandBlock
 }
 
 function expandAgentDirective(
@@ -385,114 +562,16 @@ function expandSlashDirective(
   args?: string,
   options?: ExpandLazyDirectiveOptions
 ): string | null {
-  if (shouldSkipToken(token, options)) {
-    return null
-  }
-
-  const argsAttr = buildArgsAttr(args)
-  const commandDefinition = getCommand(token.raw, workDir)
-  const command = commandDefinition ? getCommandContent(token.raw, workDir, { silent: true }) : null
-
-  if (command) {
-    if (!isAllowedSource(options?.allowSources, commandDefinition?.source)) {
-      pushMissing(state, 'commands', token.raw)
-      return null
-    }
-    const directContext = options?.invocationContext || 'interactive'
-    if (!canUseExposure(commandDefinition?.exposure, directContext, options)) {
-      emitResourceExposureBlockEvent('command', token, directContext, commandDefinition?.exposure)
-      pushMissing(state, 'commands', token.raw)
-      return null
-    }
-    warnWorkflowLegacyInternal('command', token, directContext, commandDefinition?.exposure, options)
-
-    if (!canUseFromToolkit(toolkit, 'command', token, options)) {
-      pushMissing(state, 'commands', token.raw)
-      return null
-    }
-
-    const explicitRequiredSkills = commandDefinition?.requiresSkills || []
-    const explicitRequiredAgents = commandDefinition?.requiresAgents || []
-    const hasExplicitDependencies = explicitRequiredSkills.length > 0 || explicitRequiredAgents.length > 0
-
-    const dependencyBlocks: string[] = []
-
-    for (const requiredSkillRaw of explicitRequiredSkills) {
-      const parsedSkill = parseDirectiveToken(requiredSkillRaw)
-      if (!parsedSkill) continue
-      const block = expandRequiredSkillDependency(parsedSkill, state, workDir, toolkit, options, args)
-      if (!block) return null
-      dependencyBlocks.push(block)
-    }
-
-    for (const requiredAgentRaw of explicitRequiredAgents) {
-      const parsedAgent = parseDirectiveToken(requiredAgentRaw)
-      if (!parsedAgent) continue
-      const block = expandRequiredAgentDependency(parsedAgent, state, workDir, toolkit, options)
-      if (!block) return null
-      dependencyBlocks.push(block)
-    }
-
-    if (hasExplicitDependencies) {
-      pushExpanded(state, 'commands', token.raw)
-      const commandBlock = [
-        '<!-- injected: command -->',
-        `<command name="${token.raw}"${argsAttr}>`,
-        command.trimEnd(),
-        '</command>'
-      ].join('\n')
-      return [...dependencyBlocks, commandBlock].join('\n\n')
-    }
-
-    if (options?.legacyDependencyRegexEnabled !== false) {
-      const referencedSkillRaw = findReferencedSkill(command)
-      if (referencedSkillRaw) {
-        const referencedSkillToken = parseDirectiveToken(referencedSkillRaw)
-        if (referencedSkillToken) {
-          const commandSkillBlock = expandRequiredSkillDependency(referencedSkillToken, state, workDir, toolkit, options, args)
-          if (commandSkillBlock) {
-            return commandSkillBlock
-          }
-          return null
-        }
-      }
-    }
-
-    pushExpanded(state, 'commands', token.raw)
-    return [
-      '<!-- injected: command -->',
-      `<command name="${token.raw}"${argsAttr}>`,
-      command.trimEnd(),
-      '</command>'
-    ].join('\n')
-  }
-
-  if (!canUseFromToolkit(toolkit, 'skill', token, options)) {
-    pushMissing(state, 'skills', token.raw)
-    return null
-  }
-
-  const skillDefinition = getSkillDefinition(token.raw, workDir)
-  if (!skillDefinition || !isAllowedSource(options?.allowSources, skillDefinition.source)) {
-    pushMissing(state, 'skills', token.raw)
-    return null
-  }
-  const invocationContext = options?.invocationContext || 'interactive'
-  if (!canUseExposure(skillDefinition.exposure, invocationContext, options)) {
-    emitResourceExposureBlockEvent('skill', token, invocationContext, skillDefinition.exposure)
-    pushMissing(state, 'skills', token.raw)
-    return null
-  }
-  warnWorkflowLegacyInternal('skill', token, invocationContext, skillDefinition.exposure, options)
-
-  const skill = getSkillContent(token.raw, workDir)
-  if (!skill) {
-    pushMissing(state, 'skills', token.raw)
-    return null
-  }
-
-  pushExpanded(state, 'skills', token.raw)
-  return buildSkillInjectionBlock(token.raw, skill.content, args)
+  return expandCommandDirective(
+    token,
+    state,
+    workDir,
+    toolkit,
+    args,
+    options,
+    'command',
+    true
+  )
 }
 
 function isSlashBoundary(prev: string | undefined): boolean {
@@ -602,6 +681,117 @@ function collectInlineDirectiveTokens(line: string): InlineTokenMatch[] {
   return matches
 }
 
+function mergeUnique(base: string[], next: string[]): string[] {
+  const seen = new Set<string>()
+  const merged: string[] = []
+  for (const value of base) {
+    if (seen.has(value)) continue
+    seen.add(value)
+    merged.push(value)
+  }
+  for (const value of next) {
+    if (seen.has(value)) continue
+    seen.add(value)
+    merged.push(value)
+  }
+  return merged
+}
+
+function directiveTokenFromRef(directive: DirectiveRef): ParsedDirectiveToken | null {
+  const tokenRaw = directive.namespace
+    ? `${directive.namespace}:${directive.name}`
+    : directive.name
+  return parseDirectiveToken(tokenRaw)
+}
+
+export function expandStructuredDirectives(
+  directives?: DirectiveRef[],
+  workDir?: string,
+  toolkit?: SpaceToolkit | null,
+  options?: ExpandLazyDirectiveOptions
+): LazyExpansionResult {
+  if (!directives || directives.length === 0) {
+    return {
+      text: '',
+      expanded: { skills: [], commands: [], agents: [] },
+      missing: { skills: [], commands: [], agents: [] }
+    }
+  }
+
+  const state = createEmptyExpansionState()
+  const blocks: string[] = []
+  for (const directive of directives) {
+    const token = directiveTokenFromRef(directive)
+    if (!token) {
+      pushMissing(state, `${directive.type}s` as 'skills' | 'commands' | 'agents', directive.name)
+      continue
+    }
+
+    let block: string | null = null
+    if (directive.type === 'skill') {
+      block = expandSkillDirective(
+        token,
+        state,
+        workDir,
+        toolkit,
+        directive.args,
+        options,
+        'skill (structured)'
+      )
+    } else if (directive.type === 'command') {
+      block = expandCommandDirective(
+        token,
+        state,
+        workDir,
+        toolkit,
+        directive.args,
+        options,
+        'command (structured)',
+        false
+      )
+    } else if (directive.type === 'agent') {
+      block = expandAgentDirective(token, state, workDir, toolkit, directive.args, options)
+    }
+
+    if (block) {
+      blocks.push(block)
+    }
+  }
+
+  return {
+    text: blocks.join('\n\n'),
+    expanded: state.expanded,
+    missing: state.missing
+  }
+}
+
+export function mergeExpansions(
+  left: LazyExpansionResult,
+  right: LazyExpansionResult
+): LazyExpansionResult {
+  const text = [left.text, right.text].filter((item) => item.trim().length > 0).join('\n\n')
+  return {
+    text,
+    expanded: {
+      skills: mergeUnique(left.expanded.skills, right.expanded.skills),
+      commands: mergeUnique(left.expanded.commands, right.expanded.commands),
+      agents: mergeUnique(left.expanded.agents, right.expanded.agents)
+    },
+    missing: {
+      skills: mergeUnique(left.missing.skills, right.missing.skills),
+      commands: mergeUnique(left.missing.commands, right.missing.commands),
+      agents: mergeUnique(left.missing.agents, right.missing.agents)
+    }
+  }
+}
+
+export function computeFingerprint(content: string): string {
+  return createHash('sha256')
+    .update(content.slice(0, 1024))
+    .digest('hex')
+    .slice(0, 8)
+}
+
 export function expandLazyDirectives(
   input: string,
   workDir?: string,
@@ -620,20 +810,7 @@ export function expandLazyDirectives(
     !('skills' in toolkitOrOptions || 'commands' in toolkitOrOptions || 'agents' in toolkitOrOptions)
   ) ? (toolkitOrOptions as ExpandLazyDirectiveOptions) : maybeOptions
 
-  const state: ExpansionState = {
-    expanded: { skills: [], commands: [], agents: [] },
-    missing: { skills: [], commands: [], agents: [] },
-    expandedSeen: {
-      skills: new Set<string>(),
-      commands: new Set<string>(),
-      agents: new Set<string>()
-    },
-    missingSeen: {
-      skills: new Set<string>(),
-      commands: new Set<string>(),
-      agents: new Set<string>()
-    }
-  }
+  const state: ExpansionState = createEmptyExpansionState()
 
   const lines = input.split(/\r?\n/)
   const inlineInjectionBlocks: string[] = []
