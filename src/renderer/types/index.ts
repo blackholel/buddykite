@@ -77,7 +77,7 @@ export type ToolStatus =
 export type MessageRole = 'user' | 'assistant' | 'system';
 
 // Chat Mode
-export const CHAT_MODES = ['code', 'plan', 'ask'] as const;
+export const CHAT_MODES = ['code', 'plan'] as const;
 export type ChatMode = (typeof CHAT_MODES)[number];
 
 export function isChatMode(value: unknown): value is ChatMode {
@@ -89,6 +89,10 @@ export function normalizeChatMode(
   planEnabled?: unknown,
   fallback: ChatMode = 'code'
 ): ChatMode {
+  // Backward compatibility: historical persisted mode "ask" is now treated as code.
+  if (mode === 'ask') {
+    return 'code';
+  }
   if (isChatMode(mode)) {
     return mode;
   }

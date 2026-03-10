@@ -1488,7 +1488,7 @@ function InputToolbar({
             `}
             title={isGenerating
               ? t('Send')
-              : t(mode === 'plan' ? 'Send (Plan Mode)' : mode === 'ask' ? 'Send (Ask Mode)' : thinkingEnabled ? 'Send (Deep Thinking)' : 'Send')}
+              : t(mode === 'plan' ? 'Send (Plan Mode)' : thinkingEnabled ? 'Send (Deep Thinking)' : 'Send')}
           >
             <span>{t('Send')}</span>
           </button>

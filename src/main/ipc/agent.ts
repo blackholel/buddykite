@@ -55,7 +55,7 @@ type SendMessageIpcRequest = {
   }>
   thinkingEnabled?: boolean
   planEnabled?: boolean
-  mode?: 'code' | 'plan' | 'ask'
+  mode?: 'code' | 'plan'
   aiBrowserEnabled?: boolean
   invocationContext?: InvocationContext
   canvasContext?: {
@@ -115,7 +115,7 @@ export function registerAgentHandlers(window: BrowserWindow | null): void {
     'agent:set-mode',
     async (
       _event,
-      request: { spaceId: string; conversationId: string; mode: 'code' | 'plan' | 'ask'; runId?: string }
+      request: { spaceId: string; conversationId: string; mode: 'code' | 'plan'; runId?: string }
     ) => {
       try {
         const result = await setAgentMode(request.spaceId, request.conversationId, request.mode, request.runId)

@@ -22,7 +22,7 @@ interface GuideMessageRequest {
   clientMessageId?: string
 }
 
-type ChatMode = 'code' | 'plan' | 'ask'
+type ChatMode = 'code' | 'plan'
 
 // Type definitions for exposed API
 export interface KiteAPI {

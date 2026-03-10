@@ -7,15 +7,28 @@
 
 import { BrowserWindow } from 'electron'
 import { createHash } from 'crypto'
-import { resolve, sep } from 'path'
+import { homedir } from 'os'
+import { isAbsolute, resolve, join } from 'path'
 import { broadcastToWebSocket } from '../../http/websocket'
 import { getConfig } from '../config.service'
 import { isAIBrowserTool } from '../ai-browser'
 import { extractToolPath } from './resource-dir-guard.service'
 import { buildSessionKey } from '../../../shared/session-key'
 import { ASK_USER_QUESTION_ERROR_CODES } from './types'
-import { getSpaceResourcePolicy, isStrictSpaceOnlyPolicy } from './space-resource-policy.service'
+import { getLockedUserConfigRootDir } from '../config-source-mode.service'
+import { listEnabledPlugins } from '../plugins.service'
+import {
+  getExecutionLayerAllowedSources,
+  getSpaceResourcePolicy,
+  isStrictSpaceOnlyPolicy
+} from './space-resource-policy.service'
 import { nextRunEventSeq, resolveRunEpoch } from './runtime-journal.service'
+import {
+  FS_BOUNDARY_VIOLATION,
+  validatePathWithinWorkspaceBoundary,
+  type WorkspaceBoundaryValidationResult
+} from '../../utils/path-validation'
+import type { ResourceSource } from '../resource-ref.service'
 import type {
   ToolCall,
   SessionState,
@@ -28,16 +41,55 @@ import type {
 // Current main window reference for IPC communication
 let currentMainWindow: BrowserWindow | null = null
 
-function normalizePathForCompare(pathValue: string): string {
-  const normalized = resolve(pathValue)
-  return process.platform === 'win32' ? normalized.toLowerCase() : normalized
+type ToolPolicyLayer = 'HardSafetyDeny' | 'ModePolicy' | 'SpacePolicy' | 'GlobalPolicy'
+type ToolPolicyOutcome = 'allow' | 'deny' | 'abstain'
+
+interface ToolPolicyTrace {
+  layer: ToolPolicyLayer
+  outcome: ToolPolicyOutcome
+  rule: string
+  errorCode?: string
+  message?: string
 }
 
-function isPathWithinWorkDir(candidatePath: string, absoluteWorkDir: string): boolean {
-  const normalizedWorkDir = normalizePathForCompare(absoluteWorkDir)
-  const normalizedCandidate = normalizePathForCompare(candidatePath)
-  const normalizedPrefix = `${normalizedWorkDir}${sep}`
-  return normalizedCandidate === normalizedWorkDir || normalizedCandidate.startsWith(normalizedPrefix)
+const TOOL_POLICY_PRECEDENCE: ToolPolicyLayer[] = [
+  'HardSafetyDeny',
+  'ModePolicy',
+  'SpacePolicy',
+  'GlobalPolicy'
+]
+
+export function resolveToolPolicyConflict(trace: ToolPolicyTrace[]): ToolPolicyTrace | null {
+  for (const layer of TOOL_POLICY_PRECEDENCE) {
+    const hit = trace.find((entry) => entry.layer === layer && entry.outcome === 'deny')
+    if (hit) return hit
+  }
+  for (const layer of TOOL_POLICY_PRECEDENCE) {
+    const hit = trace.find((entry) => entry.layer === layer && entry.outcome === 'allow')
+    if (hit) return hit
+  }
+  return null
+}
+
+function emitCanUseToolAudit(params: {
+  spaceId: string
+  conversationId: string
+  toolName: string
+  trace: ToolPolicyTrace[]
+  finalBehavior: 'allow' | 'deny'
+  finalMessage?: string
+  errorCode?: string
+}): void {
+  console.info('[audit] can_use_tool', {
+    spaceId: params.spaceId,
+    conversationId: params.conversationId,
+    toolName: params.toolName,
+    trace: params.trace,
+    winner: resolveToolPolicyConflict(params.trace),
+    finalBehavior: params.finalBehavior,
+    finalMessage: params.finalMessage || null,
+    errorCode: params.errorCode || null
+  })
 }
 
 function extractQuotedOrBareToken(command: string, start: number): string {
@@ -84,6 +136,100 @@ function resolveShellPathToken(token: string, absoluteWorkDir: string): string {
     return resolve(process.env.HOME || '', trimmed.slice(2))
   }
   return resolve(absoluteWorkDir, trimmed)
+}
+
+function normalizeAllowedSourcesForBoundary(policySources?: ResourceSource[]): ResourceSource[] {
+  const allowlist = getExecutionLayerAllowedSources()
+  if (!Array.isArray(policySources) || policySources.length === 0) {
+    return allowlist
+  }
+  const allowed = policySources.filter((source): source is ResourceSource => allowlist.includes(source))
+  return allowed.length > 0 ? allowed : allowlist
+}
+
+function resolveConfigPath(pathValue: string): string {
+  const trimmed = pathValue.trim()
+  if (!trimmed) return ''
+  if (isAbsolute(trimmed)) return resolve(trimmed)
+  return resolve(process.env.HOME || homedir(), trimmed)
+}
+
+function buildExecutionBoundaryRoots(
+  absoluteWorkDir: string,
+  config: ReturnType<typeof getConfig>,
+  policySources?: ResourceSource[]
+): string[] {
+  const roots = new Set<string>([resolve(absoluteWorkDir)])
+  const allowedSources = new Set<ResourceSource>(normalizeAllowedSourcesForBoundary(policySources))
+
+  if (allowedSources.has('app')) {
+    const appRoot = resolve(getLockedUserConfigRootDir())
+    roots.add(appRoot)
+    roots.add(join(appRoot, 'skills'))
+    roots.add(join(appRoot, 'agents'))
+    roots.add(join(appRoot, 'commands'))
+  }
+
+  if (allowedSources.has('global')) {
+    const pluginGlobalPaths = config.claudeCode?.plugins?.globalPaths || []
+    for (const globalPath of pluginGlobalPaths) {
+      const resolvedPath = resolveConfigPath(globalPath)
+      if (resolvedPath) {
+        roots.add(resolvedPath)
+        roots.add(join(resolvedPath, 'skills'))
+      }
+    }
+
+    const agentGlobalPaths = config.claudeCode?.agents?.paths || []
+    for (const globalPath of agentGlobalPaths) {
+      const resolvedPath = resolveConfigPath(globalPath)
+      if (resolvedPath) {
+        roots.add(resolvedPath)
+      }
+    }
+  }
+
+  if (allowedSources.has('installed') || allowedSources.has('plugin')) {
+    for (const plugin of listEnabledPlugins()) {
+      if (plugin.installPath) {
+        const pluginRoot = resolve(plugin.installPath)
+        roots.add(pluginRoot)
+        roots.add(join(pluginRoot, 'skills'))
+        roots.add(join(pluginRoot, 'agents'))
+        roots.add(join(pluginRoot, 'commands'))
+      }
+    }
+  }
+
+  if (allowedSources.has('space')) {
+    roots.add(join(absoluteWorkDir, '.claude', 'skills'))
+    roots.add(join(absoluteWorkDir, '.claude', 'agents'))
+    roots.add(join(absoluteWorkDir, '.claude', 'commands'))
+  }
+
+  return Array.from(roots)
+}
+
+function validatePathWithinBoundaryRoots(
+  candidatePath: string,
+  roots: string[]
+): WorkspaceBoundaryValidationResult {
+  let lastDenyResult: WorkspaceBoundaryValidationResult | null = null
+  for (const root of roots) {
+    const result = validatePathWithinWorkspaceBoundary(candidatePath, root)
+    if (result.allowed) {
+      return result
+    }
+    lastDenyResult = result
+  }
+
+  return lastDenyResult || {
+    allowed: false,
+    resolvedPath: resolve(candidatePath),
+    rootRealPath: roots[0] || '',
+    errorCode: FS_BOUNDARY_VIOLATION,
+    reason: 'No allowed boundary roots configured'
+  }
 }
 
 function toNonEmptyString(value: unknown): string | null {
@@ -627,10 +773,16 @@ export function createCanUseTool(
   toolName: string,
   input: Record<string, unknown>,
   options: { signal: AbortSignal }
-) => Promise<CanUseToolDecision> {
+  ) => Promise<CanUseToolDecision> {
   const config = getConfig()
   const absoluteWorkDir = resolve(workDir)
-  const strictSpaceOnly = isStrictSpaceOnlyPolicy(getSpaceResourcePolicy(workDir))
+  const resourcePolicy = getSpaceResourcePolicy(workDir)
+  const strictSpaceOnly = isStrictSpaceOnlyPolicy(resourcePolicy)
+  const executionBoundaryRoots = buildExecutionBoundaryRoots(
+    absoluteWorkDir,
+    config,
+    resourcePolicy.allowedSources
+  )
   console.log(`[Agent] Creating canUseTool with workDir: ${absoluteWorkDir}`)
 
   return async (
@@ -638,33 +790,67 @@ export function createCanUseTool(
     input: Record<string, unknown>,
     _options: { signal: AbortSignal }
   ) => {
+    const trace: ToolPolicyTrace[] = []
+    const finish = (decision: CanUseToolDecision & { errorCode?: string }): CanUseToolDecision => {
+      emitCanUseToolAudit({
+        spaceId,
+        conversationId,
+        toolName,
+        trace,
+        finalBehavior: decision.behavior,
+        finalMessage: decision.message,
+        errorCode: decision.errorCode
+      })
+      return decision
+    }
+    const deny = (
+      layer: ToolPolicyLayer,
+      message: string,
+      rule: string,
+      errorCode?: string
+    ): CanUseToolDecision => {
+      trace.push({ layer, outcome: 'deny', rule, errorCode, message })
+      return finish({ behavior: 'deny', message, ...(errorCode ? { errorCode } : {}) })
+    }
+    const allow = (
+      layer: ToolPolicyLayer,
+      rule: string,
+      updatedInput?: Record<string, unknown>
+    ): CanUseToolDecision => {
+      trace.push({ layer, outcome: 'allow', rule })
+      return finish({
+        behavior: 'allow',
+        ...(updatedInput ? { updatedInput } : {})
+      })
+    }
+
     const notifyToolUse = () => {
       if (!options?.onToolUse) return
       options.onToolUse(toolName, input)
     }
     const runtimeMode = getActiveSession(spaceId, conversationId)?.mode
     const effectiveMode = runtimeMode || options?.mode
-    if (effectiveMode === 'ask') {
-      return {
-        behavior: 'deny' as const,
-        message: 'ASK mode is text-only; tool execution is disabled'
-      }
-    }
-
     if (effectiveMode === 'plan') {
       if (!PLAN_MODE_ALLOWED_TOOLS.has(toolName)) {
-        return {
-          behavior: 'deny' as const,
-          message: `PLAN mode only allows AskUserQuestion, Task, Read, Grep and Glob. Tool blocked: ${toolName}`
-        }
+        return deny(
+          'ModePolicy',
+          `PLAN mode only allows AskUserQuestion, Task, Read, Grep and Glob. Tool blocked: ${toolName}`,
+          'mode=plan_whitelist'
+        )
       }
 
       if (toolName === 'Task') {
-        return {
-          behavior: 'allow' as const,
-          updatedInput: buildPlanModeTaskInput(input)
-        }
+        return allow(
+          'ModePolicy',
+          'mode=plan_task_rewrite',
+          buildPlanModeTaskInput(input)
+        )
       }
+      trace.push({
+        layer: 'ModePolicy',
+        outcome: 'allow',
+        rule: `mode=plan_whitelist:${toolName}`
+      })
     }
 
     console.log(
@@ -677,7 +863,7 @@ export function createCanUseTool(
       // Tool-call UI is sent from message-flow with the real tool_use.id.
       const session = getActiveSession(spaceId, conversationId)
       if (!session) {
-        return { behavior: 'deny' as const, message: 'Session not found' }
+        return deny('HardSafetyDeny', 'Session not found', 'session_not_found')
       }
 
       const { normalizedInput, diagnostics } = normalizeAskUserQuestionInputWithDiagnostics(input)
@@ -697,19 +883,24 @@ export function createCanUseTool(
         return context.status === 'awaiting_bind' || context.status === 'awaiting_answer'
       })
       if (hasDuplicatePending) {
-        return {
-          behavior: 'deny' as const,
-          message: `${ASK_USER_QUESTION_ERROR_CODES.DUPLICATE_PENDING_SIGNATURE}: Duplicate AskUserQuestion fingerprint in current run`
-        }
+        return deny(
+          'HardSafetyDeny',
+          `${ASK_USER_QUESTION_ERROR_CODES.DUPLICATE_PENDING_SIGNATURE}: Duplicate AskUserQuestion fingerprint in current run`,
+          'ask_user_question_duplicate_pending',
+          ASK_USER_QUESTION_ERROR_CODES.DUPLICATE_PENDING_SIGNATURE
+        )
       }
 
       const pendingId = `aq_${session.runId}_${++session.askUserQuestionSeq}`
       session.askUserQuestionUsedInRun = true
       const mode: AskUserQuestionMode = 'sdk_allow_updated_input'
+      trace.push({ layer: 'ModePolicy', outcome: 'allow', rule: 'ask_user_question_enabled' })
       return new Promise((resolveDecision) => {
         const context = {
           pendingId,
-          resolve: resolveDecision,
+          resolve: (decision: CanUseToolDecision) => {
+            resolveDecision(finish(decision))
+          },
           inputSnapshot: normalizedInput,
           inputFingerprint: fingerprint,
           sessionId: conversationId,
@@ -743,12 +934,19 @@ export function createCanUseTool(
       const pathParam = extractToolPath(input)
       if (pathParam) {
         const absolutePath = resolve(absoluteWorkDir, pathParam)
-        if (!isPathWithinWorkDir(absolutePath, absoluteWorkDir)) {
-          console.log(`[Agent] Security: Blocked access to: ${pathParam}`)
-          return {
-            behavior: 'deny' as const,
-            message: `Can only access files within the current space: ${workDir}`
-          }
+        const boundaryResult = validatePathWithinBoundaryRoots(absolutePath, executionBoundaryRoots)
+        if (!boundaryResult.allowed) {
+          console.log('[Agent] Security: Blocked file tool path outside workspace boundary', {
+            toolName,
+            pathParam,
+            reason: boundaryResult.reason
+          })
+          return deny(
+            'HardSafetyDeny',
+            'Can only access files within the current space or approved global resource roots',
+            'fs_workspace_boundary_guard',
+            boundaryResult.errorCode || FS_BOUNDARY_VIOLATION
+          )
         }
       }
     }
@@ -758,17 +956,24 @@ export function createCanUseTool(
       const permission = config.permissions.commandExecution
 
       if (permission === 'deny') {
-        return {
-          behavior: 'deny' as const,
-          message: 'Command execution is disabled'
-        }
+        return deny(
+          'GlobalPolicy',
+          'Command execution is disabled',
+          'global.commandExecution=deny'
+        )
       }
 
       if (permission === 'ask' && !config.permissions.trustMode) {
         const session = getActiveSession(spaceId, conversationId)
         if (!session) {
-          return { behavior: 'deny' as const, message: 'Session not found' }
+          return deny('HardSafetyDeny', 'Session not found', 'session_not_found')
         }
+
+        trace.push({
+          layer: 'GlobalPolicy',
+          outcome: 'allow',
+          rule: 'global.commandExecution=ask_with_user_approval'
+        })
 
         // Send permission request to renderer with session IDs
         const toolCallId = `tool-${session.runId}-${Date.now()}`
@@ -796,31 +1001,34 @@ export function createCanUseTool(
           session.pendingPermissionResolve = (approved: boolean) => {
             if (approved) {
               notifyToolUse()
-              resolve({ behavior: 'allow' as const })
+              resolve(finish({ behavior: 'allow' as const }))
             } else {
-              resolve({
+              resolve(finish({
                 behavior: 'deny' as const,
                 message: 'User rejected command execution'
-              })
+              }))
             }
           }
         })
       }
 
       if (strictSpaceOnly) {
+        trace.push({ layer: 'SpacePolicy', outcome: 'allow', rule: 'space.mode=strict-space-only' })
         const command = typeof input.command === 'string' ? input.command : ''
         if (!command.trim()) {
-          return {
-            behavior: 'deny' as const,
-            message: 'Command is required in strict space mode'
-          }
+          return deny(
+            'SpacePolicy',
+            'Command is required in strict space mode',
+            'strict_space.command_required'
+          )
         }
 
         if (/(^|[\s;|&])cd\s+\.\.(?=\/|\\|\s|$)/.test(command)) {
-          return {
-            behavior: 'deny' as const,
-            message: `Strict space mode: directory traversal is blocked outside ${workDir}`
-          }
+          return deny(
+            'SpacePolicy',
+            `Strict space mode: directory traversal is blocked outside ${workDir}`,
+            'strict_space.directory_traversal'
+          )
         }
 
         const pathCandidates = getBashCommandPathCandidates(command)
@@ -828,18 +1036,22 @@ export function createCanUseTool(
           if (token === '.' || token === './') continue
           const resolvedTokenPath = resolveShellPathToken(token, absoluteWorkDir)
           if (!resolvedTokenPath) continue
-          if (!isPathWithinWorkDir(resolvedTokenPath, absoluteWorkDir)) {
+          const boundaryResult = validatePathWithinBoundaryRoots(resolvedTokenPath, executionBoundaryRoots)
+          if (!boundaryResult.allowed) {
             console.warn('[Agent] Security: Blocked Bash command path outside workDir', {
               spaceId,
               conversationId,
               token,
               resolvedTokenPath,
-              workDir: absoluteWorkDir
+              workDir: absoluteWorkDir,
+              reason: boundaryResult.reason
             })
-            return {
-              behavior: 'deny' as const,
-              message: `Strict space mode: Bash cannot access paths outside current space (${workDir})`
-            }
+            return deny(
+              'HardSafetyDeny',
+              'Strict space mode: Bash cannot access paths outside current space or approved global resource roots',
+              'strict_space.bash_path_boundary',
+              boundaryResult.errorCode || FS_BOUNDARY_VIOLATION
+            )
           }
         }
       }
@@ -848,11 +1060,13 @@ export function createCanUseTool(
     // AI Browser tools are always allowed (they run in sandboxed browser context)
     if (isAIBrowserTool(toolName)) {
       console.log(`[Agent] AI Browser tool allowed: ${toolName}`)
-      return { behavior: 'allow' as const }
+      trace.push({ layer: 'GlobalPolicy', outcome: 'allow', rule: 'ai_browser_tool_allowlist' })
+      return finish({ behavior: 'allow' as const })
     }
 
     // Default: allow
     notifyToolUse()
-    return { behavior: 'allow' as const }
+    trace.push({ layer: 'GlobalPolicy', outcome: 'allow', rule: 'default_allow' })
+    return finish({ behavior: 'allow' as const })
   }
 }

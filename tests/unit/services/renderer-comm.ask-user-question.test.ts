@@ -18,10 +18,17 @@ vi.mock('../../../src/main/http/websocket', () => ({
   broadcastToWebSocket: vi.fn()
 }))
 
+vi.mock('../../../src/main/services/config-source-mode.service', () => ({
+  getLockedConfigSourceMode: vi.fn(() => 'kite'),
+  getLockedUserConfigRootDir: vi.fn(() => '/home/test/.kite')
+}))
+
 vi.mock('../../../src/main/services/agent/space-resource-policy.service', () => ({
+  getExecutionLayerAllowedSources: vi.fn(() => ['app', 'global', 'space', 'installed', 'plugin']),
   getSpaceResourcePolicy: vi.fn(() => ({
     version: 1,
-    mode: 'strict-space-only'
+    mode: 'strict-space-only',
+    allowedSources: ['app', 'global', 'space', 'installed', 'plugin']
   })),
   isStrictSpaceOnlyPolicy: vi.fn((policy: { mode: string }) => policy.mode === 'strict-space-only')
 }))
@@ -31,7 +38,7 @@ import {
   normalizeAskUserQuestionInput
 } from '../../../src/main/services/agent/renderer-comm'
 
-function createSession(mode: 'plan' | 'code' | 'ask' = 'plan'): SessionState {
+function createSession(mode: 'plan' | 'code' = 'plan'): SessionState {
   return {
     abortController: new AbortController(),
     spaceId: 'space-1',

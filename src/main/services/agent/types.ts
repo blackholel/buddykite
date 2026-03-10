@@ -35,7 +35,7 @@ export interface FileContextAttachment {
 // Chat Mode
 // ============================================
 
-export const CHAT_MODES = ['code', 'plan', 'ask'] as const
+export const CHAT_MODES = ['code', 'plan'] as const
 export type ChatMode = (typeof CHAT_MODES)[number]
 
 export function isChatMode(value: unknown): value is ChatMode {
@@ -47,6 +47,10 @@ export function normalizeChatMode(
   planEnabled?: unknown,
   fallback: ChatMode = 'code'
 ): ChatMode {
+  // Backward compatibility: historical persisted mode "ask" is now treated as code.
+  if (mode === 'ask') {
+    return 'code'
+  }
   if (isChatMode(mode)) {
     return mode
   }
@@ -56,10 +60,7 @@ export function normalizeChatMode(
   return fallback
 }
 
-export function getPermissionModeForChatMode(mode: ChatMode): 'acceptEdits' | 'dontAsk' {
-  if (mode === 'ask') {
-    return 'dontAsk'
-  }
+export function getPermissionModeForChatMode(_mode: ChatMode): 'acceptEdits' {
   return 'acceptEdits'
 }
 
@@ -200,6 +201,7 @@ export interface CanUseToolDecision {
   behavior: 'allow' | 'deny'
   updatedInput?: Record<string, unknown>
   message?: string
+  errorCode?: string
 }
 
 export type AskUserQuestionPendingStatus =
