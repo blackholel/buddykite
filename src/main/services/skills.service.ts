@@ -10,10 +10,11 @@
  * Each skill is a directory containing a SKILL.md file with frontmatter metadata.
  */
 
-import { join, dirname } from 'path'
+import { join, dirname, resolve } from 'path'
 import { readdirSync, readFileSync, statSync, existsSync, mkdirSync, writeFileSync, rmSync, copyFileSync } from 'fs'
 import { getConfig } from './config.service'
 import { getLockedConfigSourceMode, getLockedUserConfigRootDir } from './config-source-mode.service'
+import { getSpaceConfig } from './space-config.service'
 import { listEnabledPlugins } from './plugins.service'
 import { getAllSpacePaths } from './space.service'
 import type { ResourceRef, CopyToSpaceOptions, CopyToSpaceResult } from './resource-ref.service'
@@ -74,10 +75,143 @@ function normalizePath(path: string): string {
   return path.replace(/\\/g, '/')
 }
 
+function normalizeResolvedPath(path: string): string {
+  return normalizePath(resolve(path))
+}
+
+function isPathWithinDirectory(targetPath: string, directoryPath: string): boolean {
+  const normalizedTarget = normalizeResolvedPath(targetPath)
+  const normalizedDirectory = normalizeResolvedPath(directoryPath)
+  if (normalizedTarget === normalizedDirectory) return true
+  return normalizedTarget.startsWith(`${normalizedDirectory}/`)
+}
+
 function toLocaleCacheKey(locale?: string): string {
   const trimmed = locale?.trim()
   if (!trimmed) return DEFAULT_LOCALE_CACHE_KEY
   return trimmed.toLowerCase()
+}
+
+function isFullMeshRuntimePolicy(workDir?: string): boolean {
+  if (!workDir) return false
+  const config = getConfig()
+  const spaceConfig = getSpaceConfig(workDir)
+  const runtimePolicy =
+    spaceConfig?.claudeCode?.resourceRuntimePolicy ||
+    config.claudeCode?.resourceRuntimePolicy ||
+    'app-single-source'
+  return runtimePolicy === 'full-mesh'
+}
+
+function getSpaceSkillsFromCache(workDir: string, localeKey: string, locale?: string): SkillDefinition[] {
+  let spaceCache = spaceSkillsCacheByLocale.get(workDir)
+  if (!spaceCache) {
+    spaceCache = new Map<string, SkillDefinition[]>()
+    spaceSkillsCacheByLocale.set(workDir, spaceCache)
+  }
+
+  let spaceSkills = spaceCache.get(localeKey)
+  if (!spaceSkills) {
+    spaceSkills = buildSpaceSkills(workDir, locale)
+    spaceCache.set(localeKey, spaceSkills)
+  }
+
+  return spaceSkills
+}
+
+function getSortedSpacePaths(): string[] {
+  return [...getAllSpacePaths()].sort((a, b) => a.localeCompare(b))
+}
+
+function getFullMeshLookupSpacePaths(currentWorkDir: string): string[] {
+  const deduped: string[] = []
+  const seen = new Set<string>()
+  for (const spacePath of [currentWorkDir, ...getSortedSpacePaths()]) {
+    const normalizedPath = normalizeResolvedPath(spacePath)
+    if (seen.has(normalizedPath)) {
+      continue
+    }
+    seen.add(normalizedPath)
+    deduped.push(spacePath)
+  }
+  return deduped
+}
+
+function resolveSkillOwnerSpacePath(skill: SkillDefinition): string | null {
+  if (skill.source !== 'space') return null
+  for (const spacePath of getSortedSpacePaths()) {
+    const skillRoot = join(spacePath, '.claude', 'skills')
+    if (isPathWithinDirectory(skill.path, skillRoot)) {
+      return normalizeResolvedPath(spacePath)
+    }
+  }
+  return null
+}
+
+function getSkillPrecedence(
+  skill: SkillDefinition,
+  currentWorkDir: string
+): { level: number; ownerSpacePath: string | null } {
+  const ownerSpacePath = resolveSkillOwnerSpacePath(skill)
+  if (!ownerSpacePath) return { level: 0, ownerSpacePath: null }
+  if (ownerSpacePath === normalizeResolvedPath(currentWorkDir)) {
+    return { level: 2, ownerSpacePath }
+  }
+  return { level: 1, ownerSpacePath }
+}
+
+function shouldReplaceSkill(existing: SkillDefinition, candidate: SkillDefinition, currentWorkDir: string): boolean {
+  const existingPrecedence = getSkillPrecedence(existing, currentWorkDir)
+  const candidatePrecedence = getSkillPrecedence(candidate, currentWorkDir)
+  if (candidatePrecedence.level > existingPrecedence.level) return true
+  if (candidatePrecedence.level < existingPrecedence.level) return false
+
+  if (
+    candidatePrecedence.level === 1 &&
+    existingPrecedence.ownerSpacePath &&
+    candidatePrecedence.ownerSpacePath
+  ) {
+    const ownerCompare = candidatePrecedence.ownerSpacePath.localeCompare(existingPrecedence.ownerSpacePath)
+    if (ownerCompare < 0) return true
+    if (ownerCompare > 0) return false
+    return candidate.path.localeCompare(existing.path) < 0
+  }
+
+  return false
+}
+
+function mergeSkillsFullMesh(
+  globalSkills: SkillDefinition[],
+  allSpaceSkills: SkillDefinition[],
+  currentWorkDir: string
+): SkillDefinition[] {
+  const merged = new Map<string, SkillDefinition>()
+  const conflicts: string[] = []
+
+  for (const skill of globalSkills) {
+    merged.set(skillKey(skill), skill)
+  }
+
+  for (const skill of allSpaceSkills) {
+    const key = skillKey(skill)
+    const existing = merged.get(key)
+    if (!existing) {
+      merged.set(key, skill)
+      continue
+    }
+    if (shouldReplaceSkill(existing, skill, currentWorkDir)) {
+      conflicts.push(`${key}: ${existing.path} -> ${skill.path}`)
+      merged.set(key, skill)
+    }
+  }
+
+  if (conflicts.length > 0) {
+    console.log(
+      `[Skills][full-mesh] Resolved ${conflicts.length} conflicts by precedence (current space > lexicographic space > global)`
+    )
+  }
+
+  return Array.from(merged.values())
 }
 
 function resolveWorkDirForSkillPath(skillMdPath: string): string | null {
@@ -352,17 +486,19 @@ function listSkillsUnfiltered(workDir?: string, locale?: string): SkillDefinitio
     return globalSkills
   }
 
-  let spaceCache = spaceSkillsCacheByLocale.get(workDir)
-  if (!spaceCache) {
-    spaceCache = new Map<string, SkillDefinition[]>()
-    spaceSkillsCacheByLocale.set(workDir, spaceCache)
+  if (isFullMeshRuntimePolicy(workDir)) {
+    const allSpaceSkills: SkillDefinition[] = []
+    for (const spacePath of getSortedSpacePaths()) {
+      allSpaceSkills.push(...getSpaceSkillsFromCache(spacePath, localeKey, locale))
+    }
+    const mergedSkills = mergeSkillsFullMesh(globalSkills, allSpaceSkills, workDir)
+    console.log(
+      `[Skills][full-mesh] Aggregated resources: global=${globalSkills.length}, spaces=${allSpaceSkills.length}, merged=${mergedSkills.length}`
+    )
+    return mergedSkills
   }
 
-  let spaceSkills = spaceCache.get(localeKey)
-  if (!spaceSkills) {
-    spaceSkills = buildSpaceSkills(workDir, locale)
-    spaceCache.set(localeKey, spaceSkills)
-  }
+  const spaceSkills = getSpaceSkillsFromCache(workDir, localeKey, locale)
 
   const skills = mergeSkills(globalSkills, spaceSkills)
   return skills
@@ -375,7 +511,7 @@ export function listSkills(workDir: string | undefined, view: ResourceListView, 
 }
 
 export function listSpaceSkills(workDir: string): SkillDefinition[] {
-  return listSkillsUnfiltered(workDir).filter(skill => skill.source === 'space')
+  return getSpaceSkillsFromCache(workDir, DEFAULT_LOCALE_CACHE_KEY)
 }
 
 function listSkillsForRefLookup(workDir: string): SkillDefinition[] {
@@ -385,17 +521,15 @@ function listSkillsForRefLookup(workDir: string): SkillDefinition[] {
     globalSkillsCacheByLocale.set(DEFAULT_LOCALE_CACHE_KEY, globalSkills)
   }
 
-  let spaceCache = spaceSkillsCacheByLocale.get(workDir)
-  if (!spaceCache) {
-    spaceCache = new Map<string, SkillDefinition[]>()
-    spaceSkillsCacheByLocale.set(workDir, spaceCache)
+  if (isFullMeshRuntimePolicy(workDir)) {
+    const allSpaceSkills: SkillDefinition[] = []
+    for (const spacePath of getFullMeshLookupSpacePaths(workDir)) {
+      allSpaceSkills.push(...getSpaceSkillsFromCache(spacePath, DEFAULT_LOCALE_CACHE_KEY))
+    }
+    return [...allSpaceSkills, ...globalSkills]
   }
 
-  let spaceSkills = spaceCache.get(DEFAULT_LOCALE_CACHE_KEY)
-  if (!spaceSkills) {
-    spaceSkills = buildSpaceSkills(workDir)
-    spaceCache.set(DEFAULT_LOCALE_CACHE_KEY, spaceSkills)
-  }
+  const spaceSkills = getSpaceSkillsFromCache(workDir, DEFAULT_LOCALE_CACHE_KEY)
 
   // Keep source-distinct entries for by-ref copy lookup; do not merge by key.
   return [...spaceSkills, ...globalSkills]
@@ -414,6 +548,11 @@ export function getSkillDefinition(
       : allSkills
     const skill = findSkill(lookupSkills, name)
     if (skill) {
+      if (isFullMeshRuntimePolicy(workDir)) {
+        console.log(
+          `[Skills][full-mesh] Resolved "${name}" -> source=${skill.source}, path=${skill.path}`
+        )
+      }
       return skill
     }
   }

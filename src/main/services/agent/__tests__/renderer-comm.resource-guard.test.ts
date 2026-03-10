@@ -37,6 +37,10 @@ vi.mock('../../plugins.service', () => ({
   ])
 }))
 
+vi.mock('../../space.service', () => ({
+  getAllSpacePaths: vi.fn(() => ['/workspace/project', '/workspace/space-a', '/workspace/space-b'])
+}))
+
 vi.mock('../space-resource-policy.service', () => ({
   getExecutionLayerAllowedSources: vi.fn(() => ['app', 'global', 'space', 'installed', 'plugin']),
   getSpaceResourcePolicy: vi.fn(() => ({
@@ -55,6 +59,16 @@ function createHandler() {
     'space-1',
     'conversation-1',
     () => undefined
+  )
+}
+
+function createHandlerWithRuntimePolicy(resourceRuntimePolicy: 'app-single-source' | 'legacy' | 'full-mesh') {
+  return createCanUseTool(
+    '/workspace/project',
+    'space-1',
+    'conversation-1',
+    () => undefined,
+    { resourceRuntimePolicy }
   )
 }
 
@@ -215,6 +229,42 @@ describe('renderer-comm resource-dir guard', () => {
     )
 
     expect(result.behavior).toBe('allow')
+  })
+
+  it('非 full-mesh 策略下 Skill 工具保持禁用', async () => {
+    const appSingleSourceHandler = createHandlerWithRuntimePolicy('app-single-source')
+    const legacyHandler = createHandlerWithRuntimePolicy('legacy')
+
+    const appSingleSourceResult = await appSingleSourceHandler(
+      'Skill',
+      { skill: 'demo' },
+      { signal: new AbortController().signal }
+    )
+    const legacyResult = await legacyHandler(
+      'Skill',
+      { skill: 'demo' },
+      { signal: new AbortController().signal }
+    )
+
+    expect(appSingleSourceResult.behavior).toBe('deny')
+    expect(legacyResult.behavior).toBe('deny')
+  })
+
+  it('full-mesh 策略下允许 Skill 工具并放宽到其他 space 资源根', async () => {
+    const canUseTool = createHandlerWithRuntimePolicy('full-mesh')
+    const skillResult = await canUseTool(
+      'Skill',
+      { skill: 'demo' },
+      { signal: new AbortController().signal }
+    )
+    const crossSpaceReadResult = await canUseTool(
+      'Read',
+      { file_path: '/workspace/space-a/.claude/skills/demo/SKILL.md' },
+      { signal: new AbortController().signal }
+    )
+
+    expect(skillResult.behavior).toBe('allow')
+    expect(crossSpaceReadResult.behavior).toBe('allow')
   })
 
   it('冲突矩阵满足 deny 优先与分层优先级', () => {

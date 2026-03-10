@@ -11,7 +11,7 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "start": "electron-vite preview",
-    "postinstall": "patch-package && electron-builder install-app-deps",
+    "postinstall": "electron-builder install-app-deps",
     "prepare:kite-seed": "node scripts/copy-kite-seed.mjs",
     "check:seed-package": "node tests/check/seed-package.mjs",
     "build:mac": "npm run prepare:kite-seed && npm run check:seed-package && npm run build && electron-builder --mac",
@@ -48,7 +48,7 @@
     "sidecar:report": "node scripts/build-resource-sidecar.mjs report"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "0.2.22",
+    "@anthropic-ai/claude-agent-sdk": "0.2.72",
     "@anthropic-ai/claude-code": "latest",
     "@anthropic-ai/sdk": "latest",
     "@electron-toolkit/preload": "^3.0.0",
@@ -99,7 +99,6 @@
     "electron-builder": "^24.9.0",
     "electron-vite": "^2.0.0",
     "i18next-parser": "^9.3.0",
-    "patch-package": "^8.0.1",
     "playwright": "^1.57.0",
     "postcss": "^8.4.32",
     "tailwindcss": "^3.4.0",

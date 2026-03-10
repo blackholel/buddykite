@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
-  unstable_v2_createSession: vi.fn()
+  query: vi.fn()
 }))
 
 vi.mock('../../config.service', () => ({
@@ -45,7 +45,7 @@ vi.mock('../../resource-index.service', () => ({
   getResourceIndexHash: vi.fn(() => 'resource-hash')
 }))
 
-import { unstable_v2_createSession } from '@anthropic-ai/claude-agent-sdk'
+import { query } from '@anthropic-ai/claude-agent-sdk'
 import { getConfig, onApiConfigChange } from '../../config.service'
 import { clearSessionId, getConversation } from '../../conversation.service'
 import { resolveEffectiveConversationAi } from '../ai-config-resolver'
@@ -99,14 +99,36 @@ function createRunningSessionState(conversationId: string): SessionState {
   }
 }
 
+function createQueryMock(overrides?: {
+  close?: ReturnType<typeof vi.fn>
+  initializationResult?: ReturnType<typeof vi.fn>
+}): any {
+  const close = overrides?.close ?? vi.fn()
+  const initializationResult = overrides?.initializationResult ?? vi.fn().mockResolvedValue({})
+
+  return {
+    initializationResult,
+    [Symbol.asyncIterator]: () => ({
+      next: async () => ({ done: true, value: undefined })
+    }),
+    close,
+    setPermissionMode: vi.fn().mockResolvedValue(undefined),
+    setMaxThinkingTokens: vi.fn().mockResolvedValue(undefined),
+    setModel: vi.fn().mockResolvedValue(undefined),
+    interrupt: vi.fn().mockResolvedValue(undefined),
+    reconnectMcpServer: vi.fn().mockResolvedValue(undefined),
+    toggleMcpServer: vi.fn().mockResolvedValue(undefined)
+  }
+}
+
 describe('session.manager rebuild', () => {
   const closeFirst = vi.fn()
   const closeSecond = vi.fn()
 
   beforeEach(() => {
-    vi.mocked(unstable_v2_createSession)
-      .mockResolvedValueOnce({ close: closeFirst } as any)
-      .mockResolvedValueOnce({ close: closeSecond } as any)
+    vi.mocked(query)
+      .mockReturnValueOnce(createQueryMock({ close: closeFirst }))
+      .mockReturnValueOnce(createQueryMock({ close: closeSecond }))
   })
 
   afterEach(() => {
@@ -134,7 +156,7 @@ describe('session.manager rebuild', () => {
     await getOrCreateV2Session('space-1', 'conv-1', {}, undefined, configA)
     await getOrCreateV2Session('space-1', 'conv-1', {}, undefined, configB)
 
-    expect(unstable_v2_createSession).toHaveBeenCalledTimes(2)
+    expect(query).toHaveBeenCalledTimes(2)
     expect(closeFirst).toHaveBeenCalledTimes(1)
     expect(closeSecond).not.toHaveBeenCalled()
   })
@@ -143,11 +165,11 @@ describe('session.manager rebuild', () => {
     const closeA = vi.fn()
     const closeB = vi.fn()
     const closeC = vi.fn()
-    vi.mocked(unstable_v2_createSession)
+    vi.mocked(query)
       .mockReset()
-      .mockResolvedValueOnce({ close: closeA } as any)
-      .mockResolvedValueOnce({ close: closeB } as any)
-      .mockResolvedValueOnce({ close: closeC } as any)
+      .mockReturnValueOnce(createQueryMock({ close: closeA }))
+      .mockReturnValueOnce(createQueryMock({ close: closeB }))
+      .mockReturnValueOnce(createQueryMock({ close: closeC }))
 
     const base: SessionConfig = {
       aiBrowserEnabled: false,
@@ -172,7 +194,7 @@ describe('session.manager rebuild', () => {
       resourceIndexHash: 'hash-3'
     })
 
-    expect(unstable_v2_createSession).toHaveBeenCalledTimes(2)
+    expect(query).toHaveBeenCalledTimes(2)
     expect(closeA).toHaveBeenCalledTimes(1)
     expect(closeB).not.toHaveBeenCalled()
     expect(closeC).not.toHaveBeenCalled()
@@ -181,10 +203,10 @@ describe('session.manager rebuild', () => {
   it('仅 responseLanguage 变化时也会触发 session 重建', async () => {
     const closeA = vi.fn()
     const closeB = vi.fn()
-    vi.mocked(unstable_v2_createSession)
+    vi.mocked(query)
       .mockReset()
-      .mockResolvedValueOnce({ close: closeA } as any)
-      .mockResolvedValueOnce({ close: closeB } as any)
+      .mockReturnValueOnce(createQueryMock({ close: closeA }))
+      .mockReturnValueOnce(createQueryMock({ close: closeB }))
 
     const base: SessionConfig = {
       aiBrowserEnabled: false,
@@ -203,7 +225,7 @@ describe('session.manager rebuild', () => {
       responseLanguage: 'zh-CN'
     })
 
-    expect(unstable_v2_createSession).toHaveBeenCalledTimes(2)
+    expect(query).toHaveBeenCalledTimes(2)
     expect(closeA).toHaveBeenCalledTimes(1)
     expect(closeB).not.toHaveBeenCalled()
   })
@@ -211,10 +233,10 @@ describe('session.manager rebuild', () => {
   it('API 配置变化时仅回收非运行会话，运行中会话延后切换', async () => {
     const closeA = vi.fn()
     const closeB = vi.fn()
-    vi.mocked(unstable_v2_createSession)
+    vi.mocked(query)
       .mockReset()
-      .mockResolvedValueOnce({ close: closeA } as any)
-      .mockResolvedValueOnce({ close: closeB } as any)
+      .mockReturnValueOnce(createQueryMock({ close: closeA }))
+      .mockReturnValueOnce(createQueryMock({ close: closeB }))
 
     const config: SessionConfig = {
       aiBrowserEnabled: false,
@@ -242,7 +264,7 @@ describe('session.manager rebuild', () => {
 
   it('warmup 对缺少 scope 的旧 sessionId 不做 resume，并清理持久化 sessionId', async () => {
     const close = vi.fn()
-    vi.mocked(unstable_v2_createSession).mockReset().mockResolvedValueOnce({ close } as any)
+    vi.mocked(query).mockReset().mockReturnValueOnce(createQueryMock({ close }))
     vi.mocked(getWorkingDir).mockReturnValue('/workspace/project')
     vi.mocked(getConversation).mockReturnValue({
       id: 'conv-warm',
@@ -275,14 +297,14 @@ describe('session.manager rebuild', () => {
     await ensureSessionWarm('space-1', 'conv-warm', 'en')
 
     expect(clearSessionId).toHaveBeenCalledWith('space-1', 'conv-warm')
-    expect(unstable_v2_createSession).toHaveBeenCalledTimes(1)
-    const createArgs = vi.mocked(unstable_v2_createSession).mock.calls[0]?.[0] as Record<string, unknown>
-    expect(createArgs?.resume).toBeUndefined()
+    expect(query).toHaveBeenCalledTimes(1)
+    const createArgs = vi.mocked(query).mock.calls[0]?.[0] as Record<string, unknown>
+    expect((createArgs?.options as Record<string, unknown> | undefined)?.resume).toBeUndefined()
   })
 
   it('scope 不匹配时会清理旧 sessionId 并直接新建', async () => {
     const close = vi.fn()
-    vi.mocked(unstable_v2_createSession).mockReset().mockResolvedValueOnce({ close } as any)
+    vi.mocked(query).mockReset().mockReturnValueOnce(createQueryMock({ close }))
 
     const result = await acquireSessionWithResumeFallback({
       spaceId: 'space-1',
@@ -298,17 +320,19 @@ describe('session.manager rebuild', () => {
     expect(result.retryCount).toBe(0)
     expect(result.errorCode).toBe(null)
     expect(clearSessionId).toHaveBeenCalledWith('space-1', 'conv-scope-mismatch')
-    expect(unstable_v2_createSession).toHaveBeenCalledTimes(1)
-    const createArgs = vi.mocked(unstable_v2_createSession).mock.calls[0]?.[0] as Record<string, unknown>
-    expect(createArgs?.resume).toBeUndefined()
+    expect(query).toHaveBeenCalledTimes(1)
+    const createArgs = vi.mocked(query).mock.calls[0]?.[0] as Record<string, unknown>
+    expect((createArgs?.options as Record<string, unknown> | undefined)?.resume).toBeUndefined()
   })
 
   it('resume 失败命中白名单后会清理并重试新建', async () => {
     const close = vi.fn()
-    vi.mocked(unstable_v2_createSession)
+    vi.mocked(query)
       .mockReset()
-      .mockRejectedValueOnce(new Error('Session not found: stale id'))
-      .mockResolvedValueOnce({ close } as any)
+      .mockImplementationOnce(() => createQueryMock({
+        initializationResult: vi.fn().mockRejectedValue(new Error('Session not found: stale id'))
+      }))
+      .mockReturnValueOnce(createQueryMock({ close }))
 
     const result = await acquireSessionWithResumeFallback({
       spaceId: 'space-1',
@@ -324,15 +348,67 @@ describe('session.manager rebuild', () => {
     expect(result.retryCount).toBe(1)
     expect(result.errorCode).toBe('SESSION_NOT_FOUND')
     expect(clearSessionId).toHaveBeenCalledWith('space-1', 'conv-retry')
-    expect(unstable_v2_createSession).toHaveBeenCalledTimes(2)
-    const secondArgs = vi.mocked(unstable_v2_createSession).mock.calls[1]?.[0] as Record<string, unknown>
-    expect(secondArgs?.resume).toBeUndefined()
+    expect(query).toHaveBeenCalledTimes(2)
+    const secondArgs = vi.mocked(query).mock.calls[1]?.[0] as Record<string, unknown>
+    expect((secondArgs?.options as Record<string, unknown> | undefined)?.resume).toBeUndefined()
+  })
+
+  it('初始化命中 Invalid MCP configuration 时会去掉 mcpServers 自动重试', async () => {
+    const closeInvalidMcp = vi.fn()
+    const closeRecovered = vi.fn()
+    vi.mocked(query)
+      .mockReset()
+      .mockReturnValueOnce(createQueryMock({
+        close: closeInvalidMcp,
+        initializationResult: vi.fn().mockRejectedValue(
+          new Error('Invalid MCP configuration:\nmcpServers.demo: Does not adhere to MCP server configuration schema')
+        )
+      }))
+      .mockReturnValueOnce(createQueryMock({ close: closeRecovered }))
+
+    await getOrCreateV2Session(
+      'space-1',
+      'conv-invalid-mcp',
+      {
+        cwd: '/workspace/project',
+        mcpServers: {
+          demo: { env: {} }
+        }
+      },
+      undefined,
+      {
+        aiBrowserEnabled: false,
+        skillsLazyLoad: false,
+        profileId: 'profile-a',
+        providerSignature: 'sig-a',
+        effectiveModel: 'model-a',
+        enabledPluginMcpsHash: 'mcp-1',
+        hasCanUseTool: true
+      }
+    )
+
+    expect(query).toHaveBeenCalledTimes(2)
+    const firstArgs = vi.mocked(query).mock.calls[0]?.[0] as Record<string, unknown>
+    const secondArgs = vi.mocked(query).mock.calls[1]?.[0] as Record<string, unknown>
+    expect((firstArgs?.options as Record<string, unknown> | undefined)?.mcpServers).toEqual({
+      demo: { env: {} }
+    })
+    expect(
+      Object.prototype.hasOwnProperty.call(
+        (secondArgs?.options as Record<string, unknown> | undefined) ?? {},
+        'mcpServers'
+      )
+    ).toBe(false)
+    expect(closeInvalidMcp).toHaveBeenCalledTimes(1)
+    expect(closeRecovered).not.toHaveBeenCalled()
   })
 
   it('resume 失败非白名单错误直接抛出，不 fallback', async () => {
-    vi.mocked(unstable_v2_createSession)
+    vi.mocked(query)
       .mockReset()
-      .mockRejectedValueOnce(new Error('network disconnected'))
+      .mockImplementationOnce(() => createQueryMock({
+        initializationResult: vi.fn().mockRejectedValue(new Error('network disconnected'))
+      }))
 
     await expect(
       acquireSessionWithResumeFallback({
@@ -347,7 +423,7 @@ describe('session.manager rebuild', () => {
     ).rejects.toThrow('network disconnected')
 
     expect(clearSessionId).not.toHaveBeenCalled()
-    expect(unstable_v2_createSession).toHaveBeenCalledTimes(1)
+    expect(query).toHaveBeenCalledTimes(1)
   })
 
   it('classifyResumeError 按白名单分类', () => {
@@ -362,15 +438,19 @@ describe('session.manager rebuild', () => {
     vi.useRealTimers()
     let inFlight = 0
     let maxInFlight = 0
-    vi.mocked(unstable_v2_createSession).mockReset().mockImplementation(async (options: any) => {
+    vi.mocked(query).mockReset().mockImplementation((params: any) => {
       inFlight += 1
       maxInFlight = Math.max(maxInFlight, inFlight)
-      await new Promise((resolve) => setTimeout(resolve, 20))
-      inFlight -= 1
-      if (options?.resume) {
-        throw new Error('Session not found: stale id')
-      }
-      return { close: vi.fn() } as any
+      const close = vi.fn()
+      const initializationResult = vi.fn(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 20))
+        inFlight -= 1
+        if (params?.options?.resume) {
+          throw new Error('Session not found: stale id')
+        }
+        return {}
+      })
+      return createQueryMock({ close, initializationResult })
     })
 
     await Promise.all([
@@ -413,7 +493,7 @@ describe('session.manager cleanup', () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'))
     vi.mocked(getConfig).mockReturnValue({} as any)
-    vi.mocked(unstable_v2_createSession).mockReset()
+    vi.mocked(query).mockReset()
   })
 
   afterEach(() => {
@@ -425,7 +505,7 @@ describe('session.manager cleanup', () => {
 
   it('inactive session 超时后会被清理', async () => {
     const close = vi.fn()
-    vi.mocked(unstable_v2_createSession).mockResolvedValueOnce({ close } as any)
+    vi.mocked(query).mockReturnValueOnce(createQueryMock({ close }))
 
     await getOrCreateV2Session('space-1', 'conv-inactive', {}, undefined, baseConfig)
     await vi.advanceTimersByTimeAsync(DEFAULT_SESSION_IDLE_TIMEOUT_MS + 60 * 1000)
@@ -435,7 +515,7 @@ describe('session.manager cleanup', () => {
 
   it('active session 超时后不会被清理', async () => {
     const close = vi.fn()
-    vi.mocked(unstable_v2_createSession).mockResolvedValueOnce({ close } as any)
+    vi.mocked(query).mockReturnValueOnce(createQueryMock({ close }))
 
     await getOrCreateV2Session('space-1', 'conv-active', {}, undefined, baseConfig)
     setActiveSession('space-1', 'conv-active', createRunningSessionState('conv-active'))
@@ -451,7 +531,7 @@ describe('session.manager cleanup', () => {
         sessionIdleTimeoutMs: 0
       }
     } as any)
-    vi.mocked(unstable_v2_createSession).mockResolvedValueOnce({ close } as any)
+    vi.mocked(query).mockReturnValueOnce(createQueryMock({ close }))
 
     await getOrCreateV2Session('space-1', 'conv-disabled', {}, undefined, baseConfig)
     await vi.advanceTimersByTimeAsync(DEFAULT_SESSION_IDLE_TIMEOUT_MS + 5 * 60 * 1000)
@@ -461,7 +541,7 @@ describe('session.manager cleanup', () => {
 
   it('touchV2Session 可以延长会话生命周期，避免误清理', async () => {
     const close = vi.fn()
-    vi.mocked(unstable_v2_createSession).mockResolvedValueOnce({ close } as any)
+    vi.mocked(query).mockReturnValueOnce(createQueryMock({ close }))
 
     await getOrCreateV2Session('space-1', 'conv-touch', {}, undefined, baseConfig)
     await vi.advanceTimersByTimeAsync(14 * 60 * 1000)
@@ -482,9 +562,9 @@ describe('session.manager cleanup', () => {
         maxWorkers: 1
       }
     } as any)
-    vi.mocked(unstable_v2_createSession)
-      .mockResolvedValueOnce({ close: closeA } as any)
-      .mockResolvedValueOnce({ close: closeB } as any)
+    vi.mocked(query)
+      .mockReturnValueOnce(createQueryMock({ close: closeA }))
+      .mockReturnValueOnce(createQueryMock({ close: closeB }))
 
     await getOrCreateV2Session('space-1', 'conv-limit-a', {}, undefined, baseConfig)
     await expect(
@@ -493,7 +573,7 @@ describe('session.manager cleanup', () => {
       errorCode: 'WORKER_LIMIT_REACHED'
     })
 
-    expect(unstable_v2_createSession).toHaveBeenCalledTimes(1)
+    expect(query).toHaveBeenCalledTimes(1)
   })
 
   it.each([
@@ -507,7 +587,7 @@ describe('session.manager cleanup', () => {
         sessionIdleTimeoutMs: timeoutValue
       }
     } as any)
-    vi.mocked(unstable_v2_createSession).mockResolvedValueOnce({ close } as any)
+    vi.mocked(query).mockReturnValueOnce(createQueryMock({ close }))
 
     await getOrCreateV2Session('space-1', `conv-invalid-${String(timeoutValue)}`, {}, undefined, baseConfig)
     await vi.advanceTimersByTimeAsync(2 * 60 * 1000)
@@ -520,7 +600,7 @@ describe('session.manager cleanup', () => {
   it('close 返回 rejected Promise(Abort) 时不会产生未处理拒绝', async () => {
     const close = vi.fn(() => Promise.reject(new Error('Operation aborted')))
     const debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => {})
-    vi.mocked(unstable_v2_createSession).mockResolvedValueOnce({ close } as any)
+    vi.mocked(query).mockReturnValueOnce(createQueryMock({ close }))
 
     await getOrCreateV2Session('space-1', 'conv-abort', {}, undefined, baseConfig)
     await vi.advanceTimersByTimeAsync(DEFAULT_SESSION_IDLE_TIMEOUT_MS + 60 * 1000)

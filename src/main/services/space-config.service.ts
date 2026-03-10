@@ -40,6 +40,8 @@ export interface SpaceClaudeCodeConfig {
   hooksEnabled?: boolean
   mcpEnabled?: boolean
   skillsLazyLoad?: boolean
+  resourceRuntimePolicy?: ClaudeCodeConfig['resourceRuntimePolicy']
+  skillMissingPolicy?: ClaudeCodeConfig['skillMissingPolicy']
   enableProjectSettings?: boolean
 }
 
@@ -128,7 +130,9 @@ export function mergeClaudeCodeConfigs(
         globalPaths: space.plugins.paths,
         loadDefaultPaths: space.plugins.loadDefaultPath
       } : undefined,
-      hooks: space.hooks
+      hooks: space.hooks,
+      resourceRuntimePolicy: space.resourceRuntimePolicy,
+      skillMissingPolicy: space.skillMissingPolicy
     }
   }
 
@@ -148,7 +152,9 @@ export function mergeClaudeCodeConfigs(
   return {
     ...global,
     plugins: mergedPlugins,
-    hooks: mergedHooks
+    hooks: mergedHooks,
+    resourceRuntimePolicy: space.resourceRuntimePolicy ?? global.resourceRuntimePolicy,
+    skillMissingPolicy: space.skillMissingPolicy ?? global.skillMissingPolicy
   }
 }
 

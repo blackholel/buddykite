@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { unstable_v2_createSession } from '@anthropic-ai/claude-agent-sdk'
+import { query } from '@anthropic-ai/claude-agent-sdk'
 
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
-  unstable_v2_createSession: vi.fn()
+  query: vi.fn()
 }))
 
 vi.mock('../../config.service', () => ({
@@ -90,6 +90,28 @@ function createSessionState(overrides: Partial<SessionState> = {}): SessionState
   }
 }
 
+function createQueryMock(overrides?: {
+  close?: ReturnType<typeof vi.fn>
+  setPermissionMode?: ReturnType<typeof vi.fn>
+}): any {
+  const close = overrides?.close ?? vi.fn()
+  const setPermissionMode = overrides?.setPermissionMode
+
+  return {
+    initializationResult: vi.fn().mockResolvedValue({}),
+    [Symbol.asyncIterator]: () => ({
+      next: async () => ({ done: true, value: undefined })
+    }),
+    close,
+    setPermissionMode,
+    setMaxThinkingTokens: vi.fn().mockResolvedValue(undefined),
+    setModel: vi.fn().mockResolvedValue(undefined),
+    interrupt: vi.fn().mockResolvedValue(undefined),
+    reconnectMcpServer: vi.fn().mockResolvedValue(undefined),
+    toggleMcpServer: vi.fn().mockResolvedValue(undefined)
+  }
+}
+
 describe('session.manager setSessionMode', () => {
   const spaceId = 'space-1'
   const conversationId = 'conv-1'
@@ -160,10 +182,10 @@ describe('session.manager setSessionMode', () => {
 
   it('applies mode switch and updates session mode on success', async () => {
     const setPermissionMode = vi.fn().mockResolvedValue(undefined)
-    vi.mocked(unstable_v2_createSession).mockResolvedValueOnce({
+    vi.mocked(query).mockReturnValueOnce(createQueryMock({
       close: vi.fn(),
       setPermissionMode
-    } as any)
+    }))
 
     await getOrCreateV2Session('space-1', 'conv-1', {})
     const session = createSessionState({ mode: 'code' })

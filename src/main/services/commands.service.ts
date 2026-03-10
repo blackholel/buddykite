@@ -8,9 +8,11 @@
  * Each command is a markdown file (.md).
  */
 
-import { join, dirname } from 'path'
+import { join, dirname, resolve } from 'path'
 import { readdirSync, readFileSync, statSync, existsSync, mkdirSync, writeFileSync, rmSync, copyFileSync } from 'fs'
+import { getConfig } from './config.service'
 import { getLockedUserConfigRootDir } from './config-source-mode.service'
+import { getSpaceConfig } from './space-config.service'
 import { getAllSpacePaths } from './space.service'
 import { isPathWithinBasePaths, isValidDirectoryPath, isFileNotFoundError, isWorkDirAllowed } from '../utils/path-validation'
 import { listEnabledPlugins } from './plugins.service'
@@ -58,10 +60,147 @@ function normalizePath(path: string): string {
   return path.replace(/\\/g, '/')
 }
 
+function normalizeResolvedPath(path: string): string {
+  return normalizePath(resolve(path))
+}
+
+function isPathWithinDirectory(targetPath: string, directoryPath: string): boolean {
+  const normalizedTarget = normalizeResolvedPath(targetPath)
+  const normalizedDirectory = normalizeResolvedPath(directoryPath)
+  if (normalizedTarget === normalizedDirectory) return true
+  return normalizedTarget.startsWith(`${normalizedDirectory}/`)
+}
+
 function toLocaleCacheKey(locale?: string): string {
   const trimmed = locale?.trim()
   if (!trimmed) return DEFAULT_LOCALE_CACHE_KEY
   return trimmed.toLowerCase()
+}
+
+function getSortedSpacePaths(): string[] {
+  return [...getAllSpacePaths()].sort((a, b) => a.localeCompare(b))
+}
+
+function getFullMeshLookupSpacePaths(currentWorkDir: string): string[] {
+  const deduped: string[] = []
+  const seen = new Set<string>()
+  for (const spacePath of [currentWorkDir, ...getSortedSpacePaths()]) {
+    const normalizedPath = normalizeResolvedPath(spacePath)
+    if (seen.has(normalizedPath)) {
+      continue
+    }
+    seen.add(normalizedPath)
+    deduped.push(spacePath)
+  }
+  return deduped
+}
+
+function isFullMeshRuntimePolicy(workDir?: string): boolean {
+  if (!workDir) return false
+  const config = getConfig()
+  const spaceConfig = getSpaceConfig(workDir)
+  const runtimePolicy =
+    spaceConfig?.claudeCode?.resourceRuntimePolicy ||
+    config.claudeCode?.resourceRuntimePolicy ||
+    'app-single-source'
+  return runtimePolicy === 'full-mesh'
+}
+
+function getSpaceCommandsFromCache(workDir: string, localeKey: string, locale?: string): CommandDefinition[] {
+  let spaceCache = spaceCommandsCacheByLocale.get(workDir)
+  if (!spaceCache) {
+    spaceCache = new Map<string, CommandDefinition[]>()
+    spaceCommandsCacheByLocale.set(workDir, spaceCache)
+  }
+
+  let spaceCommands = spaceCache.get(localeKey)
+  if (!spaceCommands) {
+    spaceCommands = buildSpaceCommands(workDir, locale)
+    spaceCache.set(localeKey, spaceCommands)
+  }
+
+  return spaceCommands
+}
+
+function resolveCommandOwnerSpacePath(command: CommandDefinition): string | null {
+  if (command.source !== 'space') return null
+  for (const spacePath of getSortedSpacePaths()) {
+    const commandRoot = join(spacePath, '.claude', 'commands')
+    if (isPathWithinDirectory(command.path, commandRoot)) {
+      return normalizeResolvedPath(spacePath)
+    }
+  }
+  return null
+}
+
+function getCommandPrecedence(
+  command: CommandDefinition,
+  currentWorkDir: string
+): { level: number; ownerSpacePath: string | null } {
+  const ownerSpacePath = resolveCommandOwnerSpacePath(command)
+  if (!ownerSpacePath) return { level: 0, ownerSpacePath: null }
+  if (ownerSpacePath === normalizeResolvedPath(currentWorkDir)) {
+    return { level: 2, ownerSpacePath }
+  }
+  return { level: 1, ownerSpacePath }
+}
+
+function shouldReplaceCommand(
+  existing: CommandDefinition,
+  candidate: CommandDefinition,
+  currentWorkDir: string
+): boolean {
+  const existingPrecedence = getCommandPrecedence(existing, currentWorkDir)
+  const candidatePrecedence = getCommandPrecedence(candidate, currentWorkDir)
+  if (candidatePrecedence.level > existingPrecedence.level) return true
+  if (candidatePrecedence.level < existingPrecedence.level) return false
+
+  if (
+    candidatePrecedence.level === 1 &&
+    existingPrecedence.ownerSpacePath &&
+    candidatePrecedence.ownerSpacePath
+  ) {
+    const ownerCompare = candidatePrecedence.ownerSpacePath.localeCompare(existingPrecedence.ownerSpacePath)
+    if (ownerCompare < 0) return true
+    if (ownerCompare > 0) return false
+    return candidate.path.localeCompare(existing.path) < 0
+  }
+
+  return false
+}
+
+function mergeCommandsFullMesh(
+  globalCommands: CommandDefinition[],
+  allSpaceCommands: CommandDefinition[],
+  currentWorkDir: string
+): CommandDefinition[] {
+  const merged = new Map<string, CommandDefinition>()
+  const conflicts: string[] = []
+
+  for (const command of globalCommands) {
+    merged.set(commandKey(command), command)
+  }
+
+  for (const command of allSpaceCommands) {
+    const key = commandKey(command)
+    const existing = merged.get(key)
+    if (!existing) {
+      merged.set(key, command)
+      continue
+    }
+    if (shouldReplaceCommand(existing, command, currentWorkDir)) {
+      conflicts.push(`${key}: ${existing.path} -> ${command.path}`)
+      merged.set(key, command)
+    }
+  }
+
+  if (conflicts.length > 0) {
+    console.log(
+      `[Commands][full-mesh] Resolved ${conflicts.length} conflicts by precedence (current space > lexicographic space > global)`
+    )
+  }
+
+  return Array.from(merged.values())
 }
 
 function resolveWorkDirForCommandPath(commandPath: string): string | null {
@@ -251,17 +390,19 @@ function listCommandsUnfiltered(workDir?: string, locale?: string): CommandDefin
     return globalCommands
   }
 
-  let spaceCache = spaceCommandsCacheByLocale.get(workDir)
-  if (!spaceCache) {
-    spaceCache = new Map<string, CommandDefinition[]>()
-    spaceCommandsCacheByLocale.set(workDir, spaceCache)
+  if (isFullMeshRuntimePolicy(workDir)) {
+    const allSpaceCommands: CommandDefinition[] = []
+    for (const spacePath of getSortedSpacePaths()) {
+      allSpaceCommands.push(...getSpaceCommandsFromCache(spacePath, localeKey, locale))
+    }
+    const mergedCommands = mergeCommandsFullMesh(globalCommands, allSpaceCommands, workDir)
+    console.log(
+      `[Commands][full-mesh] Aggregated resources: global=${globalCommands.length}, spaces=${allSpaceCommands.length}, merged=${mergedCommands.length}`
+    )
+    return mergedCommands
   }
 
-  let spaceCommands = spaceCache.get(localeKey)
-  if (!spaceCommands) {
-    spaceCommands = buildSpaceCommands(workDir, locale)
-    spaceCache.set(localeKey, spaceCommands)
-  }
+  const spaceCommands = getSpaceCommandsFromCache(workDir, localeKey, locale)
 
   const commands = mergeCommands(globalCommands, spaceCommands)
   return commands
@@ -274,7 +415,7 @@ export function listCommands(workDir: string | undefined, view: ResourceListView
 }
 
 export function listSpaceCommands(workDir: string): CommandDefinition[] {
-  return listCommandsUnfiltered(workDir).filter(command => command.source === 'space')
+  return getSpaceCommandsFromCache(workDir, DEFAULT_LOCALE_CACHE_KEY)
 }
 
 function listCommandsForRefLookup(workDir: string): CommandDefinition[] {
@@ -284,24 +425,28 @@ function listCommandsForRefLookup(workDir: string): CommandDefinition[] {
     globalCommandsCacheByLocale.set(DEFAULT_LOCALE_CACHE_KEY, globalCommands)
   }
 
-  let spaceCache = spaceCommandsCacheByLocale.get(workDir)
-  if (!spaceCache) {
-    spaceCache = new Map<string, CommandDefinition[]>()
-    spaceCommandsCacheByLocale.set(workDir, spaceCache)
+  if (isFullMeshRuntimePolicy(workDir)) {
+    const allSpaceCommands: CommandDefinition[] = []
+    for (const spacePath of getFullMeshLookupSpacePaths(workDir)) {
+      allSpaceCommands.push(...getSpaceCommandsFromCache(spacePath, DEFAULT_LOCALE_CACHE_KEY))
+    }
+    return [...allSpaceCommands, ...globalCommands]
   }
 
-  let spaceCommands = spaceCache.get(DEFAULT_LOCALE_CACHE_KEY)
-  if (!spaceCommands) {
-    spaceCommands = buildSpaceCommands(workDir)
-    spaceCache.set(DEFAULT_LOCALE_CACHE_KEY, spaceCommands)
-  }
+  const spaceCommands = getSpaceCommandsFromCache(workDir, DEFAULT_LOCALE_CACHE_KEY)
 
   // Keep source-distinct entries for by-ref copy lookup; do not merge by key.
   return [...spaceCommands, ...globalCommands]
 }
 
 export function getCommand(name: string, workDir?: string): CommandDefinition | null {
-  return findCommand(listCommandsUnfiltered(workDir), name) ?? null
+  const command = findCommand(listCommandsUnfiltered(workDir), name) ?? null
+  if (command && isFullMeshRuntimePolicy(workDir)) {
+    console.log(
+      `[Commands][full-mesh] Resolved "${name}" -> source=${command.source}, path=${command.path}`
+    )
+  }
+  return command
 }
 
 export function getCommandContent(

@@ -4,10 +4,16 @@
  * Manages V2 SDK Session lifecycle including creation, reuse, and cleanup.
  */
 
-import { unstable_v2_createSession } from '@anthropic-ai/claude-agent-sdk'
+import { query } from '@anthropic-ai/claude-agent-sdk'
+import type {
+  Query as ClaudeSdkQuery,
+  PermissionMode as ClaudePermissionMode,
+  SDKUserMessage
+} from '@anthropic-ai/claude-agent-sdk'
 import { resolve } from 'path'
 import { cpus } from 'os'
 import { getConfig, onApiConfigChange } from '../config.service'
+import { getSpaceConfig } from '../space-config.service'
 import { clearSessionId, getConversation } from '../conversation.service'
 import { getHeadlessElectronPath } from './electron-path'
 import { resolveProvider } from './provider-resolver'
@@ -30,6 +36,7 @@ import { getResourceIndexHash } from '../resource-index.service'
 import { normalizeLocale, type LocaleCode } from '../../../shared/i18n/locale'
 import { buildSessionKey } from '../../../shared/session-key'
 import { flushRuntimeJournalSnapshot } from './runtime-journal.service'
+import type { ClaudeCodeResourceRuntimePolicy, ClaudeCodeSkillMissingPolicy } from '../../../shared/types/claude-code'
 
 // V2 Session management: Map of sessionKey -> persistent V2 session
 const v2Sessions = new Map<string, V2SessionInfo>()
@@ -45,6 +52,246 @@ const RESOURCE_INDEX_REBUILD_DEBOUNCE_MS = 3000
 let cleanupIntervalId: NodeJS.Timeout | null = null
 const lastResourceIndexRebuildAt = new Map<string, number>()
 const sessionAcquireLockChains = new Map<string, Promise<void>>()
+
+class AsyncInputQueue<T> implements AsyncIterable<T> {
+  private readonly queue: T[] = []
+  private readonly waiters: Array<(result: IteratorResult<T>) => void> = []
+  private closed = false
+
+  push(value: T): void {
+    if (this.closed) {
+      throw new Error('Session input queue is closed')
+    }
+    const waiter = this.waiters.shift()
+    if (waiter) {
+      waiter({ done: false, value })
+      return
+    }
+    this.queue.push(value)
+  }
+
+  close(): void {
+    if (this.closed) {
+      return
+    }
+    this.closed = true
+    while (this.waiters.length > 0) {
+      const waiter = this.waiters.shift()
+      waiter?.({ done: true, value: undefined as unknown as T })
+    }
+  }
+
+  [Symbol.asyncIterator](): AsyncIterator<T> {
+    return {
+      next: async (): Promise<IteratorResult<T>> => {
+        if (this.queue.length > 0) {
+          const value = this.queue.shift() as T
+          return { done: false, value }
+        }
+        if (this.closed) {
+          return { done: true, value: undefined as unknown as T }
+        }
+        return await new Promise<IteratorResult<T>>((resolve) => {
+          this.waiters.push(resolve)
+        })
+      }
+    }
+  }
+}
+
+function normalizeSdkUserMessage(message: unknown): SDKUserMessage {
+  if (typeof message === 'string') {
+    return {
+      type: 'user',
+      session_id: '',
+      parent_tool_use_id: null,
+      message: {
+        role: 'user',
+        content: [{ type: 'text', text: message }]
+      }
+    }
+  }
+
+  if (!message || typeof message !== 'object') {
+    throw new Error('Unsupported user message payload for query session')
+  }
+
+  const candidate = message as Record<string, unknown>
+  if (!candidate.message || typeof candidate.message !== 'object') {
+    throw new Error('Invalid SDK user message: missing message payload')
+  }
+
+  return {
+    ...(candidate as unknown as SDKUserMessage),
+    type: 'user',
+    session_id: typeof candidate.session_id === 'string' ? candidate.session_id : '',
+    parent_tool_use_id:
+      typeof candidate.parent_tool_use_id === 'string' || candidate.parent_tool_use_id === null
+        ? candidate.parent_tool_use_id
+        : null
+  }
+}
+
+function createQueryBackedSession(
+  querySession: ClaudeSdkQuery,
+  inputQueue: AsyncInputQueue<SDKUserMessage>
+): V2SDKSession {
+  const outputIterator = querySession[Symbol.asyncIterator]()
+  let closed = false
+  let streamInProgress = false
+
+  const streamTurn = async function * (): AsyncGenerator<unknown, void> {
+    if (closed) {
+      return
+    }
+    if (streamInProgress) {
+      throw new Error('Concurrent stream() calls are not supported for query-backed sessions')
+    }
+    streamInProgress = true
+    try {
+      while (true) {
+        const { value, done } = await outputIterator.next()
+        if (done) {
+          return
+        }
+        yield value
+        if ((value as { type?: string } | null)?.type === 'result') {
+          return
+        }
+      }
+    } finally {
+      streamInProgress = false
+    }
+  }
+
+  const close = (): void | Promise<void> => {
+    if (closed) {
+      return
+    }
+    closed = true
+    inputQueue.close()
+    const queryClose = (querySession as unknown as { close: () => void | Promise<void> }).close
+    return queryClose()
+  }
+
+  return {
+    send: async (message: unknown): Promise<void> => {
+      if (closed) {
+        throw new Error('Cannot send to closed query-backed session')
+      }
+      inputQueue.push(normalizeSdkUserMessage(message))
+    },
+    stream: () => streamTurn(),
+    close,
+    interrupt:
+      typeof querySession.interrupt === 'function'
+        ? () => querySession.interrupt()
+        : undefined,
+    setModel:
+      typeof querySession.setModel === 'function'
+        ? (model: string | undefined) => querySession.setModel(model)
+        : undefined,
+    setMaxThinkingTokens:
+      typeof querySession.setMaxThinkingTokens === 'function'
+        ? (maxThinkingTokens: number | null) => querySession.setMaxThinkingTokens(maxThinkingTokens)
+        : undefined,
+    setPermissionMode:
+      typeof querySession.setPermissionMode === 'function'
+        ? (mode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'dontAsk') =>
+          querySession.setPermissionMode(mode as ClaudePermissionMode)
+        : undefined,
+    reconnectMcpServer:
+      typeof querySession.reconnectMcpServer === 'function'
+        ? (serverName: string) => querySession.reconnectMcpServer(serverName)
+        : undefined,
+    toggleMcpServer:
+      typeof querySession.toggleMcpServer === 'function'
+        ? (serverName: string, enabled: boolean) => querySession.toggleMcpServer(serverName, enabled)
+        : undefined
+  }
+}
+
+function isInvalidMcpConfigError(error: unknown): boolean {
+  const message = errorMessage(error).toLowerCase()
+  return (
+    message.includes('invalid mcp configuration') ||
+    (message.includes('mcp') && message.includes('configuration schema'))
+  )
+}
+
+function buildMcpFallbackOptions(
+  sdkOptions: Record<string, any>
+): Record<string, any> | null {
+  if (!Object.prototype.hasOwnProperty.call(sdkOptions, 'mcpServers')) {
+    return null
+  }
+
+  const rawMcpServers = sdkOptions.mcpServers
+  if (!rawMcpServers || typeof rawMcpServers !== 'object') {
+    return null
+  }
+
+  if (Object.keys(rawMcpServers as Record<string, unknown>).length === 0) {
+    return null
+  }
+
+  const fallbackOptions = { ...sdkOptions }
+  delete fallbackOptions.mcpServers
+  return fallbackOptions
+}
+
+async function initializeQuerySession(
+  sdkOptions: Record<string, any>
+): Promise<{
+  querySession: ClaudeSdkQuery
+  inputQueue: AsyncInputQueue<SDKUserMessage>
+}> {
+  const inputQueue = new AsyncInputQueue<SDKUserMessage>()
+  const querySession = query({
+    prompt: inputQueue,
+    options: sdkOptions
+  })
+
+  try {
+    if (typeof querySession.initializationResult === 'function') {
+      await querySession.initializationResult()
+    }
+    return { querySession, inputQueue }
+  } catch (error) {
+    try {
+      inputQueue.close()
+      querySession.close()
+    } catch {
+      // Ignore close errors; original initialization error is more actionable.
+    }
+    throw error
+  }
+}
+
+async function createV2SessionFromQuery(sdkOptions: Record<string, any>): Promise<V2SDKSession> {
+  try {
+    const initialized = await initializeQuerySession(sdkOptions)
+    return createQueryBackedSession(initialized.querySession, initialized.inputQueue)
+  } catch (error) {
+    if (!isInvalidMcpConfigError(error)) {
+      throw error
+    }
+
+    const fallbackOptions = buildMcpFallbackOptions(sdkOptions)
+    if (!fallbackOptions) {
+      throw error
+    }
+
+    const mcpServerNames = Object.keys(
+      (sdkOptions.mcpServers as Record<string, unknown> | undefined) ?? {}
+    )
+    console.warn(
+      `[Agent] Invalid MCP configuration detected; retrying session without MCP servers (${mcpServerNames.join(', ') || 'unknown'})`
+    )
+    const initialized = await initializeQuerySession(fallbackOptions)
+    return createQueryBackedSession(initialized.querySession, initialized.inputQueue)
+  }
+}
 
 function toSessionKey(spaceId: string, conversationId: string): string {
   return buildSessionKey(spaceId, conversationId)
@@ -249,6 +496,7 @@ function getSessionRebuildReasons(existing: SessionConfig, next: SessionConfig):
   if ((existing.providerSignature || '') !== (next.providerSignature || '')) reasons.push('providerSignature')
   if ((existing.effectiveModel || '') !== (next.effectiveModel || '')) reasons.push('effectiveModel')
   if ((existing.enabledPluginMcpsHash || '') !== (next.enabledPluginMcpsHash || '')) reasons.push('enabledPluginMcpsHash')
+  if ((existing.resourceRuntimePolicy || '') !== (next.resourceRuntimePolicy || '')) reasons.push('resourceRuntimePolicy')
   if ((existing.resourceIndexHash || '') !== (next.resourceIndexHash || '')) reasons.push('resourceIndexHash')
   if ((existing.hasCanUseTool || false) !== (next.hasCanUseTool || false)) reasons.push('hasCanUseTool')
   return reasons
@@ -265,6 +513,7 @@ function buildSessionConfigSignature(config: SessionConfig): string {
     providerSignature: config.providerSignature || '',
     effectiveModel: config.effectiveModel || '',
     enabledPluginMcpsHash: config.enabledPluginMcpsHash || '',
+    resourceRuntimePolicy: config.resourceRuntimePolicy || '',
     resourceIndexHash: config.resourceIndexHash || '',
     hasCanUseTool: config.hasCanUseTool || false
   })
@@ -394,7 +643,7 @@ export async function getOrCreateV2Session(
     delete sdkOptions.resume
   }
 
-  const session = (await unstable_v2_createSession(sdkOptions as any)) as unknown as V2SDKSession
+  const session = await createV2SessionFromQuery(sdkOptions)
   console.log(`[Agent][${sessionKey}] V2 session created in ${Date.now() - startTime}ms`)
 
   v2Sessions.set(sessionKey, {
@@ -408,6 +657,7 @@ export async function getOrCreateV2Session(
       workDir: typeof sdkOptions?.cwd === 'string' ? sdkOptions.cwd : undefined,
       aiBrowserEnabled: false,
       skillsLazyLoad: false,
+      resourceRuntimePolicy: 'app-single-source',
       enabledPluginMcpsHash: ''
     }
   })
@@ -642,6 +892,15 @@ export async function ensureSessionWarm(
   const historyMessageCount = Array.isArray(conversation?.messages) ? conversation.messages.length : 0
   const electronPath = getHeadlessElectronPath()
   const { effectiveLazyLoad: skillsLazyLoad } = getEffectiveSkillsLazyLoad(workDir, config)
+  const spaceConfig = getSpaceConfig(workDir)
+  const resourceRuntimePolicy: ClaudeCodeResourceRuntimePolicy =
+    spaceConfig?.claudeCode?.resourceRuntimePolicy ||
+    config.claudeCode?.resourceRuntimePolicy ||
+    'app-single-source'
+  const skillMissingPolicy: ClaudeCodeSkillMissingPolicy =
+    spaceConfig?.claudeCode?.skillMissingPolicy ||
+    config.claudeCode?.skillMissingPolicy ||
+    'skip'
   const effectiveAi = resolveEffectiveConversationAi(spaceId, conversationId)
   const configuredConversationProfileId = toNonEmptyString(conversation?.ai?.profileId)
   const defaultProfileId = toNonEmptyString(config.ai?.defaultProfileId)
@@ -675,12 +934,17 @@ export async function ensureSessionWarm(
     thinkingEnabled: false,
     responseLanguage: normalizedResponseLanguage,
     disableToolsForCompat: effectiveAi.disableToolsForCompat,
+    resourceRuntimePolicy,
     stderrSuffix: ' (warm)',
     canUseTool: createCanUseTool(
       workDir,
       spaceId,
       conversationId,
-      getActiveSession
+      getActiveSession,
+      {
+        resourceRuntimePolicy,
+        skillMissingPolicy
+      }
     ),
     enabledPluginMcps: getEnabledPluginMcpList(sessionKey)
   })
@@ -705,6 +969,7 @@ export async function ensureSessionWarm(
         providerSignature: effectiveAi.providerSignature,
         effectiveModel: effectiveAi.effectiveModel,
         enabledPluginMcpsHash: getEnabledPluginMcpHash(sessionKey),
+        resourceRuntimePolicy,
         resourceIndexHash: getResourceIndexHash(workDir),
         hasCanUseTool: true // Session has canUseTool callback
       }

@@ -306,6 +306,10 @@ const DEFAULT_CONFIG: KiteConfig = {
   },
   commands: {
     legacyDependencyRegexEnabled: true
+  },
+  claudeCode: {
+    resourceRuntimePolicy: 'app-single-source',
+    skillMissingPolicy: 'skip'
   }
 }
 

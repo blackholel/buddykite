@@ -5,15 +5,15 @@
  * ensureSessionWarm() and sendMessage().
  */
 
-import { join } from 'path'
-import { existsSync, mkdirSync } from 'fs'
+import { isAbsolute, join } from 'path'
+import { existsSync, mkdirSync, realpathSync } from 'fs'
 import { homedir } from 'os'
 import { getConfig, getTempSpacePath } from '../config.service'
 import { getSpaceConfig, type SpaceToolkit } from '../space-config.service'
 import { buildHooksConfig } from '../hooks.service'
 import { listEnabledPlugins } from '../plugins.service'
 import { isValidDirectoryPath } from '../../utils/path-validation'
-import { getSpace } from '../space.service'
+import { getAllSpacePaths, getSpace } from '../space.service'
 import { getSpaceToolkit } from '../toolkit.service'
 import { createAIBrowserMcpServer, AI_BROWSER_SYSTEM_PROMPT } from '../ai-browser'
 import { SKILLS_LAZY_SYSTEM_PROMPT } from '../skills-mcp-server'
@@ -26,6 +26,7 @@ import {
 } from './provider-resolver'
 import { normalizeLocale, SUPPORTED_LOCALES, type LocaleCode } from '../../../shared/i18n/locale'
 import type { PluginConfig, SettingSource, ToolCall } from './types'
+import type { ClaudeCodeResourceRuntimePolicy } from '../../../shared/types/claude-code'
 
 // Re-export types for convenience
 export type { PluginConfig, SettingSource }
@@ -112,24 +113,53 @@ export function getEffectiveSkillsLazyLoad(
   return { configLazyLoad, effectiveLazyLoad, toolkit, strictSpaceOnly }
 }
 
+export function resolveResourceRuntimePolicy(
+  workDir: string,
+  config?: ReturnType<typeof getConfig>,
+  explicit?: ClaudeCodeResourceRuntimePolicy
+): ClaudeCodeResourceRuntimePolicy {
+  if (explicit) {
+    return explicit
+  }
+  const resolvedConfig = config ?? getConfig()
+  const spaceConfig = getSpaceConfig(workDir)
+  return (
+    spaceConfig?.claudeCode?.resourceRuntimePolicy ||
+    resolvedConfig.claudeCode?.resourceRuntimePolicy ||
+    'app-single-source'
+  )
+}
+
 /**
  * Build plugins configuration for skills loading.
  * Loading priority: installed plugins → global → app → space → workDir/.claude/
  */
-export function buildPluginsConfig(workDir: string): PluginConfig[] {
+export function buildPluginsConfig(
+  workDir: string,
+  options?: {
+    resourceRuntimePolicy?: ClaudeCodeResourceRuntimePolicy
+  }
+): PluginConfig[] {
   const plugins: PluginConfig[] = []
   const config = getConfig()
   const spaceConfig = getSpaceConfig(workDir)
   const claudeCodeConfig = config.claudeCode
   const { effectiveLazyLoad } = getEffectiveSkillsLazyLoad(workDir, config)
+  const effectiveResourceRuntimePolicy = resolveResourceRuntimePolicy(
+    workDir,
+    config,
+    options?.resourceRuntimePolicy
+  )
 
   // Helper to add plugin if valid and not already added
   const addedPaths = new Set<string>()
   const addIfValid = (pluginPath: string): void => {
-    if (addedPaths.has(pluginPath)) return
-    if (isValidDirectoryPath(pluginPath, 'Agent')) {
-      plugins.push({ type: 'local', path: pluginPath })
-      addedPaths.add(pluginPath)
+    const resolvedPath = isAbsolute(pluginPath) ? pluginPath : join(workDir, pluginPath)
+    const canonicalPath = existsSync(resolvedPath) ? realpathSync(resolvedPath) : resolvedPath
+    if (addedPaths.has(canonicalPath)) return
+    if (isValidDirectoryPath(canonicalPath, 'Agent')) {
+      plugins.push({ type: 'local', path: canonicalPath })
+      addedPaths.add(canonicalPath)
     }
   }
 
@@ -191,9 +221,21 @@ export function buildPluginsConfig(workDir: string): PluginConfig[] {
     }
   }
 
+  if (effectiveResourceRuntimePolicy === 'full-mesh') {
+    const allSpacePaths = getAllSpacePaths()
+    for (const spacePath of allSpacePaths) {
+      addIfValid(join(spacePath, '.claude'))
+    }
+    console.log(
+      `[Agent] full-mesh plugin aggregation enabled: loaded ${plugins.length} plugin roots`
+    )
+  }
+
   // Single summary log
   if (plugins.length > 0) {
-    console.log(`[Agent] Plugins loaded: ${plugins.map((p) => p.path).join(', ')}`)
+    console.log(
+      `[Agent] Plugins loaded (${effectiveResourceRuntimePolicy}): ${plugins.map((p) => p.path).join(', ')}`
+    )
   }
 
   return plugins
@@ -226,6 +268,83 @@ export function buildSettingSources(workDir: string): SettingSource[] {
   return sources
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value)
+}
+
+function sanitizeStringMap(value: unknown): Record<string, string> | undefined {
+  if (!isPlainObject(value)) {
+    return undefined
+  }
+
+  const sanitized = Object.fromEntries(
+    Object.entries(value).filter(([, mapValue]) => typeof mapValue === 'string')
+  )
+
+  return Object.keys(sanitized).length > 0 ? sanitized : undefined
+}
+
+function sanitizeMcpServerConfig(
+  name: string,
+  rawConfig: unknown
+): Record<string, unknown> | null {
+  if (!isPlainObject(rawConfig)) {
+    console.warn(`[Agent][MCP] Skip server "${name}": config must be an object`)
+    return null
+  }
+
+  const typeRaw = typeof rawConfig.type === 'string' ? rawConfig.type.trim() : ''
+  const type = typeRaw === '' ? 'stdio' : typeRaw
+
+  if (type === 'stdio') {
+    const command = typeof rawConfig.command === 'string' ? rawConfig.command.trim() : ''
+    if (!command) {
+      console.warn(`[Agent][MCP] Skip server "${name}": stdio server requires non-empty command`)
+      return null
+    }
+
+    const args = Array.isArray(rawConfig.args)
+      ? rawConfig.args.filter((arg): arg is string => typeof arg === 'string')
+      : undefined
+    const env = sanitizeStringMap(rawConfig.env)
+
+    const normalized: Record<string, unknown> = {
+      ...(typeRaw === 'stdio' ? { type: 'stdio' } : {}),
+      command
+    }
+
+    if (args && args.length > 0) {
+      normalized.args = args
+    }
+    if (env) {
+      normalized.env = env
+    }
+    if (typeof rawConfig.timeout === 'number' && Number.isFinite(rawConfig.timeout) && rawConfig.timeout > 0) {
+      normalized.timeout = rawConfig.timeout
+    }
+
+    return normalized
+  }
+
+  if (type === 'http' || type === 'sse') {
+    const url = typeof rawConfig.url === 'string' ? rawConfig.url.trim() : ''
+    if (!url) {
+      console.warn(`[Agent][MCP] Skip server "${name}": ${type} server requires non-empty url`)
+      return null
+    }
+
+    const headers = sanitizeStringMap(rawConfig.headers)
+    return {
+      type,
+      url,
+      ...(headers ? { headers } : {})
+    }
+  }
+
+  console.warn(`[Agent][MCP] Skip server "${name}": unsupported MCP server type "${type}"`)
+  return null
+}
+
 /**
  * Filter out disabled MCP servers and merge global with space-level config.
  */
@@ -244,10 +363,17 @@ export function getEnabledMcpServers(
 
   const enabled: Record<string, any> = {}
   for (const [name, config] of Object.entries(mergedServers)) {
-    if (!config.disabled) {
-      const { disabled, ...sdkConfig } = config as any
-      enabled[name] = sdkConfig
+    const disabled = isPlainObject(config) && config.disabled === true
+    if (disabled) {
+      continue
     }
+
+    const sanitizedConfig = sanitizeMcpServerConfig(name, config)
+    if (!sanitizedConfig) {
+      continue
+    }
+
+    enabled[name] = sanitizedConfig
   }
 
   return Object.keys(enabled).length > 0 ? enabled : null
@@ -358,6 +484,7 @@ export interface BuildSdkOptionsParams {
   thinkingEnabled?: boolean
   responseLanguage?: LocaleCode
   disableToolsForCompat?: boolean
+  resourceRuntimePolicy?: ClaudeCodeResourceRuntimePolicy
   stderrSuffix?: string // Optional suffix for stderr logs (e.g., "(warm)")
   canUseTool?: CanUseToolHandler
   enabledPluginMcps?: string[]
@@ -384,12 +511,18 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): Record<string, a
     thinkingEnabled,
     responseLanguage = 'en',
     disableToolsForCompat,
+    resourceRuntimePolicy,
     stderrSuffix = '',
     canUseTool,
     enabledPluginMcps
   } = params
 
   const spaceConfig = getSpaceConfig(workDir)
+  const effectiveResourceRuntimePolicy = resolveResourceRuntimePolicy(
+    workDir,
+    config,
+    resourceRuntimePolicy
+  )
   const { effectiveLazyLoad } = getEffectiveSkillsLazyLoad(workDir, config)
   const shouldInjectAnthropicCompatEnvDefaults = (() => {
     try {
@@ -437,7 +570,10 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): Record<string, a
         : {})
     },
     extraArgs: {
-      'dangerously-skip-permissions': null
+      'dangerously-skip-permissions': null,
+      ...(effectiveResourceRuntimePolicy !== 'full-mesh'
+        ? { 'disable-slash-commands': null }
+        : {})
     },
     stderr: (data: string) => {
       console.error(`[Agent][${conversationId}] CLI stderr${stderrSuffix}:`, data)
@@ -452,13 +588,23 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): Record<string, a
       ].filter(Boolean).join('\n')
     },
     maxTurns: 50,
-    allowedTools: ['Read', 'Write', 'Edit', 'Grep', 'Glob', 'Bash'],
+    allowedTools: [
+      'Read',
+      'Write',
+      'Edit',
+      'Grep',
+      'Glob',
+      'Bash',
+      ...(effectiveResourceRuntimePolicy === 'full-mesh' ? ['Skill'] : [])
+    ],
     permissionMode: 'acceptEdits' as const,
     includePartialMessages: true,
     executable: electronPath,
     executableArgs: ['--no-warnings'],
     settingSources: buildSettingSources(workDir),
-    plugins: buildPluginsConfig(workDir),
+    plugins: buildPluginsConfig(workDir, {
+      resourceRuntimePolicy: effectiveResourceRuntimePolicy
+    }),
     hooks: buildHooksConfig(workDir),
     ...(thinkingEnabled && { maxThinkingTokens: 10240 }),
     ...buildMcpServersConfig(

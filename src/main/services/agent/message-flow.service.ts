@@ -47,7 +47,7 @@ import {
   finalizeChangeSet,
   trackChangeFile
 } from '../change-set.service'
-import { getResourceIndexHash } from '../resource-index.service'
+import { getResourceIndexHash, getResourceIndexSnapshot } from '../resource-index.service'
 import {
   buildPluginMcpServers,
   enablePluginMcp,
@@ -86,6 +86,7 @@ import type {
   ChatMode,
   SessionAcquireResult
 } from './types'
+import type { ClaudeCodeResourceRuntimePolicy, ClaudeCodeSkillMissingPolicy } from '../../../shared/types/claude-code'
 import {
   ASK_USER_QUESTION_ERROR_CODES,
   AskUserQuestionError,
@@ -990,6 +991,19 @@ export async function sendMessage(
   const sessionKey = toSessionKey(spaceId, conversationId)
   beginChangeSet(spaceId, conversationId, workDir)
   const spaceConfig = getSpaceConfig(workDir)
+  const resourceRuntimePolicy: ClaudeCodeResourceRuntimePolicy =
+    spaceConfig?.claudeCode?.resourceRuntimePolicy ||
+    config.claudeCode?.resourceRuntimePolicy ||
+    'app-single-source'
+  const skillMissingPolicy: ClaudeCodeSkillMissingPolicy =
+    spaceConfig?.claudeCode?.skillMissingPolicy ||
+    config.claudeCode?.skillMissingPolicy ||
+    'skip'
+  const resourceIndexSnapshot = getResourceIndexSnapshot(workDir)
+  const boundResourceIndexHash = resourceIndexSnapshot.hash
+  console.log(
+    `[Agent][${conversationId}] Bound resource index snapshot: hash=${boundResourceIndexHash}, skills=${resourceIndexSnapshot.counts.skills}, commands=${resourceIndexSnapshot.counts.commands}, agents=${resourceIndexSnapshot.counts.agents}, runtimePolicy=${resourceRuntimePolicy}`
+  )
   const { effectiveLazyLoad: skillsLazyLoad, toolkit } = getEffectiveSkillsLazyLoad(workDir, config)
   const exposureFlags = getResourceExposureRuntimeFlags()
   const allowedDirectiveSources = getExecutionLayerAllowedSources()
@@ -1156,6 +1170,7 @@ export async function sendMessage(
   let abortedByCompatIdleTimeout = false
   let sessionAcquireResult: SessionAcquireResult | null = null
   let bootstrapTokenEstimate = 0
+  let resourceRuntimeMismatchLogged = false
 
   try {
     // Use headless Electron binary (outside .app bundle on macOS to prevent Dock icon)
@@ -1179,8 +1194,11 @@ export async function sendMessage(
       thinkingEnabled: effectiveThinkingEnabled,
       responseLanguage: effectiveResponseLanguage,
       disableToolsForCompat: effectiveAi.disableToolsForCompat,
+      resourceRuntimePolicy,
       canUseTool: createCanUseTool(workDir, spaceId, conversationId, getActiveSession, {
         mode: effectiveMode,
+        resourceRuntimePolicy,
+        skillMissingPolicy,
         onToolUse: (toolName, input) => {
           trackChangeFileFromToolUse(
             spaceId,
@@ -1237,6 +1255,7 @@ export async function sendMessage(
       effectiveModel: effectiveAi.effectiveModel,
       enabledPluginMcpsHash: getEnabledPluginMcpHash(sessionKey),
       resourceIndexHash: getResourceIndexHash(workDir),
+      resourceRuntimePolicy,
       hasCanUseTool: true // Session has canUseTool callback
     }
 
@@ -1954,6 +1973,33 @@ If the user asks about this project/codebase, inspect files in current workspace
         }
         if (plugins) {
           console.log(`[Agent][${conversationId}] Loaded plugins:`, JSON.stringify(plugins))
+        }
+        if (
+          !resourceRuntimeMismatchLogged &&
+          (subtype === 'init' || Array.isArray(skills) || Array.isArray(plugins))
+        ) {
+          const sdkSkillsCount = Array.isArray(skills) ? skills.length : null
+          const sdkPluginsCount = Array.isArray(plugins) ? plugins.length : null
+          const hasMismatch =
+            (sdkSkillsCount !== null && sdkSkillsCount === 0) ||
+            (sdkPluginsCount !== null && sdkPluginsCount === 0)
+          if (hasMismatch) {
+            resourceRuntimeMismatchLogged = true
+            console.warn('[audit] resource_runtime_mismatch', {
+              spaceId,
+              conversationId,
+              sessionKey,
+              runId,
+              resourceRuntimePolicy,
+              boundResourceIndexHash,
+              appResourceCounts: resourceIndexSnapshot.counts,
+              sdkSkillsCount,
+              sdkPluginsCount,
+              note: resourceRuntimePolicy === 'full-mesh'
+                ? 'Non-blocking: execution continues with full-mesh aggregated resources.'
+                : 'Non-blocking: execution continues with app-side injected resources.'
+            })
+          }
         }
 
         // Handle compact_boundary - context compression notification

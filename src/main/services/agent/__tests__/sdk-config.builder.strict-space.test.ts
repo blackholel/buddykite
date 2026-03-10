@@ -56,7 +56,8 @@ vi.mock('../../config-source-mode.service', () => ({
 }))
 
 vi.mock('../../space.service', () => ({
-  getSpace: vi.fn(() => null)
+  getSpace: vi.fn(() => null),
+  getAllSpacePaths: vi.fn(() => ['/workspace/project', '/workspace/space-b', '/workspace/space-a'])
 }))
 
 vi.mock('../../ai-browser', () => ({
@@ -84,6 +85,7 @@ import {
   buildSdkOptions,
   buildSettingSources,
   buildSystemPromptAppend,
+  getEnabledMcpServers,
   getWorkingDir
 } from '../sdk-config.builder'
 import { ensureSpaceResourcePolicy, getExecutionLayerAllowedSources } from '../space-resource-policy.service'
@@ -127,6 +129,17 @@ describe('sdk-config.builder strict space-only', () => {
     expect(paths).toContain('/home/test/.kite')
     expect(paths).toContain('/workspace/project/.local-plugins')
     expect(paths).toContain('/workspace/project/.claude')
+  })
+
+  it('full-mesh 会聚合所有 space 的 .claude 目录', () => {
+    const plugins = buildPluginsConfig('/workspace/project', {
+      resourceRuntimePolicy: 'full-mesh'
+    })
+    const paths = plugins.map(plugin => plugin.path)
+
+    expect(paths).toContain('/workspace/project/.claude')
+    expect(paths).toContain('/workspace/space-a/.claude')
+    expect(paths).toContain('/workspace/space-b/.claude')
   })
 
   it('falls back to legacy behavior when policy is explicitly legacy', () => {
@@ -235,6 +248,52 @@ describe('sdk-config.builder strict space-only', () => {
     expect(sdkOptions.env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe('kimi-k2-0905-preview')
     expect(sdkOptions.env.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe('kimi-k2-0905-preview')
     expect(sdkOptions.env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe('kimi-k2-0905-preview')
+  })
+
+  it('仅 full-mesh 不注入 disable-slash-commands', () => {
+    const sdkOptionsDefault = buildSdkOptions({
+      ...createBuildSdkOptionsParams(),
+      resourceRuntimePolicy: 'app-single-source'
+    })
+    const sdkOptionsFullMesh = buildSdkOptions({
+      ...createBuildSdkOptionsParams(),
+      resourceRuntimePolicy: 'full-mesh'
+    })
+
+    expect(sdkOptionsDefault.extraArgs['disable-slash-commands']).toBeNull()
+    expect(sdkOptionsFullMesh.extraArgs['disable-slash-commands']).toBeUndefined()
+  })
+
+  it('仅 full-mesh 在 allowedTools 中包含 Skill', () => {
+    const sdkOptionsDefault = buildSdkOptions({
+      ...createBuildSdkOptionsParams(),
+      resourceRuntimePolicy: 'app-single-source'
+    })
+    const sdkOptionsFullMesh = buildSdkOptions({
+      ...createBuildSdkOptionsParams(),
+      resourceRuntimePolicy: 'full-mesh'
+    })
+
+    expect(sdkOptionsDefault.allowedTools).not.toContain('Skill')
+    expect(sdkOptionsFullMesh.allowedTools).toContain('Skill')
+  })
+
+  it('会过滤不符合 schema 的 MCP 配置，仅保留有效项', () => {
+    const enabled = getEnabledMcpServers(
+      {
+        demo: { env: {} },
+        stdioOk: { command: 'node', args: ['server.js'], env: { TOKEN: 'abc', NUM: 1 } },
+        httpBad: { type: 'http', headers: { Authorization: 'Bearer x' } },
+        sseOk: { type: 'sse', url: 'https://example.com/sse', headers: { Authorization: 'Bearer x', Retry: 3 } },
+        disabledServer: { command: 'python', disabled: true }
+      } as any,
+      '/workspace/project'
+    )
+
+    expect(enabled).toEqual({
+      stdioOk: { command: 'node', args: ['server.js'], env: { TOKEN: 'abc' } },
+      sseOk: { type: 'sse', url: 'https://example.com/sse', headers: { Authorization: 'Bearer x' } }
+    })
   })
 
   it('system prompt append includes blocking-batch AskUserQuestion policy', () => {

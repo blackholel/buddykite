@@ -57,6 +57,9 @@ export interface AgentsConfig {
   paths?: string[]  // Additional agent paths
 }
 
+export type ClaudeCodeResourceRuntimePolicy = 'app-single-source' | 'legacy' | 'full-mesh'
+export type ClaudeCodeSkillMissingPolicy = 'skip' | 'deny'
+
 // ============================================
 // Claude Code Configuration
 // ============================================
@@ -68,6 +71,10 @@ export interface ClaudeCodeConfig {
   plugins?: PluginsConfig
   hooks?: HooksConfig
   agents?: AgentsConfig
+  /** Runtime resource policy (default: app-single-source) */
+  resourceRuntimePolicy?: ClaudeCodeResourceRuntimePolicy
+  /** Missing skill handling policy (default: skip) */
+  skillMissingPolicy?: ClaudeCodeSkillMissingPolicy
   /** Global kill switch for Claude Code hooks (default: true) */
   hooksEnabled?: boolean
   /** Global kill switch for MCP servers (default: true) */

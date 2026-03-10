@@ -11,12 +11,14 @@ import { homedir } from 'os'
 import { isAbsolute, resolve, join } from 'path'
 import { broadcastToWebSocket } from '../../http/websocket'
 import { getConfig } from '../config.service'
+import { getSpaceConfig } from '../space-config.service'
 import { isAIBrowserTool } from '../ai-browser'
 import { extractToolPath } from './resource-dir-guard.service'
 import { buildSessionKey } from '../../../shared/session-key'
 import { ASK_USER_QUESTION_ERROR_CODES } from './types'
 import { getLockedUserConfigRootDir } from '../config-source-mode.service'
 import { listEnabledPlugins } from '../plugins.service'
+import { getAllSpacePaths } from '../space.service'
 import {
   getExecutionLayerAllowedSources,
   getSpaceResourcePolicy,
@@ -29,6 +31,7 @@ import {
   type WorkspaceBoundaryValidationResult
 } from '../../utils/path-validation'
 import type { ResourceSource } from '../resource-ref.service'
+import type { ClaudeCodeResourceRuntimePolicy, ClaudeCodeSkillMissingPolicy } from '../../../shared/types/claude-code'
 import type {
   ToolCall,
   SessionState,
@@ -157,7 +160,8 @@ function resolveConfigPath(pathValue: string): string {
 function buildExecutionBoundaryRoots(
   absoluteWorkDir: string,
   config: ReturnType<typeof getConfig>,
-  policySources?: ResourceSource[]
+  policySources?: ResourceSource[],
+  resourceRuntimePolicy: ClaudeCodeResourceRuntimePolicy = 'app-single-source'
 ): string[] {
   const roots = new Set<string>([resolve(absoluteWorkDir)])
   const allowedSources = new Set<ResourceSource>(normalizeAllowedSourcesForBoundary(policySources))
@@ -205,6 +209,15 @@ function buildExecutionBoundaryRoots(
     roots.add(join(absoluteWorkDir, '.claude', 'skills'))
     roots.add(join(absoluteWorkDir, '.claude', 'agents'))
     roots.add(join(absoluteWorkDir, '.claude', 'commands'))
+
+    if (resourceRuntimePolicy === 'full-mesh') {
+      for (const spacePath of getAllSpacePaths()) {
+        const absoluteSpacePath = resolve(spacePath)
+        roots.add(join(absoluteSpacePath, '.claude', 'skills'))
+        roots.add(join(absoluteSpacePath, '.claude', 'agents'))
+        roots.add(join(absoluteSpacePath, '.claude', 'commands'))
+      }
+    }
   }
 
   return Array.from(roots)
@@ -768,6 +781,8 @@ export function createCanUseTool(
   options?: {
     mode?: ChatMode
     onToolUse?: (toolName: string, input: Record<string, unknown>) => void
+    skillMissingPolicy?: ClaudeCodeSkillMissingPolicy
+    resourceRuntimePolicy?: ClaudeCodeResourceRuntimePolicy
   }
 ): (
   toolName: string,
@@ -776,14 +791,28 @@ export function createCanUseTool(
   ) => Promise<CanUseToolDecision> {
   const config = getConfig()
   const absoluteWorkDir = resolve(workDir)
+  const spaceConfig = getSpaceConfig(workDir)
+  const skillMissingPolicy: ClaudeCodeSkillMissingPolicy =
+    options?.skillMissingPolicy ||
+    spaceConfig?.claudeCode?.skillMissingPolicy ||
+    config.claudeCode?.skillMissingPolicy ||
+    'skip'
+  const resourceRuntimePolicy: ClaudeCodeResourceRuntimePolicy =
+    options?.resourceRuntimePolicy ||
+    spaceConfig?.claudeCode?.resourceRuntimePolicy ||
+    config.claudeCode?.resourceRuntimePolicy ||
+    'app-single-source'
   const resourcePolicy = getSpaceResourcePolicy(workDir)
   const strictSpaceOnly = isStrictSpaceOnlyPolicy(resourcePolicy)
   const executionBoundaryRoots = buildExecutionBoundaryRoots(
     absoluteWorkDir,
     config,
-    resourcePolicy.allowedSources
+    resourcePolicy.allowedSources,
+    resourceRuntimePolicy
   )
-  console.log(`[Agent] Creating canUseTool with workDir: ${absoluteWorkDir}`)
+  console.log(
+    `[Agent] Creating canUseTool with workDir: ${absoluteWorkDir}, runtimePolicy=${resourceRuntimePolicy}`
+  )
 
   return async (
     toolName: string,
@@ -851,6 +880,15 @@ export function createCanUseTool(
         outcome: 'allow',
         rule: `mode=plan_whitelist:${toolName}`
       })
+    }
+
+    if (toolName === 'Skill' && resourceRuntimePolicy !== 'full-mesh') {
+      return deny(
+        'ModePolicy',
+        `Skill tool is disabled by runtime policy (skillMissingPolicy=${skillMissingPolicy}). Use injected directives instead.`,
+        `runtime=${resourceRuntimePolicy}:skill_tool_disabled:${skillMissingPolicy}`,
+        'SKILL_TOOL_DISABLED'
+      )
     }
 
     console.log(
