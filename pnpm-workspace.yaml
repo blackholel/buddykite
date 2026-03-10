@@ -1,4 +1,0 @@
-ignoredBuiltDependencies:
-  - cloudflared
-  - electron
-  - esbuild

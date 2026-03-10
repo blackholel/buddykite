@@ -6,6 +6,7 @@
   "main": "./out/main/index.mjs",
   "author": "Kite Team",
   "license": "MIT",
+  "packageManager": "npm@10.9.4",
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
