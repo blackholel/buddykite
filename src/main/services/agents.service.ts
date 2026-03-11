@@ -47,7 +47,10 @@ export interface AgentDefinition {
 const DEFAULT_LOCALE_CACHE_KEY = '__default__'
 const globalAgentsCacheByLocale = new Map<string, AgentDefinition[]>()
 const spaceAgentsCacheByLocale = new Map<string, Map<string, AgentDefinition[]>>()
+const fullMeshMergedAgentsCacheByLocale = new Map<string, Map<string, AgentDefinition[]>>()
 const contentCache = new FileCache<string>({ maxSize: 200 })
+const listLogSignatureCache = new Map<string, string>()
+const fullMeshAggregationLogSignatureCache = new Map<string, string>()
 
 function agentKey(agent: AgentDefinition): string {
   return agent.namespace ? `${agent.namespace}:${agent.name}` : agent.name
@@ -75,7 +78,18 @@ function isPathWithinDirectory(targetPath: string, directoryPath: string): boole
 function toLocaleCacheKey(locale?: string): string {
   const trimmed = locale?.trim()
   if (!trimmed) return DEFAULT_LOCALE_CACHE_KEY
-  return trimmed.toLowerCase()
+  return trimmed.replace(/_/g, '-').toLowerCase()
+}
+
+function getNormalizedWorkDirKey(workDir: string): string {
+  return normalizeResolvedPath(workDir)
+}
+
+function shouldVerboseResourceListLog(): boolean {
+  const raw = process.env.KITE_VERBOSE_RESOURCE_LIST
+  if (!raw) return false
+  const normalized = raw.trim().toLowerCase()
+  return normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on'
 }
 
 function getSortedSpacePaths(): string[] {
@@ -121,6 +135,23 @@ function getSpaceAgentsFromCache(workDir: string, localeKey: string, locale?: st
   }
 
   return spaceAgents
+}
+
+function getFullMeshAgentsFromCache(workDir: string, localeKey: string): AgentDefinition[] | null {
+  const workDirKey = getNormalizedWorkDirKey(workDir)
+  const localeCache = fullMeshMergedAgentsCacheByLocale.get(workDirKey)
+  if (!localeCache) return null
+  return localeCache.get(localeKey) || null
+}
+
+function setFullMeshAgentsCache(workDir: string, localeKey: string, agents: AgentDefinition[]): void {
+  const workDirKey = getNormalizedWorkDirKey(workDir)
+  let localeCache = fullMeshMergedAgentsCacheByLocale.get(workDirKey)
+  if (!localeCache) {
+    localeCache = new Map<string, AgentDefinition[]>()
+    fullMeshMergedAgentsCacheByLocale.set(workDirKey, localeCache)
+  }
+  localeCache.set(localeKey, agents)
 }
 
 function resolveAgentOwnerSpacePath(agent: AgentDefinition): string | null {
@@ -198,6 +229,24 @@ function mergeAgentsFullMesh(
   }
 
   return Array.from(merged.values())
+}
+
+function logFullMeshAggregation(
+  workDir: string,
+  localeKey: string,
+  globalCount: number,
+  spaceCount: number,
+  mergedCount: number
+): void {
+  const cacheKey = `${getNormalizedWorkDirKey(workDir)}:${localeKey}`
+  const signature = `${globalCount}:${spaceCount}:${mergedCount}`
+  if (fullMeshAggregationLogSignatureCache.get(cacheKey) === signature) {
+    return
+  }
+  fullMeshAggregationLogSignatureCache.set(cacheKey, signature)
+  console.log(
+    `[Agents][full-mesh] Aggregated resources: global=${globalCount}, spaces=${spaceCount}, merged=${mergedCount}`
+  )
 }
 
 function resolveWorkDirForAgentPath(agentPath: string): string | null {
@@ -369,10 +418,27 @@ function findAgentByRef(agents: AgentDefinition[], ref: ResourceRef): AgentDefin
   })
 }
 
-function logFound(label: string, items: AgentDefinition[], locale?: string): void {
+function logFound(
+  label: string,
+  items: AgentDefinition[],
+  view: ResourceListView,
+  workDir?: string,
+  locale?: string
+): void {
   if (items.length > 0) {
+    const localeKey = toLocaleCacheKey(locale)
+    const scopeKey = workDir ? getNormalizedWorkDirKey(workDir) : '__global__'
+    const itemKey = `${label}:${scopeKey}:${localeKey}:${view}`
+    const signature = `${items.length}:${items.map(agentKey).join(',')}`
+    if (listLogSignatureCache.get(itemKey) === signature) {
+      return
+    }
+    listLogSignatureCache.set(itemKey, signature)
     const localeSuffix = locale ? ` (locale: ${locale})` : ''
-    console.log(`[Agents] Found ${items.length} ${label}${localeSuffix}: ${items.map(agentKey).join(', ')}`)
+    const details = shouldVerboseResourceListLog()
+      ? `: ${items.map(agentKey).join(', ')}`
+      : ''
+    console.log(`[Agents] Found ${items.length} ${label}${localeSuffix}${details}`)
   }
 }
 
@@ -392,14 +458,17 @@ function listAgentsUnfiltered(workDir?: string, locale?: string): AgentDefinitio
   }
 
   if (isFullMeshRuntimePolicy(workDir)) {
+    const cached = getFullMeshAgentsFromCache(workDir, localeKey)
+    if (cached) {
+      return cached
+    }
     const allSpaceAgents: AgentDefinition[] = []
     for (const spacePath of getSortedSpacePaths()) {
       allSpaceAgents.push(...getSpaceAgentsFromCache(spacePath, localeKey, locale))
     }
     const mergedAgents = mergeAgentsFullMesh(globalAgents, allSpaceAgents, workDir)
-    console.log(
-      `[Agents][full-mesh] Aggregated resources: global=${globalAgents.length}, spaces=${allSpaceAgents.length}, merged=${mergedAgents.length}`
-    )
+    setFullMeshAgentsCache(workDir, localeKey, mergedAgents)
+    logFullMeshAggregation(workDir, localeKey, globalAgents.length, allSpaceAgents.length, mergedAgents.length)
     return mergedAgents
   }
 
@@ -411,7 +480,7 @@ function listAgentsUnfiltered(workDir?: string, locale?: string): AgentDefinitio
 
 export function listAgents(workDir: string | undefined, view: ResourceListView, locale?: string): AgentDefinition[] {
   const agents = filterByResourceExposure(listAgentsUnfiltered(workDir, locale), view)
-  logFound('agents', agents, locale)
+  logFound('agents', agents, view, workDir, locale)
   return agents
 }
 
@@ -487,7 +556,10 @@ export function getAgent(name: string, workDir?: string): AgentDefinition | null
 export function clearAgentsCache(): void {
   globalAgentsCacheByLocale.clear()
   spaceAgentsCacheByLocale.clear()
+  fullMeshMergedAgentsCacheByLocale.clear()
   contentCache.clear()
+  listLogSignatureCache.clear()
+  fullMeshAggregationLogSignatureCache.clear()
 }
 
 /**
@@ -496,11 +568,17 @@ export function clearAgentsCache(): void {
 export function invalidateAgentsCache(workDir?: string | null): void {
   if (!workDir) {
     globalAgentsCacheByLocale.clear()
+    fullMeshMergedAgentsCacheByLocale.clear()
     contentCache.clear()
+    listLogSignatureCache.clear()
+    fullMeshAggregationLogSignatureCache.clear()
     return
   }
   spaceAgentsCacheByLocale.delete(workDir)
+  fullMeshMergedAgentsCacheByLocale.clear()
   contentCache.clearForDir(workDir)
+  listLogSignatureCache.clear()
+  fullMeshAggregationLogSignatureCache.clear()
 }
 
 // ============================================

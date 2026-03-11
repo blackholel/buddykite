@@ -57,7 +57,10 @@ export interface SkillContent {
 const DEFAULT_LOCALE_CACHE_KEY = '__default__'
 const globalSkillsCacheByLocale = new Map<string, SkillDefinition[]>()
 const spaceSkillsCacheByLocale = new Map<string, Map<string, SkillDefinition[]>>()
+const fullMeshMergedSkillsCacheByLocale = new Map<string, Map<string, SkillDefinition[]>>()
 const contentCache = new FileCache<string>({ maxSize: 200 })
+const listLogSignatureCache = new Map<string, string>()
+const fullMeshAggregationLogSignatureCache = new Map<string, string>()
 
 // ============================================
 // Helpers
@@ -89,7 +92,18 @@ function isPathWithinDirectory(targetPath: string, directoryPath: string): boole
 function toLocaleCacheKey(locale?: string): string {
   const trimmed = locale?.trim()
   if (!trimmed) return DEFAULT_LOCALE_CACHE_KEY
-  return trimmed.toLowerCase()
+  return trimmed.replace(/_/g, '-').toLowerCase()
+}
+
+function getNormalizedWorkDirKey(workDir: string): string {
+  return normalizeResolvedPath(workDir)
+}
+
+function shouldVerboseResourceListLog(): boolean {
+  const raw = process.env.KITE_VERBOSE_RESOURCE_LIST
+  if (!raw) return false
+  const normalized = raw.trim().toLowerCase()
+  return normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on'
 }
 
 function isFullMeshRuntimePolicy(workDir?: string): boolean {
@@ -117,6 +131,23 @@ function getSpaceSkillsFromCache(workDir: string, localeKey: string, locale?: st
   }
 
   return spaceSkills
+}
+
+function getFullMeshSkillsFromCache(workDir: string, localeKey: string): SkillDefinition[] | null {
+  const workDirKey = getNormalizedWorkDirKey(workDir)
+  const localeCache = fullMeshMergedSkillsCacheByLocale.get(workDirKey)
+  if (!localeCache) return null
+  return localeCache.get(localeKey) || null
+}
+
+function setFullMeshSkillsCache(workDir: string, localeKey: string, skills: SkillDefinition[]): void {
+  const workDirKey = getNormalizedWorkDirKey(workDir)
+  let localeCache = fullMeshMergedSkillsCacheByLocale.get(workDirKey)
+  if (!localeCache) {
+    localeCache = new Map<string, SkillDefinition[]>()
+    fullMeshMergedSkillsCacheByLocale.set(workDirKey, localeCache)
+  }
+  localeCache.set(localeKey, skills)
 }
 
 function getSortedSpacePaths(): string[] {
@@ -212,6 +243,24 @@ function mergeSkillsFullMesh(
   }
 
   return Array.from(merged.values())
+}
+
+function logFullMeshAggregation(
+  workDir: string,
+  localeKey: string,
+  globalCount: number,
+  spaceCount: number,
+  mergedCount: number
+): void {
+  const cacheKey = `${getNormalizedWorkDirKey(workDir)}:${localeKey}`
+  const signature = `${globalCount}:${spaceCount}:${mergedCount}`
+  if (fullMeshAggregationLogSignatureCache.get(cacheKey) === signature) {
+    return
+  }
+  fullMeshAggregationLogSignatureCache.set(cacheKey, signature)
+  console.log(
+    `[Skills][full-mesh] Aggregated resources: global=${globalCount}, spaces=${spaceCount}, merged=${mergedCount}`
+  )
 }
 
 function resolveWorkDirForSkillPath(skillMdPath: string): string | null {
@@ -461,9 +510,20 @@ function buildSpaceSkills(workDir: string, locale?: string): SkillDefinition[] {
   return scanSkillDir(join(workDir, '.claude', 'skills'), 'space', join(workDir, '.claude'), undefined, undefined, workDir, locale)
 }
 
-function logFound(items: SkillDefinition[]): void {
+function logFound(items: SkillDefinition[], view: ResourceListView, workDir?: string, locale?: string): void {
   if (items.length > 0) {
-    console.log(`[Skills] Found ${items.length} skills: ${items.map(skillKey).join(', ')}`)
+    const localeKey = toLocaleCacheKey(locale)
+    const scopeKey = workDir ? getNormalizedWorkDirKey(workDir) : '__global__'
+    const cacheKey = `${scopeKey}:${localeKey}:${view}`
+    const signature = `${items.length}:${items.map(skillKey).join(',')}`
+    if (listLogSignatureCache.get(cacheKey) === signature) {
+      return
+    }
+    listLogSignatureCache.set(cacheKey, signature)
+    const details = shouldVerboseResourceListLog()
+      ? `: ${items.map(skillKey).join(', ')}`
+      : ''
+    console.log(`[Skills] Found ${items.length} skills${details}`)
   }
 }
 
@@ -487,14 +547,17 @@ function listSkillsUnfiltered(workDir?: string, locale?: string): SkillDefinitio
   }
 
   if (isFullMeshRuntimePolicy(workDir)) {
+    const cached = getFullMeshSkillsFromCache(workDir, localeKey)
+    if (cached) {
+      return cached
+    }
     const allSpaceSkills: SkillDefinition[] = []
     for (const spacePath of getSortedSpacePaths()) {
       allSpaceSkills.push(...getSpaceSkillsFromCache(spacePath, localeKey, locale))
     }
     const mergedSkills = mergeSkillsFullMesh(globalSkills, allSpaceSkills, workDir)
-    console.log(
-      `[Skills][full-mesh] Aggregated resources: global=${globalSkills.length}, spaces=${allSpaceSkills.length}, merged=${mergedSkills.length}`
-    )
+    setFullMeshSkillsCache(workDir, localeKey, mergedSkills)
+    logFullMeshAggregation(workDir, localeKey, globalSkills.length, allSpaceSkills.length, mergedSkills.length)
     return mergedSkills
   }
 
@@ -506,7 +569,7 @@ function listSkillsUnfiltered(workDir?: string, locale?: string): SkillDefinitio
 
 export function listSkills(workDir: string | undefined, view: ResourceListView, locale?: string): SkillDefinition[] {
   const skills = filterByResourceExposure(listSkillsUnfiltered(workDir, locale), view)
-  logFound(skills)
+  logFound(skills, view, workDir, locale)
   return skills
 }
 
@@ -754,7 +817,10 @@ export function copySkillToSpaceByRef(
 export function clearSkillsCache(): void {
   globalSkillsCacheByLocale.clear()
   spaceSkillsCacheByLocale.clear()
+  fullMeshMergedSkillsCacheByLocale.clear()
   contentCache.clear()
+  listLogSignatureCache.clear()
+  fullMeshAggregationLogSignatureCache.clear()
 }
 
 /**
@@ -763,9 +829,15 @@ export function clearSkillsCache(): void {
 export function invalidateSkillsCache(workDir?: string | null): void {
   if (!workDir) {
     globalSkillsCacheByLocale.clear()
+    fullMeshMergedSkillsCacheByLocale.clear()
     contentCache.clear()
+    listLogSignatureCache.clear()
+    fullMeshAggregationLogSignatureCache.clear()
     return
   }
   spaceSkillsCacheByLocale.delete(workDir)
+  fullMeshMergedSkillsCacheByLocale.clear()
   contentCache.clearForDir(workDir)
+  listLogSignatureCache.clear()
+  fullMeshAggregationLogSignatureCache.clear()
 }

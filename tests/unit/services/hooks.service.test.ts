@@ -66,6 +66,8 @@ describe('hooks.service', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     clearSettingsCache()
+    delete process.env.KITE_DISABLE_HOOK_EVENTS
+    delete process.env.KITE_DISABLE_SESSIONSTART_HOOKS
 
     // Setup default mocks
     mockGetConfig.mockReturnValue({
@@ -422,6 +424,40 @@ describe('hooks.service', () => {
 
       const result = buildHooksConfig('/test/workdir')
       expect(result).toBeUndefined()
+    })
+
+    it('should disable SessionStart hooks when KITE_DISABLE_SESSIONSTART_HOOKS is enabled', () => {
+      process.env.KITE_DISABLE_SESSIONSTART_HOOKS = '1'
+      mockGetConfig.mockReturnValue({
+        claudeCode: {
+          hooks: {
+            SessionStart: [createHookDef('startup', 'echo startup')],
+            PreToolUse: [createHookDef('*', 'echo pre')]
+          }
+        }
+      } as ReturnType<typeof getConfig>)
+
+      const result = buildHooksConfig('/test/workdir')
+      expect(result?.SessionStart).toBeUndefined()
+      expect(result?.PreToolUse).toHaveLength(1)
+    })
+
+    it('should disable hook events listed in KITE_DISABLE_HOOK_EVENTS', () => {
+      process.env.KITE_DISABLE_HOOK_EVENTS = 'sessionstart, posttooluse'
+      mockGetConfig.mockReturnValue({
+        claudeCode: {
+          hooks: {
+            SessionStart: [createHookDef('startup', 'echo startup')],
+            PostToolUse: [createHookDef('*', 'echo post')],
+            PreToolUse: [createHookDef('*', 'echo pre')]
+          }
+        }
+      } as ReturnType<typeof getConfig>)
+
+      const result = buildHooksConfig('/test/workdir')
+      expect(result?.SessionStart).toBeUndefined()
+      expect(result?.PostToolUse).toBeUndefined()
+      expect(result?.PreToolUse).toHaveLength(1)
     })
   })
 

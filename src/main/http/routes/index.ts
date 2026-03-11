@@ -573,7 +573,13 @@ export function registerApiRoutes(app: Express, mainWindow: BrowserWindow | null
     if (workDir === null) return
     const normalizedWorkDir = workDir || undefined
 
-    const [{ clearPluginsCache }, { invalidateSkillsCache, clearSkillsCache }, { invalidateAgentsCache }, { invalidateCommandsCache }, { rebuildResourceIndex, rebuildAllResourceIndexes }] = await Promise.all([
+    const [
+      { clearPluginsCache },
+      { invalidateSkillsCache, clearSkillsCache },
+      { clearAgentsCache, invalidateAgentsCache },
+      { clearCommandsCache, invalidateCommandsCache },
+      { getResourceIndexSnapshot, rebuildResourceIndex, rebuildAllResourceIndexes }
+    ] = await Promise.all([
       import('../../services/plugins.service'),
       import('../../services/skills.service'),
       import('../../services/agents.service'),
@@ -591,10 +597,10 @@ export function registerApiRoutes(app: Express, mainWindow: BrowserWindow | null
 
     clearPluginsCache()
     clearSkillsCache()
-    invalidateAgentsCache(null)
-    invalidateCommandsCache(null)
+    clearAgentsCache()
+    clearCommandsCache()
     rebuildAllResourceIndexes('manual-refresh')
-    res.json({ success: true, data: rebuildResourceIndex(undefined, 'manual-refresh') })
+    res.json({ success: true, data: getResourceIndexSnapshot(undefined) })
   }))
 
   // ===== Agents Routes =====

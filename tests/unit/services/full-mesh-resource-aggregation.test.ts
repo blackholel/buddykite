@@ -189,4 +189,60 @@ describe('full-mesh 资源聚合优先级', () => {
     expect(result.status).toBe('copied')
     expect(result.data?.path).toContain(join('space-b', '.claude', 'agents', 'shared.md'))
   })
+
+  it('同一空间重复读取时，full-mesh 聚合日志仅输出一次（命中合并缓存）', () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    try {
+      listSkills(spaceB, 'taxonomy-admin')
+      listSkills(spaceB, 'taxonomy-admin')
+      listAgents(spaceB, 'taxonomy-admin')
+      listAgents(spaceB, 'taxonomy-admin')
+      listCommands(spaceB, 'taxonomy-admin')
+      listCommands(spaceB, 'taxonomy-admin')
+
+      const skillsAggregatedLogCount = logSpy.mock.calls.filter((call) =>
+        typeof call[0] === 'string' && call[0].includes('[Skills][full-mesh] Aggregated resources')
+      ).length
+      const agentsAggregatedLogCount = logSpy.mock.calls.filter((call) =>
+        typeof call[0] === 'string' && call[0].includes('[Agents][full-mesh] Aggregated resources')
+      ).length
+      const commandsAggregatedLogCount = logSpy.mock.calls.filter((call) =>
+        typeof call[0] === 'string' && call[0].includes('[Commands][full-mesh] Aggregated resources')
+      ).length
+
+      expect(skillsAggregatedLogCount).toBe(1)
+      expect(agentsAggregatedLogCount).toBe(1)
+      expect(commandsAggregatedLogCount).toBe(1)
+    } finally {
+      logSpy.mockRestore()
+    }
+  })
+
+  it('locale 别名 (zh-CN/zh_CN) 命中同一份 full-mesh 缓存', () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    try {
+      listSkills(spaceB, 'taxonomy-admin', 'zh-CN')
+      listSkills(spaceB, 'taxonomy-admin', 'zh_CN')
+      listAgents(spaceB, 'taxonomy-admin', 'zh-CN')
+      listAgents(spaceB, 'taxonomy-admin', 'zh_CN')
+      listCommands(spaceB, 'taxonomy-admin', 'zh-CN')
+      listCommands(spaceB, 'taxonomy-admin', 'zh_CN')
+
+      const skillsAggregatedLogCount = logSpy.mock.calls.filter((call) =>
+        typeof call[0] === 'string' && call[0].includes('[Skills][full-mesh] Aggregated resources')
+      ).length
+      const agentsAggregatedLogCount = logSpy.mock.calls.filter((call) =>
+        typeof call[0] === 'string' && call[0].includes('[Agents][full-mesh] Aggregated resources')
+      ).length
+      const commandsAggregatedLogCount = logSpy.mock.calls.filter((call) =>
+        typeof call[0] === 'string' && call[0].includes('[Commands][full-mesh] Aggregated resources')
+      ).length
+
+      expect(skillsAggregatedLogCount).toBe(1)
+      expect(agentsAggregatedLogCount).toBe(1)
+      expect(commandsAggregatedLogCount).toBe(1)
+    } finally {
+      logSpy.mockRestore()
+    }
+  })
 })

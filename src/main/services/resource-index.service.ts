@@ -1,5 +1,6 @@
 import { createHash } from 'crypto'
 import { statSync } from 'fs'
+import { join } from 'path'
 import { getAllSpacePaths } from './space.service'
 import { listSkills } from './skills.service'
 import { listAgents } from './agents.service'
@@ -15,12 +16,21 @@ function toIndexKey(workDir?: string): string {
   return workDir || GLOBAL_INDEX_KEY
 }
 
-function safeMtime(path: string): number {
+function safeFingerprint(path: string): string {
   try {
-    return statSync(path).mtimeMs
+    const stats = statSync(path)
+    return `${Math.trunc(stats.mtimeMs)}:${stats.size}`
   } catch {
-    return 0
+    return '0:0'
   }
+}
+
+function safeSkillFingerprint(skillPath: string): string {
+  const fileFingerprint = safeFingerprint(join(skillPath, 'SKILL.md'))
+  if (fileFingerprint !== '0:0') {
+    return fileFingerprint
+  }
+  return safeFingerprint(skillPath)
 }
 
 function buildHash(entries: string[]): string {
@@ -41,9 +51,9 @@ export function rebuildResourceIndex(
   const commands = listCommands(workDir, 'taxonomy-admin')
 
   const entries: string[] = [
-    ...skills.map((item) => `skill:${item.source}:${item.namespace || ''}:${item.name}:${item.path}:${safeMtime(item.path)}`),
-    ...agents.map((item) => `agent:${item.source}:${item.namespace || ''}:${item.name}:${item.path}:${safeMtime(item.path)}`),
-    ...commands.map((item) => `command:${item.source}:${item.namespace || ''}:${item.name}:${item.path}:${safeMtime(item.path)}`),
+    ...skills.map((item) => `skill:${item.source}:${item.namespace || ''}:${item.name}:${item.path}:${safeSkillFingerprint(item.path)}`),
+    ...agents.map((item) => `agent:${item.source}:${item.namespace || ''}:${item.name}:${item.path}:${safeFingerprint(item.path)}`),
+    ...commands.map((item) => `command:${item.source}:${item.namespace || ''}:${item.name}:${item.path}:${safeFingerprint(item.path)}`),
     ...getResourceDisplayI18nIndexEntries(workDir)
   ]
 

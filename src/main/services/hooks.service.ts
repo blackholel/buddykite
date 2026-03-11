@@ -43,6 +43,56 @@ const HOOK_EVENT_TYPES: (keyof HooksConfig)[] = [
   'Setup'
 ]
 
+function parseBooleanEnv(value: string | undefined): boolean {
+  if (!value) return false
+  const normalized = value.trim().toLowerCase()
+  return normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on'
+}
+
+function getDisabledHookEventsFromEnv(): Set<keyof HooksConfig> {
+  const disabledEvents = new Set<keyof HooksConfig>()
+  const rawList = process.env.KITE_DISABLE_HOOK_EVENTS
+  if (rawList) {
+    const normalizedMap = new Map<string, keyof HooksConfig>(
+      HOOK_EVENT_TYPES.map((eventType) => [eventType.toLowerCase(), eventType])
+    )
+    for (const token of rawList.split(',')) {
+      const key = token.trim().toLowerCase()
+      if (!key) continue
+      const eventType = normalizedMap.get(key)
+      if (eventType) {
+        disabledEvents.add(eventType)
+      }
+    }
+  }
+  if (parseBooleanEnv(process.env.KITE_DISABLE_SESSIONSTART_HOOKS)) {
+    disabledEvents.add('SessionStart')
+  }
+  return disabledEvents
+}
+
+function filterDisabledHookEvents(
+  hooks: HooksConfig,
+  disabledEvents: Set<keyof HooksConfig>
+): HooksConfig | undefined {
+  if (disabledEvents.size === 0) {
+    return hooks
+  }
+
+  const filtered: HooksConfig = {}
+  for (const eventType of HOOK_EVENT_TYPES) {
+    if (disabledEvents.has(eventType)) {
+      continue
+    }
+    const definitions = hooks[eventType]
+    if (definitions && definitions.length > 0) {
+      filtered[eventType] = definitions
+    }
+  }
+
+  return Object.keys(filtered).length > 0 ? filtered : undefined
+}
+
 /**
  * Get the path to active settings file based on locked config source mode.
  */
@@ -195,14 +245,23 @@ export function buildHooksConfig(workDir: string): HooksConfig | undefined {
     ? mergeHooksConfigs(settingsHooks, pluginHooks)
     : mergeHooksConfigs(settingsHooks, globalHooks, spaceHooks, pluginHooks)
 
-  if (mergedHooks) {
-    const hookCounts = Object.entries(mergedHooks)
+  const disabledEvents = getDisabledHookEventsFromEnv()
+  const finalHooks = mergedHooks ? filterDisabledHookEvents(mergedHooks, disabledEvents) : undefined
+
+  if (disabledEvents.size > 0) {
+    console.log(
+      `[Hooks] Disabled hook events via env: ${Array.from(disabledEvents).join(', ')}`
+    )
+  }
+
+  if (finalHooks) {
+    const hookCounts = Object.entries(finalHooks)
       .map(([type, hooks]) => `${type}: ${hooks?.length || 0}`)
       .join(', ')
     console.log(`[Hooks] Merged hooks: ${hookCounts}`)
   }
 
-  return mergedHooks
+  return finalHooks
 }
 
 /**

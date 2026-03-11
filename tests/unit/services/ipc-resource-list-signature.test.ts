@@ -16,10 +16,12 @@ vi.mock('../../../src/main/services/skills.service', () => ({
 }))
 
 vi.mock('../../../src/main/services/agents.service', () => ({
+  clearAgentsCache: vi.fn(),
   invalidateAgentsCache: vi.fn()
 }))
 
 vi.mock('../../../src/main/services/commands.service', () => ({
+  clearCommandsCache: vi.fn(),
   invalidateCommandsCache: vi.fn()
 }))
 
@@ -28,6 +30,7 @@ vi.mock('../../../src/main/services/plugins.service', () => ({
 }))
 
 vi.mock('../../../src/main/services/resource-index.service', () => ({
+  getResourceIndexSnapshot: vi.fn(() => ({ hash: 'h', generatedAt: '', reason: 'manual-refresh', counts: { skills: 0, agents: 0, commands: 0 } })),
   rebuildResourceIndex: vi.fn(() => ({ hash: 'h', generatedAt: '', reason: 'manual-refresh', counts: { skills: 0, agents: 0, commands: 0 } })),
   rebuildAllResourceIndexes: vi.fn()
 }))

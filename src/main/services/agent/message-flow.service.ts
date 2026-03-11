@@ -541,6 +541,56 @@ function isClarificationOnlyResponse(content: string): boolean {
   return (questionMarks > 0 || hasQuestionCue) && !hasPlanCue && !hasStructuredPlan
 }
 
+function isSimpleGreetingMessage(input: string): boolean {
+  const trimmed = input.trim()
+  if (!trimmed) return false
+  if (trimmed.length > 24) return false
+
+  const compact = trimmed.toLowerCase().replace(/\s+/g, '')
+  const exactMatches = new Set([
+    'hi',
+    'hello',
+    'hey',
+    'yo',
+    '你好',
+    '您好',
+    '哈喽',
+    '嗨',
+    '在吗',
+    '在吗?',
+    '在吗？',
+    '早上好',
+    '中午好',
+    '下午好',
+    '晚上好'
+  ])
+  if (exactMatches.has(compact)) {
+    return true
+  }
+
+  return /^(hi|hello|hey|yo|你好|您好|哈喽|嗨|在吗|早上好|中午好|下午好|晚上好)[!！。.?？]*$/i.test(compact)
+}
+
+function buildSimpleGreetingReply(locale: LocaleCode): string {
+  switch (normalizeLocale(locale)) {
+    case 'zh-CN':
+      return '你好！我在，直接说你要我做什么就行。'
+    case 'zh-TW':
+      return '你好！我在，直接說你要我做什麼就行。'
+    case 'ja':
+      return 'こんにちは。対応できます。やることをそのまま伝えてください。'
+    case 'es':
+      return 'Hola. Estoy aquí. Dime directamente qué necesitas que haga.'
+    case 'fr':
+      return 'Bonjour. Je suis là. Dites-moi directement ce que vous voulez que je fasse.'
+    case 'de':
+      return 'Hallo. Ich bin da. Sag mir direkt, was ich machen soll.'
+    case 'en':
+    default:
+      return 'Hi, I am here. Tell me what you want me to do.'
+  }
+}
+
 interface ForcedAssumptionCopy {
   exhausted: string
   assumptionsHeading: string
@@ -1171,8 +1221,33 @@ export async function sendMessage(
   let sessionAcquireResult: SessionAcquireResult | null = null
   let bootstrapTokenEstimate = 0
   let resourceRuntimeMismatchLogged = false
+  const shouldFastPathGreeting =
+    runtimeInvocationContext === 'interactive' &&
+    effectiveMode === 'code' &&
+    (!effectiveImages || effectiveImages.length === 0) &&
+    (!fileContexts || fileContexts.length === 0) &&
+    isSimpleGreetingMessage(messageForSend)
 
   try {
+    if (shouldFastPathGreeting) {
+      const fastReply = buildSimpleGreetingReply(effectiveResponseLanguage)
+      sessionState.latestAssistantContent = fastReply
+      sendToRenderer('agent:message', spaceId, conversationId, {
+        type: 'message',
+        runId,
+        content: fastReply,
+        isComplete: true
+      })
+      finalizeSession({
+        sessionState,
+        spaceId,
+        conversationId,
+        reason: 'completed',
+        finalContent: fastReply
+      })
+      return
+    }
+
     // Use headless Electron binary (outside .app bundle on macOS to prevent Dock icon)
     const electronPath = getHeadlessElectronPath()
     console.log(`[Agent] Using headless Electron as Node runtime: ${electronPath}`)
@@ -1370,6 +1445,7 @@ export async function sendMessage(
     // - Expand directives in all chat modes.
     // - Exposure remains a display-layer concern; runtime expansion should be
     //   able to resolve hidden/global resources as long as source rules allow it.
+    const expandStartedAt = Date.now()
     const expandedMessage = expandLazyDirectives(messageForSend, workDir, toolkit, {
       skip: new Set(['mcp']),
       allowSources: allowedDirectiveSources,
@@ -1380,6 +1456,8 @@ export async function sendMessage(
       allowLegacyWorkflowInternalDirect: exposureFlags.allowLegacyInternalDirect,
       legacyDependencyRegexEnabled: exposureFlags.legacyDependencyRegexEnabled
     })
+    const expandDurationMs = Date.now() - expandStartedAt
+    console.log(`[Agent][${conversationId}] ⏱️ expandLazyDirectives: ${expandDurationMs}ms`)
 
     if (expandedMessage.expanded.skills.length > 0) {
       console.log(
@@ -1514,8 +1592,14 @@ If the user asks about this project/codebase, inspect files in current workspace
     const messageContent = buildMessageContent(messageWithContext, images)
 
     // Send message to V2 session and stream response
+    let sendStartedAt = Date.now()
+    let sendResolvedAt = sendStartedAt
+    let firstStreamEventLogged = false
+    let firstStreamEventType = ''
+
     // For multi-modal messages, we need to send as SDKUserMessage
     if (typeof messageContent === 'string') {
+      sendStartedAt = Date.now()
       await Promise.resolve(v2Session.send(messageContent))
     } else {
       // Multi-modal message: construct SDKUserMessage
@@ -1526,8 +1610,13 @@ If the user asks about this project/codebase, inspect files in current workspace
           content: messageContent
         }
       }
+      sendStartedAt = Date.now()
       await Promise.resolve(v2Session.send(userMessage as any))
     }
+    sendResolvedAt = Date.now()
+    console.log(
+      `[Agent][${conversationId}] ⏱️ v2Session.send resolved: ${sendResolvedAt - sendStartedAt}ms`
+    )
 
     // Stream messages from V2 session
     const nextLocalToolCallId = () => {
@@ -1574,6 +1663,18 @@ If the user asks about this project/codebase, inspect files in current workspace
       if (sdkMessage.type === 'stream_event') {
         const event = (sdkMessage as any).event
         if (!event) continue
+
+        if (!firstStreamEventLogged) {
+          firstStreamEventLogged = true
+          firstStreamEventType = String(event.type || 'unknown')
+          const now = Date.now()
+          const sendCallDurationMs = sendResolvedAt - sendStartedAt
+          const postSendWaitMs = now - sendResolvedAt
+          const totalWaitMs = now - sendStartedAt
+          console.log(
+            `[Agent][${conversationId}] ⏱️ first_stream_event: type=${firstStreamEventType}, sendCall=${sendCallDurationMs}ms, postSendWait=${postSendWaitMs}ms, total=${totalWaitMs}ms`
+          )
+        }
 
         // DEBUG: Log all stream events with timestamp (ms since send)
         const elapsed = Date.now() - t1
@@ -2091,6 +2192,12 @@ If the user asks about this project/codebase, inspect files in current workspace
           console.log(`[Agent][${conversationId}] Token usage (single API):`, tokenUsage)
         }
       }
+    }
+
+    if (!firstStreamEventLogged) {
+      console.warn(
+        `[Agent][${conversationId}] No stream_event received (sendCall=${sendResolvedAt - sendStartedAt}ms)`
+      )
     }
 
     // Save session ID for future resumption

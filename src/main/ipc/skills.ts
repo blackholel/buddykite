@@ -16,12 +16,16 @@ import {
   clearSkillsCache,
   invalidateSkillsCache
 } from '../services/skills.service'
-import { invalidateAgentsCache } from '../services/agents.service'
-import { invalidateCommandsCache } from '../services/commands.service'
+import { clearAgentsCache, invalidateAgentsCache } from '../services/agents.service'
+import { clearCommandsCache, invalidateCommandsCache } from '../services/commands.service'
 import { clearPluginsCache } from '../services/plugins.service'
 import type { ResourceRef } from '../services/resource-ref.service'
 import { isResourceListView } from '../../shared/resource-access'
-import { rebuildResourceIndex, rebuildAllResourceIndexes } from '../services/resource-index.service'
+import {
+  getResourceIndexSnapshot,
+  rebuildAllResourceIndexes,
+  rebuildResourceIndex
+} from '../services/resource-index.service'
 
 export function registerSkillsHandlers(): void {
   // List all available skills
@@ -139,10 +143,10 @@ export function registerSkillsHandlers(): void {
 
       clearPluginsCache()
       clearSkillsCache()
-      invalidateAgentsCache(null)
-      invalidateCommandsCache(null)
+      clearAgentsCache()
+      clearCommandsCache()
       rebuildAllResourceIndexes('manual-refresh')
-      return { success: true, data: rebuildResourceIndex(undefined, 'manual-refresh') }
+      return { success: true, data: getResourceIndexSnapshot(undefined) }
     } catch (error: unknown) {
       const err = error as Error
       return { success: false, error: err.message }

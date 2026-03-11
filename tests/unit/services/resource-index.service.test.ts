@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { statSync } from 'fs'
 
 let displayIndexEntries = ['display-i18n:/home/test/.kite/i18n/resource-display.i18n.json:1700000000000:100']
 
@@ -55,7 +56,7 @@ vi.mock('../../../src/main/services/resource-display-i18n.service', () => ({
 }))
 
 vi.mock('fs', () => ({
-  statSync: vi.fn(() => ({ mtimeMs: 1700000000000 }))
+  statSync: vi.fn(() => ({ mtimeMs: 1700000000000, size: 128 }))
 }))
 
 import {
@@ -82,6 +83,7 @@ describe('resource-index.service', () => {
       agents: 1,
       commands: 1
     })
+    expect(vi.mocked(statSync)).toHaveBeenCalledWith('/home/test/.kite/skills/global-skill/SKILL.md')
   })
 
   it('rebuildAllResourceIndexes 会构建全局与空间索引', () => {
