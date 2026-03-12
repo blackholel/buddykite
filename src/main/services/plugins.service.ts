@@ -48,6 +48,14 @@ interface EnabledPluginsSettings {
   enabledPlugins?: Record<string, boolean>
 }
 
+const EXCLUDED_PLUGIN_FULL_NAMES = new Set([
+  'everything-claude-code@everything-claude-code'
+])
+
+function isExcludedPluginFullName(fullName: string): boolean {
+  return EXCLUDED_PLUGIN_FULL_NAMES.has(fullName)
+}
+
 function getSettingsPath(): string {
   return join(getLockedUserConfigRootDir(), 'settings.json')
 }
@@ -92,6 +100,7 @@ function loadPluginsFromRegistry(registryPath: string): PluginInfo[] {
     const allowedBase = join(getLockedUserConfigRootDir(), 'plugins')
 
     for (const [fullName, installations] of Object.entries(registry.plugins)) {
+      if (isExcludedPluginFullName(fullName)) continue
       const [name, marketplace] = fullName.split('@')
       if (!name || !marketplace) {
         console.warn(`[Plugins] Invalid plugin name format: ${fullName}`)
@@ -189,7 +198,7 @@ export function getEnabledPluginFullNames(): Set<string> {
   }
 
   const enabled = Object.entries(map)
-    .filter(([, value]) => value === true)
+    .filter(([fullName, value]) => value === true && !isExcludedPluginFullName(fullName))
     .map(([name]) => name)
 
   return new Set(enabled)

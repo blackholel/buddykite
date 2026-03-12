@@ -40,6 +40,8 @@ const FORBIDDEN_SEGMENTS = new Set([
   '.claude',
   '.codex'
 ])
+const EXCLUDED_PLUGIN_FULL_NAME = 'everything-claude-code@everything-claude-code'
+const EXCLUDED_PLUGIN_NAME = 'everything-claude-code'
 
 function normalizePath(p) {
   return p.split(path.sep).join('/')
@@ -108,12 +110,65 @@ function collectViolations(seedDir) {
   return violations
 }
 
+function collectExcludedPluginViolations(seedDir) {
+  const violations = []
+  const excludedPluginDir = path.join(seedDir, 'plugins', EXCLUDED_PLUGIN_NAME)
+  if (fs.existsSync(excludedPluginDir)) {
+    violations.push(`Excluded plugin directory should not exist in seed: plugins/${EXCLUDED_PLUGIN_NAME}`)
+  }
+
+  const settingsPath = path.join(seedDir, 'settings.json')
+  if (fs.existsSync(settingsPath)) {
+    const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'))
+    const enabledPlugins = settings?.enabledPlugins
+    if (enabledPlugins && typeof enabledPlugins === 'object' && enabledPlugins[EXCLUDED_PLUGIN_FULL_NAME] !== undefined) {
+      violations.push(`Excluded plugin should not appear in settings enabledPlugins: ${EXCLUDED_PLUGIN_FULL_NAME}`)
+    }
+  }
+
+  const registryPath = path.join(seedDir, 'plugins', 'installed_plugins.json')
+  if (fs.existsSync(registryPath)) {
+    const registry = JSON.parse(fs.readFileSync(registryPath, 'utf-8'))
+    const plugins = registry?.plugins
+    if (plugins && typeof plugins === 'object' && plugins[EXCLUDED_PLUGIN_FULL_NAME] !== undefined) {
+      violations.push(`Excluded plugin should not appear in installed_plugins.json: ${EXCLUDED_PLUGIN_FULL_NAME}`)
+    }
+  }
+
+  const configPath = path.join(seedDir, 'config.json')
+  if (fs.existsSync(configPath)) {
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'))
+    const plugins = Array.isArray(config?.plugins) ? config.plugins : []
+    const matched = plugins.some((plugin) => plugin?.name === EXCLUDED_PLUGIN_NAME)
+    if (matched) {
+      violations.push(`Excluded plugin should not appear in config.json plugins: ${EXCLUDED_PLUGIN_NAME}`)
+    }
+  }
+
+  const taxonomyPath = path.join(seedDir, 'taxonomy', 'resource-exposure.json')
+  if (fs.existsSync(taxonomyPath)) {
+    const taxonomy = JSON.parse(fs.readFileSync(taxonomyPath, 'utf-8'))
+    const sections = [taxonomy?.resources, taxonomy?.commands, taxonomy?.skills, taxonomy?.agents]
+    for (const section of sections) {
+      if (!section || typeof section !== 'object') continue
+      for (const key of Object.keys(section)) {
+        if (typeof key === 'string' && key.includes(EXCLUDED_PLUGIN_NAME)) {
+          violations.push(`Excluded plugin should not appear in taxonomy resource exposure: ${key}`)
+        }
+      }
+    }
+  }
+
+  return violations
+}
+
 if (!fs.existsSync(SEED_DIR)) {
   console.log(`[seed-check] skip: seed dir not found (${SEED_DIR})`)
   process.exit(0)
 }
 
 const violations = collectViolations(SEED_DIR)
+violations.push(...collectExcludedPluginViolations(SEED_DIR))
 const sizeBytes = getDirectorySizeBytes(SEED_DIR)
 const sizeMb = sizeBytes / 1024 / 1024
 

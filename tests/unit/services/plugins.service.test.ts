@@ -151,4 +151,16 @@ describe('plugins.service', () => {
 
     expect(loadInstalledPlugins()).toEqual([])
   })
+
+  it('should ignore everything-claude-code even when configured as installed and enabled', () => {
+    const testDir = getTestDir()
+    const kiteRoot = join(testDir, '.kite')
+    const installPath = join(kiteRoot, 'plugins', 'everything-claude-code')
+
+    writeRegistry(kiteRoot, 'everything-claude-code@everything-claude-code', installPath)
+    writeEnabledPluginsSettings(kiteRoot, { 'everything-claude-code@everything-claude-code': true })
+
+    expect(loadInstalledPlugins()).toEqual([])
+    expect(listEnabledPlugins()).toEqual([])
+  })
 })

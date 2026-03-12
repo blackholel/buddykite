@@ -60,6 +60,14 @@ const blockedDirectoryNames = new Set([
 const blockedFileNames = new Set([
   '.DS_Store'
 ])
+const excludedPluginFullNames = new Set([
+  'everything-claude-code@everything-claude-code'
+])
+const excludedPluginNames = new Set(
+  Array.from(excludedPluginFullNames)
+    .map((fullName) => fullName.split('@')[0]?.trim())
+    .filter(Boolean)
+)
 
 function isDirectory(path) {
   try {
@@ -78,6 +86,18 @@ function normalizeRelativePathForMatch(relativePath) {
   return relativePath.split(sep).join('/')
 }
 
+function isExcludedPlugin(fullName) {
+  return excludedPluginFullNames.has(fullName)
+}
+
+function shouldSkipPluginPathBySegments(segments) {
+  if (segments.length < 2 || segments[0] !== 'plugins') return false
+  for (const segment of segments.slice(1)) {
+    if (excludedPluginNames.has(segment)) return true
+  }
+  return false
+}
+
 function shouldSkipSeedEntry(relativePath, isDirectoryEntry) {
   const normalizedPath = normalizeRelativePathForMatch(relativePath)
   const segments = normalizedPath.split('/').filter(Boolean)
@@ -87,6 +107,7 @@ function shouldSkipSeedEntry(relativePath, isDirectoryEntry) {
   if (!allowedRootEntries.has(rootEntry)) return true
   if (ignoredRootEntries.has(rootEntry)) return true
   if (blockedRootEntries.has(rootEntry)) return true
+  if (shouldSkipPluginPathBySegments(segments)) return true
 
   for (const segment of segments) {
     if (blockedDirectoryNames.has(segment)) return true
@@ -144,6 +165,32 @@ function sanitizeConfig(config) {
     }
   }
 
+  if (Array.isArray(sanitized.plugins)) {
+    sanitized.plugins = sanitized.plugins.filter((plugin) => {
+      if (!plugin || typeof plugin !== 'object') return false
+      if (typeof plugin.name === 'string' && excludedPluginNames.has(plugin.name)) return false
+      if (typeof plugin.path === 'string') {
+        const normalizedPath = plugin.path.split(/[\\/]+/).filter(Boolean)
+        if (normalizedPath.some((segment) => excludedPluginNames.has(segment))) return false
+      }
+      return true
+    })
+  }
+
+  return sanitized
+}
+
+function sanitizeSettings(settings) {
+  if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return null
+  const sanitized = sanitizeSecrets(JSON.parse(JSON.stringify(settings)))
+  const enabledPlugins = sanitized.enabledPlugins
+  if (enabledPlugins && typeof enabledPlugins === 'object' && !Array.isArray(enabledPlugins)) {
+    for (const fullName of Object.keys(enabledPlugins)) {
+      if (isExcludedPlugin(fullName)) {
+        delete enabledPlugins[fullName]
+      }
+    }
+  }
   return sanitized
 }
 
@@ -178,6 +225,7 @@ function sanitizePluginsRegistry(registry, sourcePluginsDir) {
 
   const sanitizedPlugins = {}
   for (const [fullName, installations] of Object.entries(sourcePlugins)) {
+    if (isExcludedPlugin(fullName)) continue
     if (!Array.isArray(installations)) continue
 
     const validInstallations = installations
@@ -186,7 +234,7 @@ function sanitizePluginsRegistry(registry, sourcePluginsDir) {
         const installPath = typeof installation.installPath === 'string'
           ? resolve(installation.installPath)
           : null
-        if (!installPath || !isPathInside(sourcePluginsDir, installPath)) return null
+        if (!installPath || !isPathInside(sourcePluginsDir, installPath) || !isDirectory(installPath)) return null
         const relPath = relative(sourcePluginsDir, installPath).split(sep).join('/')
         return {
           ...installation,
@@ -214,6 +262,34 @@ function sanitizeGenericJsonFile(sourcePath, targetPath) {
   return true
 }
 
+function containsExcludedPluginToken(value) {
+  if (typeof value !== 'string') return false
+  for (const pluginName of excludedPluginNames) {
+    if (value.includes(pluginName)) return true
+  }
+  return false
+}
+
+function sanitizeResourceExposureFile(sourcePath, targetPath) {
+  const parsed = readJson(sourcePath)
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return false
+
+  const sanitized = sanitizeSecrets(JSON.parse(JSON.stringify(parsed)))
+  const mapKeys = ['resources', 'commands', 'skills', 'agents']
+  for (const key of mapKeys) {
+    const section = sanitized[key]
+    if (!section || typeof section !== 'object' || Array.isArray(section)) continue
+    for (const entryKey of Object.keys(section)) {
+      if (containsExcludedPluginToken(entryKey)) {
+        delete section[entryKey]
+      }
+    }
+  }
+
+  writeJson(targetPath, sanitized)
+  return true
+}
+
 function copySeedFile(sourcePath, targetPath, relativePath) {
   mkdirSync(dirname(targetPath), { recursive: true })
 
@@ -228,7 +304,7 @@ function copySeedFile(sourcePath, targetPath, relativePath) {
   }
 
   if (relativePath === 'settings.json') {
-    const settings = sanitizeSecrets(readJson(sourcePath))
+    const settings = sanitizeSettings(readJson(sourcePath))
     if (settings && typeof settings === 'object') {
       writeJson(targetPath, settings)
       return
@@ -247,6 +323,11 @@ function copySeedFile(sourcePath, targetPath, relativePath) {
     }
     copyFileSync(sourcePath, targetPath)
     return
+  }
+
+  if (relativePath === 'taxonomy/resource-exposure.json') {
+    const handled = sanitizeResourceExposureFile(sourcePath, targetPath)
+    if (handled) return
   }
 
   if (relativePath.endsWith('.json')) {
@@ -297,7 +378,7 @@ function finalizeSeedSettingsEnabledPlugins(targetRootDir) {
   if (!isPlainObject(registry) || !isPlainObject(settings)) return
 
   const plugins = isPlainObject(registry.plugins) ? registry.plugins : {}
-  const pluginNames = Object.keys(plugins)
+  const pluginNames = Object.keys(plugins).filter((fullName) => !isExcludedPlugin(fullName))
   if (pluginNames.length === 0) return
 
   const enabledPlugins = isPlainObject(settings.enabledPlugins)
@@ -305,6 +386,13 @@ function finalizeSeedSettingsEnabledPlugins(targetRootDir) {
     : {}
 
   let changed = !isPlainObject(settings.enabledPlugins)
+  const pluginNameSet = new Set(pluginNames)
+  for (const fullName of Object.keys(enabledPlugins)) {
+    if (isExcludedPlugin(fullName) || !pluginNameSet.has(fullName)) {
+      delete enabledPlugins[fullName]
+      changed = true
+    }
+  }
   for (const fullName of pluginNames) {
     if (enabledPlugins[fullName] === undefined) {
       enabledPlugins[fullName] = true
