@@ -99,6 +99,7 @@ function seedRunningConversation(): void {
           runId: 'run-1',
           snapshotVersion: 0,
           emittedAt: null,
+          phase: 'initializing',
           tools: [],
           toolCount: 0
         },
@@ -175,5 +176,44 @@ describe('chat.store setConversationMode', () => {
     expect(api.setAgentMode).toHaveBeenNthCalledWith(2, 'conv-1', 'code', 'run-1')
     expect(useChatStore.getState().getSession('conv-1').mode).toBe('code')
     expect(useChatStore.getState().getSession('conv-1').modeSwitching).toBe(false)
+  })
+})
+
+describe('chat.store tools snapshot phase', () => {
+  beforeEach(() => {
+    useChatStore.getState().reset()
+    seedRunningConversation()
+    vi.clearAllMocks()
+  })
+
+  it('keeps latest tools snapshot and phase order initializing -> ready', () => {
+    useChatStore.getState().handleAgentToolsAvailable({
+      type: 'tools_available',
+      spaceId: 'space-1',
+      conversationId: 'conv-1',
+      runId: 'run-1',
+      snapshotVersion: 1,
+      emittedAt: '2026-01-01T00:00:01.000Z',
+      phase: 'initializing',
+      tools: [],
+      toolCount: 0
+    })
+
+    useChatStore.getState().handleAgentToolsAvailable({
+      type: 'tools_available',
+      spaceId: 'space-1',
+      conversationId: 'conv-1',
+      runId: 'run-1',
+      snapshotVersion: 2,
+      emittedAt: '2026-01-01T00:00:02.000Z',
+      phase: 'ready',
+      tools: ['Read', 'Bash'],
+      toolCount: 2
+    })
+
+    const snapshot = useChatStore.getState().getSession('conv-1').availableToolsSnapshot
+    expect(snapshot.phase).toBe('ready')
+    expect(snapshot.toolCount).toBe(2)
+    expect(snapshot.tools).toEqual(['Read', 'Bash'])
   })
 })
