@@ -101,6 +101,15 @@ import { assertAiProfileConfigured } from './ai-setup-guard'
 import { trackChangeFileFromToolUse } from './change-tracking'
 import { acquireSendDispatchSlot } from './dispatch-throttle.service'
 import { allocateRunEpoch } from './runtime-journal.service'
+import {
+  startAgentRunObservation,
+  setAgentRunObservationProvider,
+  startAgentRunObservationPhase,
+  endAgentRunObservationPhase,
+  markAgentRunFirstToken,
+  finalizeAgentRunObservation,
+  getAgentRunObservation
+} from '../observability'
 
 interface McpDirectiveResult {
   text: string
@@ -137,6 +146,18 @@ function createAgentRoutingError(errorCode: string, message: string): Error & { 
 const DEFAULT_HISTORY_BOOTSTRAP_MAX_TURNS = 20
 const DEFAULT_HISTORY_BOOTSTRAP_MAX_TOKENS = 6000
 const DEFAULT_HISTORY_BOOTSTRAP_MAX_MESSAGE_CHARS = 4000
+const FILE_CONTEXT_MAX_TOTAL_CHARS = 48000
+const FILE_CONTEXT_MAX_PER_FILE_CHARS = 16000
+const FILE_CONTEXT_MAX_INLINE_FILES = 4
+const FILE_CONTEXT_BINARY_EXTENSIONS = new Set([
+  'pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx',
+  'zip', 'gz', 'bz2', '7z', 'tar', 'rar',
+  'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'ico', 'svg',
+  'mp3', 'wav', 'ogg', 'm4a',
+  'mp4', 'mov', 'avi', 'mkv', 'webm',
+  'woff', 'woff2', 'ttf', 'otf',
+  'exe', 'dll', 'so', 'dylib', 'bin', 'dmg', 'iso'
+])
 const LINE_SKILL_DIRECTIVE_RE = /^\/([\p{L}\p{N}._:-]+)(?:\s+.+)?$/gmu
 const INLINE_SKILL_DIRECTIVE_RE = /(^|[\s([{])\/([\p{L}\p{N}._:-]+)(?=$|[\s)\]}.,!?;:])/gu
 
@@ -151,6 +172,42 @@ function truncateText(text: string, maxChars: number): string {
   if (text.length <= maxChars) return text
   const omittedChars = text.length - maxChars
   return `${text.slice(0, maxChars)}\n...[truncated ${omittedChars} chars]`
+}
+
+function escapeXmlText(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
+
+function escapeXmlAttr(value: string): string {
+  return escapeXmlText(value)
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;')
+}
+
+function getFileExtension(inputPath: string, fallbackExtension?: string): string {
+  const ext = (fallbackExtension || '').trim().replace(/^\./, '').toLowerCase()
+  if (ext) return ext
+  const normalized = inputPath.replace(/\\/g, '/')
+  const fileName = normalized.split('/').pop() || ''
+  const dotIndex = fileName.lastIndexOf('.')
+  if (dotIndex <= 0) return ''
+  return fileName.slice(dotIndex + 1).toLowerCase()
+}
+
+function isProbablyBinaryBuffer(content: Buffer): boolean {
+  if (content.length === 0) return false
+  const sample = content.subarray(0, Math.min(content.length, 4096))
+  let suspicious = 0
+  for (const byte of sample) {
+    if (byte === 0) return true
+    if ((byte < 7 || (byte > 14 && byte < 32)) && byte !== 9 && byte !== 10 && byte !== 13) {
+      suspicious += 1
+    }
+  }
+  return suspicious / sample.length > 0.3
 }
 
 function extractSkillDirectiveTokens(message: string): string[] {
@@ -964,6 +1021,55 @@ export async function sendMessage(
     fileContexts,
     invocationContext
   } = request
+  const effectiveMode = normalizeChatMode(mode, planEnabled, 'code')
+  const sessionKey = toSessionKey(spaceId, conversationId)
+  const runId = createRunId()
+  const runEpoch = allocateRunEpoch(spaceId, conversationId, runId)
+  const startedAtIso = new Date().toISOString()
+  const effectiveResponseLanguage = normalizeLocale(responseLanguage)
+  const initialModelOverride = toNonEmptyText(modelOverride) || toNonEmptyText(legacyModelOverride)
+  const observabilityHandle = startAgentRunObservation({
+    sessionKey,
+    spaceId,
+    conversationId,
+    runId,
+    mode: effectiveMode,
+    message,
+    responseLanguage: effectiveResponseLanguage,
+    imageCount: Array.isArray(images) ? images.length : 0,
+    fileContextCount: Array.isArray(fileContexts) ? fileContexts.length : 0,
+    aiBrowserEnabled: aiBrowserEnabled === true,
+    thinkingEnabled: thinkingEnabled === true
+  })
+  startAgentRunObservationPhase(observabilityHandle, 'send_entry')
+
+  let observationFinalized = false
+  let observationProvider = 'unknown'
+  let observationModel = initialModelOverride || ''
+  const finalizeObservation = (
+    status: 'completed' | 'stopped' | 'error' | 'no_text',
+    terminalReason: 'completed' | 'stopped' | 'error' | 'no_text',
+    options?: {
+      tokenUsage?: TokenUsageInfo | null
+      toolsById?: Map<string, ToolCall>
+      finalContent?: string
+      errorMessage?: string
+    }
+  ): void => {
+    if (observationFinalized) return
+    observationFinalized = true
+    finalizeAgentRunObservation(observabilityHandle, {
+      status,
+      terminalReason,
+      provider: observationProvider,
+      model: observationModel,
+      tokenUsage: options?.tokenUsage || null,
+      toolsById: options?.toolsById,
+      finalContent: options?.finalContent,
+      errorMessage: options?.errorMessage
+    })
+  }
+
   let conversation: ({
     ai?: { profileId?: string }
     sessionId?: string
@@ -990,10 +1096,12 @@ export async function sendMessage(
       errorCode,
       cause: error instanceof Error ? error.message : String(error)
     })
-    throw createAgentRoutingError(
+    const routingError = createAgentRoutingError(
       errorCode,
       `Conversation ${conversationId} is not available under space ${spaceId}`
     )
+    finalizeObservation('error', 'error', { errorMessage: routingError.message })
+    throw routingError
   }
 
   if (!conversation) {
@@ -1004,10 +1112,12 @@ export async function sendMessage(
       conversationId,
       errorCode
     })
-    throw createAgentRoutingError(
+    const routingError = createAgentRoutingError(
       errorCode,
       `Conversation ${conversationId} is not available under space ${spaceId}`
     )
+    finalizeObservation('error', 'error', { errorMessage: routingError.message })
+    throw routingError
   }
 
   const persistedSpaceId = typeof conversation.spaceId === 'string' ? conversation.spaceId : ''
@@ -1020,13 +1130,13 @@ export async function sendMessage(
       persistedSpaceId: persistedSpaceId || null,
       errorCode
     })
-    throw createAgentRoutingError(
+    const routingError = createAgentRoutingError(
       errorCode,
       `Conversation ${conversationId} belongs to ${persistedSpaceId || 'unknown-space'}, not ${spaceId}`
     )
+    finalizeObservation('error', 'error', { errorMessage: routingError.message })
+    throw routingError
   }
-
-  const effectiveMode = normalizeChatMode(mode, planEnabled, 'code')
   const runtimeInvocationContext = invocationContext === 'workflow-step' ? 'workflow-step' : 'interactive'
   if (invocationContext && invocationContext !== runtimeInvocationContext) {
     console.warn(
@@ -1043,9 +1153,14 @@ export async function sendMessage(
     requestedProfileId: configuredConversationProfileId || null,
     defaultProfileId: toNonEmptyText(config.ai?.defaultProfileId) || null
   })
-  assertAiProfileConfigured(config, configuredConversationProfileId)
-  const requestModelOverride = toNonEmptyText(modelOverride) || toNonEmptyText(legacyModelOverride)
-  const effectiveResponseLanguage = normalizeLocale(responseLanguage)
+  try {
+    assertAiProfileConfigured(config, configuredConversationProfileId)
+  } catch (error) {
+    const errorMessage = getErrorMessage(error) || 'AI profile is not configured'
+    finalizeObservation('error', 'error', { errorMessage })
+    throw error
+  }
+  const requestModelOverride = initialModelOverride
   const effectiveAi = resolveEffectiveConversationAi(spaceId, conversationId, requestModelOverride)
   const defaultProfileId = toNonEmptyText(config.ai?.defaultProfileId)
 
@@ -1059,8 +1174,28 @@ export async function sendMessage(
     )
   }
 
+  endAgentRunObservationPhase(observabilityHandle, 'send_entry')
+
   // Resolve provider configuration using effective conversation profile/model.
-  const resolved = await resolveProvider(effectiveAi.profile, effectiveAi.effectiveModel)
+  startAgentRunObservationPhase(observabilityHandle, 'resolve_provider')
+  let resolved: Awaited<ReturnType<typeof resolveProvider>>
+  try {
+    resolved = await resolveProvider(effectiveAi.profile, effectiveAi.effectiveModel)
+  } catch (error) {
+    const errorMessage = getErrorMessage(error) || 'resolveProvider failed'
+    endAgentRunObservationPhase(observabilityHandle, 'resolve_provider', {
+      metadata: { error: errorMessage }
+    })
+    finalizeObservation('error', 'error', { errorMessage })
+    throw error
+  }
+  observationProvider = effectiveAi.profile.vendor || resolved.protocol || 'unknown'
+  observationModel = resolved.effectiveModel || resolved.sdkModel || observationModel
+  setAgentRunObservationProvider(observabilityHandle, {
+    provider: observationProvider,
+    model: observationModel
+  })
+  endAgentRunObservationPhase(observabilityHandle, 'resolve_provider')
   const isStrictCompatProvider = effectiveAi.disableToolsForCompat
   const compatProviderName = effectiveAi.compatProviderName || 'Compatibility provider'
   // Some Anthropic-compatible backends can be strict; keep text-only for stability.
@@ -1092,6 +1227,8 @@ export async function sendMessage(
       errorCode: typed.errorCode || null,
       configDir: null
     })
+    const errorMessage = getErrorMessage(error) || 'Failed to resolve workDir'
+    finalizeObservation('error', 'error', { errorMessage })
     throw error
   }
   console.log('[Agent] sendMessage routing resolved', {
@@ -1101,7 +1238,6 @@ export async function sendMessage(
     resolvedWorkDir: workDir,
     configDir: null
   })
-  const sessionKey = toSessionKey(spaceId, conversationId)
   beginChangeSet(spaceId, conversationId, workDir)
   const spaceConfig = getSpaceConfig(workDir)
   const resourceRuntimePolicy = resolveNormalizedRuntimePolicy(
@@ -1191,9 +1327,6 @@ export async function sendMessage(
 
   // Create abort controller for this session
   const abortController = new AbortController()
-  const runId = createRunId()
-  const runEpoch = allocateRunEpoch(spaceId, conversationId, runId)
-  const startedAtIso = new Date().toISOString()
 
   // Accumulate stderr for detailed error messages
   let stderrBuffer = ''
@@ -1231,6 +1364,18 @@ export async function sendMessage(
     thoughts: [], // Initialize thoughts array for this session
     processTrace: []
   }
+  const runObservationSnapshot = getAgentRunObservation(runId)
+  if (
+    runObservationSnapshot?.traceId &&
+    runObservationSnapshot?.rootObservationId &&
+    runObservationSnapshot?.startedAt
+  ) {
+    sessionState.observabilityContext = {
+      traceId: runObservationSnapshot.traceId,
+      rootObservationId: runObservationSnapshot.rootObservationId,
+      startedAt: runObservationSnapshot.startedAt
+    }
+  }
   setActiveSession(spaceId, conversationId, sessionState)
 
   sendToRenderer('agent:run-start', spaceId, conversationId, {
@@ -1260,18 +1405,53 @@ export async function sendMessage(
   // Build file context block for AI (if file contexts provided)
   let fileContextBlock = ''
   if (fileContexts && fileContexts.length > 0) {
+    let remainingChars = FILE_CONTEXT_MAX_TOTAL_CHARS
+    let inlineFiles = 0
+    let binaryOrSkippedFiles = 0
+    let truncatedFiles = 0
+
     const fileContentsPromises = fileContexts.map(async (fc) => {
+      const escapedPath = escapeXmlAttr(fc.path)
+      const escapedName = escapeXmlAttr(fc.name)
+      const extension = getFileExtension(fc.path, fc.extension)
+      const escapedExt = escapeXmlAttr(extension)
+
       try {
-        const content = await fsPromises.readFile(fc.path, 'utf-8')
-        return `<file path="${fc.path}" name="${fc.name}">\n${content}\n</file>`
+        const raw = await fsPromises.readFile(fc.path)
+        const fileSize = raw.byteLength
+        const likelyBinary = FILE_CONTEXT_BINARY_EXTENSIONS.has(extension) || isProbablyBinaryBuffer(raw)
+
+        if (likelyBinary) {
+          binaryOrSkippedFiles += 1
+          return `<file path="${escapedPath}" name="${escapedName}" extension="${escapedExt}" size="${fileSize}" binary="true" note="Binary file omitted from prompt; use file path for tool-based processing." />`
+        }
+
+        if (inlineFiles >= FILE_CONTEXT_MAX_INLINE_FILES || remainingChars <= 0) {
+          binaryOrSkippedFiles += 1
+          return `<file path="${escapedPath}" name="${escapedName}" extension="${escapedExt}" size="${fileSize}" skipped="true" note="Text content omitted to keep prompt size under limit." />`
+        }
+
+        const content = raw.toString('utf-8')
+        const allowedChars = Math.min(FILE_CONTEXT_MAX_PER_FILE_CHARS, remainingChars)
+        const wasTruncated = content.length > allowedChars
+        const truncated = truncateText(content, allowedChars)
+        const consumedChars = Math.min(content.length, allowedChars)
+        remainingChars = Math.max(0, remainingChars - consumedChars)
+        inlineFiles += 1
+        if (wasTruncated) truncatedFiles += 1
+
+        return `<file path="${escapedPath}" name="${escapedName}" extension="${escapedExt}" size="${fileSize}"${wasTruncated ? ' truncated="true"' : ''}>\n${escapeXmlText(truncated)}\n</file>`
       } catch (err) {
         console.error(`[Agent] Failed to read file context: ${fc.path}`, err)
-        return `<file path="${fc.path}" name="${fc.name}" error="Failed to read file" />`
+        return `<file path="${escapedPath}" name="${escapedName}" extension="${escapedExt}" error="Failed to read file" />`
       }
     })
+
     const fileContents = await Promise.all(fileContentsPromises)
     fileContextBlock = `<file-contexts>\n${fileContents.join('\n\n')}\n</file-contexts>\n\n`
-    console.log(`[Agent] Prepared ${fileContexts.length} file context(s) for AI`)
+    console.log(
+      `[Agent] Prepared ${fileContexts.length} file context(s) for AI: inline=${inlineFiles}, truncated=${truncatedFiles}, skippedOrBinary=${binaryOrSkippedFiles}, remainingChars=${remainingChars}`
+    )
   }
 
   // Add user message to conversation (original message without file contents)
@@ -1334,6 +1514,10 @@ export async function sendMessage(
         reason: 'completed',
         finalContent: fastReply
       })
+      finalizeObservation('completed', 'completed', {
+        finalContent: fastReply,
+        toolsById: sessionState.toolsById
+      })
       return
     }
 
@@ -1384,6 +1568,7 @@ export async function sendMessage(
 
     const t0 = Date.now()
     console.log(`[Agent][${conversationId}] Getting or creating V2 session...`)
+    startAgentRunObservationPhase(observabilityHandle, 'acquire_session', t0)
 
     // Log MCP servers if configured (only enabled ones, merged with space config + plugin MCP)
     const mcpDisabled =
@@ -1486,6 +1671,13 @@ export async function sendMessage(
       console.error(`[Agent][${conversationId}] Failed to set dynamic params:`, e)
     }
     console.log(`[Agent][${conversationId}] ⏱️ V2 session ready: ${Date.now() - t0}ms`)
+    endAgentRunObservationPhase(observabilityHandle, 'acquire_session', {
+      metadata: {
+        outcome: sessionAcquireResult?.outcome || null,
+        retryCount: sessionAcquireResult?.retryCount || 0,
+        bootstrapTokenEstimate
+      }
+    })
 
     // Token-level streaming state
     const syncLatestAssistantContent = () => {
@@ -1535,6 +1727,7 @@ export async function sendMessage(
     // - Exposure remains a display-layer concern; runtime expansion should be
     //   able to resolve hidden/global resources as long as source rules allow it.
     const expandStartedAt = Date.now()
+    startAgentRunObservationPhase(observabilityHandle, 'expand_directives', expandStartedAt)
     const expandedMessage = expandLazyDirectives(messageForSend, workDir, toolkit, {
       skip: new Set(['mcp']),
       allowSources: allowedDirectiveSources,
@@ -1546,6 +1739,18 @@ export async function sendMessage(
       legacyDependencyRegexEnabled: exposureFlags.legacyDependencyRegexEnabled
     })
     const expandDurationMs = Date.now() - expandStartedAt
+    endAgentRunObservationPhase(observabilityHandle, 'expand_directives', {
+      endAtMs: expandStartedAt + expandDurationMs,
+      metadata: {
+        durationMs: expandDurationMs,
+        expandedSkillCount: expandedMessage.expanded.skills.length,
+        expandedCommandCount: expandedMessage.expanded.commands.length,
+        expandedAgentCount: expandedMessage.expanded.agents.length,
+        missingSkillCount: expandedMessage.missing.skills.length,
+        missingCommandCount: expandedMessage.missing.commands.length,
+        missingAgentCount: expandedMessage.missing.agents.length
+      }
+    })
     console.log(`[Agent][${conversationId}] ⏱️ expandLazyDirectives: ${expandDurationMs}ms`)
 
     if (expandedMessage.expanded.skills.length > 0) {
@@ -1687,8 +1892,11 @@ If the user asks about this project/codebase, inspect files in current workspace
     let firstStreamEventType = ''
 
     // For multi-modal messages, we need to send as SDKUserMessage
+    sendStartedAt = Date.now()
+    startAgentRunObservationPhase(observabilityHandle, 'session_send', sendStartedAt, {
+      messageType: typeof messageContent === 'string' ? 'text' : 'multimodal'
+    })
     if (typeof messageContent === 'string') {
-      sendStartedAt = Date.now()
       await Promise.resolve(v2Session.send(messageContent))
     } else {
       // Multi-modal message: construct SDKUserMessage
@@ -1699,10 +1907,12 @@ If the user asks about this project/codebase, inspect files in current workspace
           content: messageContent
         }
       }
-      sendStartedAt = Date.now()
       await Promise.resolve(v2Session.send(userMessage as any))
     }
     sendResolvedAt = Date.now()
+    endAgentRunObservationPhase(observabilityHandle, 'session_send', {
+      endAtMs: sendResolvedAt
+    })
     console.log(
       `[Agent][${conversationId}] ⏱️ v2Session.send resolved: ${sendResolvedAt - sendStartedAt}ms`
     )
@@ -1733,6 +1943,7 @@ If the user asks about this project/codebase, inspect files in current workspace
     }
 
     resetCompatIdleTimer()
+    startAgentRunObservationPhase(observabilityHandle, 'stream_loop', sendResolvedAt)
 
     for await (const sdkMessage of v2Session.stream() as AsyncIterable<any>) {
       touchV2Session(spaceId, conversationId)
@@ -1763,6 +1974,11 @@ If the user asks about this project/codebase, inspect files in current workspace
           console.log(
             `[Agent][${conversationId}] ⏱️ first_stream_event: type=${firstStreamEventType}, sendCall=${sendCallDurationMs}ms, postSendWait=${postSendWaitMs}ms, total=${totalWaitMs}ms`
           )
+          markAgentRunFirstToken(observabilityHandle, {
+            sendResolvedAtMs: sendResolvedAt,
+            firstTokenAtMs: now,
+            firstEventType: firstStreamEventType
+          })
         }
 
         // DEBUG: Log all stream events with timestamp (ms since send)
@@ -2280,6 +2496,12 @@ If the user asks about this project/codebase, inspect files in current workspace
         }
       }
     }
+    endAgentRunObservationPhase(observabilityHandle, 'stream_loop', {
+      metadata: {
+        firstStreamEventType: firstStreamEventType || null,
+        hasStreamEventText
+      }
+    })
 
     if (!firstStreamEventLogged) {
       console.warn(
@@ -2330,6 +2552,11 @@ If the user asks about this project/codebase, inspect files in current workspace
       finalContent: terminalContent,
       tokenUsage
     })
+    finalizeObservation(terminalReason, terminalReason, {
+      finalContent: terminalContent || undefined,
+      tokenUsage,
+      toolsById: sessionState.toolsById
+    })
     if (!finalized) {
       console.log(`[Agent][${conversationId}] Terminal state already emitted, skip duplicate finalize`)
     }
@@ -2363,6 +2590,17 @@ If the user asks about this project/codebase, inspect files in current workspace
           }),
           tokenUsage
         })
+        finalizeObservation('error', 'error', {
+          finalContent: resolveFinalContent({
+            resultContent: resultContentFromThought,
+            latestAssistantContent: sessionState.latestAssistantContent,
+            accumulatedTextContent,
+            currentStreamingText: isStreamingTextBlock ? currentStreamingText : undefined
+          }) || undefined,
+          tokenUsage,
+          toolsById: sessionState.toolsById,
+          errorMessage: timeoutError
+        })
 
         closeV2Session(spaceId, conversationId)
         return
@@ -2380,6 +2618,16 @@ If the user asks about this project/codebase, inspect files in current workspace
           currentStreamingText: isStreamingTextBlock ? currentStreamingText : undefined
         }),
         tokenUsage
+      })
+      finalizeObservation('stopped', 'stopped', {
+        finalContent: resolveFinalContent({
+          resultContent: resultContentFromThought,
+          latestAssistantContent: sessionState.latestAssistantContent,
+          accumulatedTextContent,
+          currentStreamingText: isStreamingTextBlock ? currentStreamingText : undefined
+        }) || undefined,
+        tokenUsage,
+        toolsById: sessionState.toolsById
       })
       return
     }
@@ -2412,7 +2660,7 @@ If the user asks about this project/codebase, inspect files in current workspace
           // Git Bash found but still got error - could be path issue
           errorMessage =
             'Command execution failed. This may be an environment configuration issue, please try restarting the app.\n\n' +
-            `Technical details: ${err.message}`
+            `Technical details: ${getErrorMessage(error) || 'unknown'}`
         }
       }
     }
@@ -2449,10 +2697,34 @@ If the user asks about this project/codebase, inspect files in current workspace
       }),
       tokenUsage
     })
+    finalizeObservation('error', 'error', {
+      finalContent: resolveFinalContent({
+        resultContent: resultContentFromThought,
+        latestAssistantContent: sessionState.latestAssistantContent,
+        accumulatedTextContent,
+        currentStreamingText: isStreamingTextBlock ? currentStreamingText : undefined
+      }) || undefined,
+      tokenUsage,
+      toolsById: sessionState.toolsById,
+      errorMessage
+    })
 
     // Close V2 session on error (it may be in a bad state)
     closeV2Session(spaceId, conversationId)
   } finally {
+    if (!observationFinalized) {
+      finalizeObservation('error', 'error', {
+        finalContent: resolveFinalContent({
+          resultContent: resultContentFromThought,
+          latestAssistantContent: sessionState.latestAssistantContent,
+          accumulatedTextContent,
+          currentStreamingText: isStreamingTextBlock ? currentStreamingText : undefined
+        }) || undefined,
+        tokenUsage,
+        toolsById: sessionState.toolsById,
+        errorMessage: 'run finalized unexpectedly without terminal reason'
+      })
+    }
     releaseDispatchSlot()
     if (idleTimeoutId) {
       clearTimeout(idleTimeoutId)
