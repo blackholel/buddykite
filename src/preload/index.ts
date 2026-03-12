@@ -46,6 +46,7 @@ export interface KiteAPI {
   updateSpace: (spaceId: string, updates: { name?: string; icon?: string }) => Promise<IpcResponse>
   getDefaultSpacePath: () => Promise<IpcResponse>
   selectFolder: () => Promise<IpcResponse>
+  selectFiles: () => Promise<IpcResponse<string[]>>
   updateSpacePreferences: (spaceId: string, preferences: {
     layout?: {
       artifactRailExpanded?: boolean
@@ -523,6 +524,7 @@ const api: KiteAPI = {
   updateSpace: (spaceId, updates) => ipcRenderer.invoke('space:update', spaceId, updates),
   getDefaultSpacePath: () => ipcRenderer.invoke('space:get-default-path'),
   selectFolder: () => ipcRenderer.invoke('dialog:select-folder'),
+  selectFiles: () => ipcRenderer.invoke('dialog:select-files'),
   updateSpacePreferences: (spaceId, preferences) =>
     ipcRenderer.invoke('space:update-preferences', spaceId, preferences),
   getSpacePreferences: (spaceId) => ipcRenderer.invoke('space:get-preferences', spaceId),

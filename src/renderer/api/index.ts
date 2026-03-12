@@ -168,6 +168,14 @@ export const api = {
     return { success: false, error: 'Cannot select folder in remote mode' }
   },
 
+  selectFiles: async (): Promise<ApiResponse<string[]>> => {
+    if (isElectron()) {
+      return window.kite.selectFiles()
+    }
+    // Cannot select files in remote mode
+    return { success: false, error: 'Cannot select files in remote mode' }
+  },
+
   updateSpace: async (
     spaceId: string,
     updates: { name?: string; icon?: string }

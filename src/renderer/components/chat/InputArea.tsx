@@ -23,6 +23,7 @@ import { Plus, ImagePlus, Loader2, AlertCircle, Atom, Globe, ClipboardList, X, B
 import { useShallow } from 'zustand/react/shallow'
 import { useOnboardingStore } from '../../stores/onboarding.store'
 import { useAIBrowserStore } from '../../stores/ai-browser.store'
+import { api } from '../../api'
 import { getComposerMruMap, touchComposerMru } from '../../stores/composer-mru.store'
 import { useSpaceStore } from '../../stores/space.store'
 import { useSkillsStore } from '../../stores/skills.store'
@@ -154,7 +155,6 @@ export function InputArea({
   const [guidingQueueItemIds, setGuidingQueueItemIds] = useState<Set<string>>(new Set())
   const [isComposing, setIsComposing] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
   const inputContainerRef = useRef<HTMLDivElement>(null)
   const lastTriggerTypeRef = useRef<TriggerContext['type'] | null>(null)
   const lastExpandContextRef = useRef<{ stateKey: string | null; query: string } | null>(null)
@@ -589,48 +589,39 @@ export function InputArea({
     }
   }
 
-  // Handle file input change (system file picker -> file context attachments)
-  const handleFileInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || [])
-    if (files.length > 0) {
-      const newFileContexts: FileContextAttachment[] = []
-
-      for (const file of files) {
-        const fileWithPath = file as File & { path?: string }
-        const filePath = fileWithPath.path
-        if (!filePath) {
-          showError(t('Unable to attach system file in current mode'))
-          continue
-        }
-
-        const exists = fileContexts.some(f => f.path === filePath) || newFileContexts.some(f => f.path === filePath)
-        if (exists) continue
-
-        const dotIndex = file.name.lastIndexOf('.')
-        const extension = dotIndex > 0 ? file.name.slice(dotIndex + 1).toLowerCase() : ''
-
-        newFileContexts.push({
-          id: `file-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-          type: 'file-context',
-          path: filePath,
-          name: file.name,
-          extension
-        })
-      }
-
-      if (newFileContexts.length > 0) {
-        setFileContexts(prev => [...prev, ...newFileContexts])
-      }
-    }
-    // Reset input
-    if (fileInputRef.current) {
-      fileInputRef.current.value = ''
-    }
-  }
-
   // Handle system file button click
-  const handleSystemFileButtonClick = () => {
-    fileInputRef.current?.click()
+  const handleSystemFileButtonClick = async () => {
+    const response = await api.selectFiles()
+    if (!response.success) {
+      showError(t('Unable to attach system file in current mode'))
+      return
+    }
+
+    const filePaths = Array.isArray(response.data) ? response.data : []
+    if (filePaths.length === 0) return
+
+    const newFileContexts: FileContextAttachment[] = []
+    for (const filePath of filePaths) {
+      const exists = fileContexts.some(f => f.path === filePath) || newFileContexts.some(f => f.path === filePath)
+      if (exists) continue
+
+      const normalizedPath = filePath.replace(/\\/g, '/')
+      const fileName = normalizedPath.split('/').pop() || filePath
+      const dotIndex = fileName.lastIndexOf('.')
+      const extension = dotIndex > 0 ? fileName.slice(dotIndex + 1).toLowerCase() : ''
+
+      newFileContexts.push({
+        id: `file-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        type: 'file-context',
+        path: filePath,
+        name: fileName,
+        extension
+      })
+    }
+
+    if (newFileContexts.length > 0) {
+      setFileContexts(prev => [...prev, ...newFileContexts])
+    }
   }
 
   // Auto-resize textarea
@@ -1028,15 +1019,6 @@ export function InputArea({
             <span className="text-sm text-destructive flex-1">{imageError.message}</span>
           </div>
         )}
-
-        {/* Hidden file input */}
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          className="hidden"
-          onChange={handleFileInputChange}
-        />
 
         {/* Input container */}
         <div

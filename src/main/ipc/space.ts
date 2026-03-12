@@ -154,6 +154,26 @@ export function registerSpaceHandlers(): void {
     }
   })
 
+  // Select files dialog (for chat file context attachments)
+  ipcMain.handle('dialog:select-files', async () => {
+    try {
+      const result = await dialog.showOpenDialog({
+        title: 'Select Files',
+        properties: ['openFile', 'multiSelections'],
+        buttonLabel: 'Attach Files'
+      })
+
+      if (result.canceled || result.filePaths.length === 0) {
+        return { success: true, data: [] }
+      }
+
+      return { success: true, data: result.filePaths }
+    } catch (error: unknown) {
+      const err = error as Error
+      return { success: false, error: err.message }
+    }
+  })
+
   // Update space preferences (layout settings)
   ipcMain.handle(
     'space:update-preferences',
