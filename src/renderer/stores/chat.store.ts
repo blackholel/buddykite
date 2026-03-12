@@ -84,6 +84,7 @@ interface AvailableToolsSnapshot {
   runId: string | null
   snapshotVersion: number
   emittedAt: string | null
+  phase: 'initializing' | 'ready'
   tools: string[]
   toolCount: number
 }
@@ -274,6 +275,7 @@ function createEmptySessionState(): SessionState {
       runId: null,
       snapshotVersion: 0,
       emittedAt: null,
+      phase: 'initializing',
       tools: [],
       toolCount: 0
     },
@@ -632,7 +634,7 @@ interface ChatState {
   handleAgentMode: (data: AgentModeEvent) => void
   handleAgentThought: (data: AgentEventBase & { thought: Thought }) => void
   handleAgentCompact: (data: AgentEventBase & { trigger: 'manual' | 'auto'; preTokens: number }) => void
-  handleAgentToolsAvailable: (data: AgentEventBase & { runId: string; snapshotVersion: number; emittedAt: string; tools: string[]; toolCount: number }) => void
+  handleAgentToolsAvailable: (data: AgentEventBase & { runId: string; snapshotVersion: number; emittedAt: string; phase: 'initializing' | 'ready'; tools: string[]; toolCount: number }) => void
 
   // Change set actions
   loadChangeSets: (spaceId: string, conversationId: string) => Promise<void>
@@ -2948,6 +2950,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
           runId,
           snapshotVersion: 0,
           emittedAt: startedAt,
+          phase: 'initializing',
           tools: [],
           toolCount: 0
         }
@@ -2980,7 +2983,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
           get().handleAgentCompact(event.payload as AgentEventBase & { trigger: 'manual' | 'auto'; preTokens: number })
           break
         case 'tools_available':
-          get().handleAgentToolsAvailable(event.payload as AgentEventBase & { runId: string; snapshotVersion: number; emittedAt: string; tools: string[]; toolCount: number })
+          get().handleAgentToolsAvailable(event.payload as AgentEventBase & { runId: string; snapshotVersion: number; emittedAt: string; phase: 'initializing' | 'ready'; tools: string[]; toolCount: number })
           break
         case 'complete':
           void get().handleAgentComplete(event.payload as AgentCompleteEvent)
@@ -4011,6 +4014,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       return
     }
     const { conversationId, runId, snapshotVersion, emittedAt, tools, toolCount } = data
+    const phase = data.phase || (snapshotVersion <= 1 && toolCount === 0 ? 'initializing' : 'ready')
 
     set((state) => {
       const newSessions = new Map(state.sessions)
@@ -4047,6 +4051,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
           runId,
           snapshotVersion,
           emittedAt,
+          phase,
           tools,
           toolCount
         }

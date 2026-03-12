@@ -54,6 +54,12 @@ export interface SkillContent {
   frontmatter?: Record<string, unknown>
 }
 
+export interface SkillLookupResult {
+  skill: SkillDefinition | null
+  ambiguous: SkillDefinition[]
+  matchedBy: 'exact' | 'alias' | null
+}
+
 export type SopAction =
   | 'navigate'
   | 'click'
@@ -117,6 +123,8 @@ const SOP_SPEC_END_MARKER = '## SOP_SPEC_JSON_END'
 function skillKey(skill: SkillDefinition): string {
   return skill.namespace ? `${skill.namespace}:${skill.name}` : skill.name
 }
+
+const DEFAULT_PREFIX_ALIAS_PATTERNS = ['qiaomu-'] as const
 
 function getAllowedSkillBaseDirs(): string[] {
   return getAllSpacePaths().map((spacePath) => join(spacePath, '.claude', 'skills'))
@@ -343,29 +351,81 @@ function buildSopSkillContent(
   return `${frontmatterLines.join('\n')}\n${body.join('\n')}`
 }
 
-function findSkill(skills: SkillDefinition[], name: string): SkillDefinition | undefined {
+function buildAliasVariants(value: string, prefixAliasEnabled = true): string[] {
+  const normalized = normalizeLookupValue(value)
+  if (!normalized) return []
+
+  const variants = new Set<string>([normalized])
+  if (!prefixAliasEnabled) {
+    return [...variants]
+  }
+
+  for (const pattern of DEFAULT_PREFIX_ALIAS_PATTERNS) {
+    if (normalized.startsWith(pattern) && normalized.length > pattern.length) {
+      variants.add(normalized.slice(pattern.length))
+    } else {
+      variants.add(`${pattern}${normalized}`)
+    }
+  }
+
+  return [...variants]
+}
+
+function isAliasMatch(
+  candidate: string,
+  lookup: string,
+  prefixAliasEnabled = true
+): boolean {
+  const candidateVariants = new Set(buildAliasVariants(candidate, prefixAliasEnabled))
+  const lookupVariants = buildAliasVariants(lookup, prefixAliasEnabled)
+  return lookupVariants.some((variant) => candidateVariants.has(variant))
+}
+
+function findSkillWithLookup(
+  skills: SkillDefinition[],
+  name: string,
+  opts?: { disallowAmbiguousAlias?: boolean; prefixAliasEnabled?: boolean }
+): SkillLookupResult {
   const lookup = name.trim()
-  if (!lookup) return undefined
+  if (!lookup) {
+    return { skill: null, ambiguous: [], matchedBy: null }
+  }
 
   if (lookup.includes(':')) {
     const [namespace, skillName] = lookup.split(':', 2)
-    if (!namespace || !skillName) return undefined
+    if (!namespace || !skillName) {
+      return { skill: null, ambiguous: [], matchedBy: null }
+    }
 
     const exact = skills.find((skill) => skill.name === skillName && skill.namespace === namespace)
-    if (exact) return exact
+    if (exact) {
+      return { skill: exact, ambiguous: [], matchedBy: 'exact' }
+    }
 
-    const byAlias = findSkillByAlias(skills, skillName, namespace)
-    return resolveAliasedSkill(byAlias, lookup)
+    const byAlias = findSkillByAlias(skills, skillName, namespace, opts?.prefixAliasEnabled)
+    return resolveAliasedSkill(byAlias, lookup, opts?.disallowAmbiguousAlias)
   }
 
   const exactWithoutNamespace = skills.find((skill) => skill.name === lookup && !skill.namespace)
-  if (exactWithoutNamespace) return exactWithoutNamespace
+  if (exactWithoutNamespace) {
+    return { skill: exactWithoutNamespace, ambiguous: [], matchedBy: 'exact' }
+  }
 
   const exactWithNamespace = skills.find((skill) => skill.name === lookup)
-  if (exactWithNamespace) return exactWithNamespace
+  if (exactWithNamespace) {
+    return { skill: exactWithNamespace, ambiguous: [], matchedBy: 'exact' }
+  }
 
-  const byAlias = findSkillByAlias(skills, lookup)
-  return resolveAliasedSkill(byAlias, lookup)
+  const byAlias = findSkillByAlias(skills, lookup, undefined, opts?.prefixAliasEnabled)
+  return resolveAliasedSkill(byAlias, lookup, opts?.disallowAmbiguousAlias)
+}
+
+export function resolveSkillLookupFromList(
+  skills: SkillDefinition[],
+  name: string,
+  opts?: { disallowAmbiguousAlias?: boolean; prefixAliasEnabled?: boolean }
+): SkillLookupResult {
+  return findSkillWithLookup(skills, name, opts)
 }
 
 function normalizeLookupValue(value: string): string {
@@ -375,7 +435,8 @@ function normalizeLookupValue(value: string): string {
 function findSkillByAlias(
   skills: SkillDefinition[],
   lookup: string,
-  namespace?: string
+  namespace?: string,
+  prefixAliasEnabled = true
 ): SkillDefinition[] {
   const normalizedLookup = normalizeLookupValue(lookup)
   if (!normalizedLookup) return []
@@ -395,24 +456,40 @@ function findSkillByAlias(
       }
     }
 
-    return candidates.some((candidate) => normalizeLookupValue(candidate) === normalizedLookup)
+    return candidates.some((candidate) => isAliasMatch(candidate, normalizedLookup, prefixAliasEnabled))
   })
 }
 
-function resolveAliasedSkill(matches: SkillDefinition[], lookup: string): SkillDefinition | undefined {
-  if (matches.length === 0) return undefined
-  if (matches.length === 1) return matches[0]
+function resolveAliasedSkill(
+  matches: SkillDefinition[],
+  lookup: string,
+  disallowAmbiguousAlias = false
+): SkillLookupResult {
+  if (matches.length === 0) {
+    return { skill: null, ambiguous: [], matchedBy: null }
+  }
+  if (matches.length === 1) {
+    return { skill: matches[0], ambiguous: [], matchedBy: 'alias' }
+  }
 
   const withoutNamespace = matches.filter((skill) => !skill.namespace)
-  if (withoutNamespace.length === 1) return withoutNamespace[0]
+  if (withoutNamespace.length === 1) {
+    return { skill: withoutNamespace[0], ambiguous: [], matchedBy: 'alias' }
+  }
 
   const uniqueKeys = new Set(matches.map(skillKey))
-  if (uniqueKeys.size === 1) return matches[0]
+  if (uniqueKeys.size === 1) {
+    return { skill: matches[0], ambiguous: [], matchedBy: 'alias' }
+  }
+
+  if (disallowAmbiguousAlias) {
+    return { skill: null, ambiguous: matches, matchedBy: 'alias' }
+  }
 
   console.warn(
     `[Skills] Ambiguous aliased skill lookup "${lookup}", fallback to first match: ${matches.map(skillKey).join(', ')}`
   )
-  return matches[0]
+  return { skill: matches[0], ambiguous: matches, matchedBy: 'alias' }
 }
 
 function findSkillByRef(skills: SkillDefinition[], ref: ResourceRef): SkillDefinition | undefined {
@@ -650,21 +727,46 @@ function listSkillsForRefLookup(workDir: string): SkillDefinition[] {
 export function getSkillDefinition(
   name: string,
   workDir?: string,
-  opts?: { allowedSources?: SkillDefinition['source'][]; locale?: string }
+  opts?: {
+    allowedSources?: SkillDefinition['source'][]
+    locale?: string
+    disallowAmbiguousAlias?: boolean
+    prefixAliasEnabled?: boolean
+  }
 ): SkillDefinition | null {
+  return resolveSkillDefinition(name, workDir, opts).skill
+}
+
+export function resolveSkillDefinition(
+  name: string,
+  workDir?: string,
+  opts?: {
+    allowedSources?: SkillDefinition['source'][]
+    locale?: string
+    disallowAmbiguousAlias?: boolean
+    prefixAliasEnabled?: boolean
+  }
+): SkillLookupResult {
+  const prefixAliasEnabled = opts?.prefixAliasEnabled ?? process.env.KITE_SKILL_PREFIX_ALIAS !== '0'
   const localeCandidates = opts?.locale ? [opts.locale, undefined] : [undefined]
   for (const locale of localeCandidates) {
     const allSkills = listSkillsUnfiltered(workDir, locale)
     const lookupSkills = opts?.allowedSources
       ? allSkills.filter((skill) => opts.allowedSources?.includes(skill.source))
       : allSkills
-    const skill = findSkill(lookupSkills, name)
-    if (skill) {
-      return skill
+    const lookupResult = findSkillWithLookup(lookupSkills, name, {
+      disallowAmbiguousAlias: opts?.disallowAmbiguousAlias,
+      prefixAliasEnabled,
+    })
+    if (lookupResult.skill) {
+      return lookupResult
+    }
+    if (lookupResult.ambiguous.length > 0) {
+      return lookupResult
     }
   }
 
-  return null
+  return { skill: null, ambiguous: [], matchedBy: null }
 }
 
 /**

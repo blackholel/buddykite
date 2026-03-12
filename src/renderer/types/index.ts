@@ -8,6 +8,7 @@ import {
   type LegacyApiConfig
 } from '../../shared/types/ai-profile';
 import type { ClaudeCodeConfig } from '../../shared/types/claude-code';
+import type { ObservabilityConfig } from '../../shared/types/observability';
 
 export type {
   ProviderVendor,
@@ -16,6 +17,7 @@ export type {
   ConversationAiConfig
 } from '../../shared/types/ai-profile';
 export type { LocaleCode } from '../../shared/i18n/locale';
+export type { ObservabilityConfig, LangfuseObservabilityConfig, LangfuseMaskMode } from '../../shared/types/observability';
 
 // API Provider Configuration
 // - 'anthropic': Official Anthropic API (api.anthropic.com)
@@ -136,6 +138,7 @@ export interface RemoteAccessConfig {
   enabled: boolean;
   port: number;
   trustedOrigins?: string[];  // Allowed CORS origins (in addition to localhost)
+  fixedToken?: string;        // Optional fixed 6-digit token for remote API auth
 }
 
 // ============================================
@@ -225,6 +228,7 @@ export interface KiteConfig {
   commands?: {
     legacyDependencyRegexEnabled: boolean;
   };
+  observability?: ObservabilityConfig;
   claudeCode?: ClaudeCodeConfig;  // Claude Code configuration (plugins, hooks, agents)
 }
 
@@ -736,8 +740,19 @@ export interface AgentToolsAvailableEvent extends AgentEventBase {
   runId: string;
   snapshotVersion: number;
   emittedAt: string;
+  phase: 'initializing' | 'ready';
   tools: string[];
   toolCount: number;
+}
+
+export interface AgentDirectiveResolutionEvent extends AgentEventBase {
+  type: 'directive_resolution';
+  runId: string;
+  explicitDirectives: string[];
+  resolved: Array<{ token: string; canonical: string; source: string }>;
+  missing: Array<{ token: string; candidates: string[] }>;
+  ambiguities: Array<{ token: string; candidates: string[] }>;
+  sourceCandidates: string[];
 }
 
 export interface AgentThoughtEvent extends AgentEventBase {
@@ -766,7 +781,8 @@ export type AgentEvent =
   | AgentCompleteEvent
   | AgentModeEvent
   | AgentCompactEvent
-  | AgentToolsAvailableEvent;
+  | AgentToolsAvailableEvent
+  | AgentDirectiveResolutionEvent;
 
 // ============================================
 // App State Types

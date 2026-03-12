@@ -209,6 +209,7 @@ export function onEvent(channel: string, callback: (data: unknown) => void): () 
       'agent:mode': 'onAgentMode',
       'agent:thought': 'onAgentThought',
       'agent:tools-available': 'onAgentToolsAvailable',
+      'agent:directive-resolution': 'onAgentDirectiveResolution',
       'agent:mcp-status': 'onAgentMcpStatus',
       'agent:compact': 'onAgentCompact',
       'skills:changed': 'onSkillsChanged',

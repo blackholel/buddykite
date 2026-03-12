@@ -10,7 +10,8 @@ import { promises as fsPromises } from 'fs'
 import { getConfig } from '../config.service'
 import { getSpaceConfig } from '../space-config.service'
 import { resolveResourceRuntimePolicy as resolveNormalizedRuntimePolicy } from '../resource-runtime-policy.service'
-import { getSkillContent, getSkillDefinition } from '../skills.service'
+import { getCommand } from '../commands.service'
+import { getSkillContent, getSkillDefinition, listSkills, resolveSkillDefinition } from '../skills.service'
 import {
   getConversation,
   saveSessionId,
@@ -162,6 +163,29 @@ const LINE_SKILL_DIRECTIVE_RE = /^\/([\p{L}\p{N}._:-]+)(?:\s+.+)?$/gmu
 const INLINE_SKILL_DIRECTIVE_RE = /(^|[\s([{])\/([\p{L}\p{N}._:-]+)(?=$|[\s)\]}.,!?;:])/gu
 
 type SkillSource = 'app' | 'global' | 'space' | 'installed'
+type ToolSnapshotPhase = 'initializing' | 'ready'
+
+type DirectiveDiagnosticCode =
+  | 'DIRECTIVE_EXPLICIT_NOT_FOUND'
+  | 'DIRECTIVE_AMBIGUOUS_ALIAS'
+
+interface ExplicitSkillDirectiveResolution {
+  explicitDirectives: string[]
+  resolved: Array<{
+    token: string
+    canonical: string
+    source: string
+  }>
+  missing: Array<{
+    token: string
+    candidates: string[]
+  }>
+  ambiguities: Array<{
+    token: string
+    candidates: string[]
+  }>
+  sourceCandidates: string[]
+}
 
 type BootstrapMessageLike = {
   role?: unknown
@@ -267,6 +291,188 @@ export function shouldAutoEnableAiBrowserForSopSkill(params: {
     enabled: matched.size > 0,
     matchedSkills: [...matched],
     checkedSkills: tokens,
+  }
+}
+
+function buildCanonicalSkillName(skill: { name: string; namespace?: string }): string {
+  return skill.namespace ? `${skill.namespace}:${skill.name}` : skill.name
+}
+
+function scoreSkillCandidate(
+  token: string,
+  skill: {
+    name: string
+    namespace?: string
+    displayName?: string
+    triggers?: string[]
+  }
+): number {
+  const normalizedToken = token.toLowerCase()
+  const canonical = buildCanonicalSkillName(skill).toLowerCase()
+  const displayName = (skill.displayName || '').toLowerCase()
+  const triggerMatches = Array.isArray(skill.triggers)
+    ? skill.triggers.filter((trigger) => trigger.toLowerCase().includes(normalizedToken)).length
+    : 0
+
+  let score = 0
+  if (canonical === normalizedToken) score += 100
+  if (canonical.includes(normalizedToken)) score += 40
+  if (displayName === normalizedToken) score += 30
+  if (displayName.includes(normalizedToken)) score += 20
+  score += triggerMatches * 10
+  return score
+}
+
+function buildDirectiveSuggestions(
+  token: string,
+  candidates: Array<{
+    name: string
+    namespace?: string
+    displayName?: string
+    triggers?: string[]
+  }>
+): string[] {
+  if (!token.trim()) return []
+  const scored = candidates
+    .map((skill) => ({
+      name: buildCanonicalSkillName(skill),
+      score: scoreSkillCandidate(token, skill),
+    }))
+    .filter((item) => item.score > 0)
+    .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name))
+
+  const unique = new Set<string>()
+  const output: string[] = []
+  for (const item of scored) {
+    if (unique.has(item.name)) continue
+    unique.add(item.name)
+    output.push(item.name)
+    if (output.length >= 5) break
+  }
+  return output
+}
+
+function resolveExplicitSkillDirectives(params: {
+  message: string
+  workDir: string
+  locale?: string
+  allowedSources: string[]
+}): ExplicitSkillDirectiveResolution {
+  const tokens = extractSkillDirectiveTokens(params.message)
+  const allowedSkillSources = new Set(params.allowedSources as SkillSource[])
+  const availableSkills = listSkills(params.workDir, 'runtime-command-dependency', params.locale)
+    .filter((skill) => allowedSkillSources.has(skill.source as SkillSource))
+  const result: ExplicitSkillDirectiveResolution = {
+    explicitDirectives: tokens,
+    resolved: [],
+    missing: [],
+    ambiguities: [],
+    sourceCandidates: [...params.allowedSources],
+  }
+
+  for (const token of tokens) {
+    const maybeCommand = getCommand(token, params.workDir)
+    if (maybeCommand && params.allowedSources.includes(maybeCommand.source)) {
+      continue
+    }
+
+    const resolved = resolveSkillDefinition(token, params.workDir, {
+      allowedSources: params.allowedSources as SkillSource[],
+      locale: params.locale,
+      disallowAmbiguousAlias: true,
+      prefixAliasEnabled: true,
+    })
+
+    if (resolved.skill) {
+      result.resolved.push({
+        token,
+        canonical: buildCanonicalSkillName(resolved.skill),
+        source: resolved.skill.source,
+      })
+      continue
+    }
+
+    if (resolved.ambiguous.length > 0) {
+      result.ambiguities.push({
+        token,
+        candidates: resolved.ambiguous
+          .map((skill) => buildCanonicalSkillName(skill))
+          .sort((a, b) => a.localeCompare(b)),
+      })
+      continue
+    }
+
+    result.missing.push({
+      token,
+      candidates: buildDirectiveSuggestions(token, availableSkills),
+    })
+  }
+
+  return result
+}
+
+function buildDirectiveLockPrefix(resolution: ExplicitSkillDirectiveResolution): string {
+  if (resolution.resolved.length === 0) return ''
+  const lines = resolution.resolved.map((item) => `- /${item.token} -> ${item.canonical} (${item.source})`)
+  return [
+    '<directive-lock>',
+    'User provided explicit slash skill directives in this turn.',
+    'These directives have already been resolved by the runtime and should be treated as authoritative.',
+    'Do NOT run filesystem probing or skill-existence checks for these directives again.',
+    'Resolved directives:',
+    ...lines,
+    '</directive-lock>',
+    '',
+  ].join('\n')
+}
+
+function buildDirectiveResolutionFailureResponse(
+  locale: LocaleCode,
+  resolution: ExplicitSkillDirectiveResolution
+): { content: string; diagnosticCode: DirectiveDiagnosticCode } {
+  const hasAmbiguity = resolution.ambiguities.length > 0
+  const diagnosticCode: DirectiveDiagnosticCode = hasAmbiguity
+    ? 'DIRECTIVE_AMBIGUOUS_ALIAS'
+    : 'DIRECTIVE_EXPLICIT_NOT_FOUND'
+  const sourceLine = resolution.sourceCandidates.join(', ') || '(none)'
+  const missingLines = resolution.missing.map((item) => {
+    const suggestions = item.candidates.length > 0 ? item.candidates.join(', ') : '无'
+    return `- /${item.token}\n  候选: ${suggestions}`
+  })
+  const ambiguityLines = resolution.ambiguities.map((item) => (
+    `- /${item.token}\n  命中多个技能: ${item.candidates.join(', ')}`
+  ))
+
+  if (normalizeLocale(locale) === 'en') {
+    return {
+      diagnosticCode,
+      content: [
+        'Slash directive resolution failed before model execution.',
+        '',
+        `Diagnostic code: ${diagnosticCode}`,
+        `Allowed source candidates: ${sourceLine}`,
+        '',
+        hasAmbiguity ? 'Ambiguous directives:' : 'Missing directives:',
+        ...(hasAmbiguity ? ambiguityLines : missingLines),
+        '',
+        'Use an exact skill id (for example: `/qiaomu-x-article-publisher ...`) and retry.'
+      ].join('\n')
+    }
+  }
+
+  return {
+    diagnosticCode,
+    content: [
+      '在模型执行前，显式 Slash 指令解析失败。',
+      '',
+      `诊断码: ${diagnosticCode}`,
+      `可用来源范围: ${sourceLine}`,
+      '',
+      hasAmbiguity ? '存在歧义的指令：' : '未找到的指令：',
+      ...(hasAmbiguity ? ambiguityLines : missingLines),
+      '',
+      '请使用精确技能 ID（例如：`/qiaomu-x-article-publisher ...`）后重试。'
+    ].join('\n')
   }
 }
 
@@ -406,6 +612,11 @@ export interface GuideLiveInputRequest {
 
 export interface GuideLiveInputResult {
   delivery: 'session_send' | 'ask_user_question_answer'
+}
+
+export interface AgentSendMessageResult {
+  accepted: true
+  diagnosticCode?: DirectiveDiagnosticCode
 }
 
 const ASK_USER_QUESTION_RECENT_RESOLVED_TTL_MS = 2 * 60 * 1000
@@ -1001,7 +1212,7 @@ function extractMcpDirectives(input: string, sessionScopeKey: string): McpDirect
 export async function sendMessage(
   mainWindow: BrowserWindow | null,
   request: AgentRequest
-): Promise<void> {
+): Promise<AgentSendMessageResult | undefined> {
   setMainWindow(mainWindow)
 
   const {
@@ -1264,6 +1475,22 @@ export async function sendMessage(
     ? extractMcpDirectives(message, sessionKey)
     : { text: message, enabled: [], missing: [] }
   const messageForSend = mcpDirectiveResult.text
+  const explicitSkillDirectiveResolution = resolveExplicitSkillDirectives({
+    message: messageForSend,
+    workDir,
+    locale: effectiveResponseLanguage,
+    allowedSources: allowedDirectiveSources
+  })
+
+  sendToRenderer('agent:directive-resolution', spaceId, conversationId, {
+    type: 'directive_resolution',
+    runId,
+    explicitDirectives: explicitSkillDirectiveResolution.explicitDirectives,
+    resolved: explicitSkillDirectiveResolution.resolved,
+    missing: explicitSkillDirectiveResolution.missing,
+    ambiguities: explicitSkillDirectiveResolution.ambiguities,
+    sourceCandidates: explicitSkillDirectiveResolution.sourceCandidates
+  })
 
   const sopAutoEnable = shouldAutoEnableAiBrowserForSopSkill({
     message: messageForSend,
@@ -1330,6 +1557,7 @@ export async function sendMessage(
 
   // Accumulate stderr for detailed error messages
   let stderrBuffer = ''
+  const hookFailureCounts = new Map<string, number>()
 
   // Register this session in the active sessions map
   const textClarificationFallbackUsedInConversation =
@@ -1387,20 +1615,21 @@ export async function sendMessage(
   })
 
   let toolsSnapshotVersion = 0
-  const emitToolsSnapshot = (tools: string[]) => {
+  const emitToolsSnapshot = (tools: string[], phase: ToolSnapshotPhase) => {
     toolsSnapshotVersion += 1
     sendToRenderer('agent:tools-available', spaceId, conversationId, {
       type: 'tools_available',
       runId,
       snapshotVersion: toolsSnapshotVersion,
       emittedAt: new Date().toISOString(),
+      phase,
       tools,
       toolCount: tools.length
     })
   }
 
   // Each run must emit at least one tools snapshot
-  emitToolsSnapshot([])
+  emitToolsSnapshot([], 'initializing')
 
   // Build file context block for AI (if file contexts provided)
   let fileContextBlock = ''
@@ -1490,6 +1719,9 @@ export async function sendMessage(
   let sessionAcquireResult: SessionAcquireResult | null = null
   let bootstrapTokenEstimate = 0
   let resourceRuntimeMismatchLogged = false
+  const directiveResolutionHasError =
+    explicitSkillDirectiveResolution.missing.length > 0 ||
+    explicitSkillDirectiveResolution.ambiguities.length > 0
   const shouldFastPathGreeting =
     runtimeInvocationContext === 'interactive' &&
     effectiveMode === 'code' &&
@@ -1498,6 +1730,35 @@ export async function sendMessage(
     isSimpleGreetingMessage(messageForSend)
 
   try {
+    if (directiveResolutionHasError) {
+      const failure = buildDirectiveResolutionFailureResponse(
+        effectiveResponseLanguage,
+        explicitSkillDirectiveResolution
+      )
+      sessionState.latestAssistantContent = failure.content
+      sendToRenderer('agent:message', spaceId, conversationId, {
+        type: 'message',
+        runId,
+        content: failure.content,
+        isComplete: true
+      })
+      finalizeSession({
+        sessionState,
+        spaceId,
+        conversationId,
+        reason: 'completed',
+        finalContent: failure.content
+      })
+      finalizeObservation('completed', 'completed', {
+        finalContent: failure.content,
+        toolsById: sessionState.toolsById
+      })
+      return {
+        accepted: true,
+        diagnosticCode: failure.diagnosticCode
+      }
+    }
+
     if (shouldFastPathGreeting) {
       const fastReply = buildSimpleGreetingReply(effectiveResponseLanguage)
       sessionState.latestAssistantContent = fastReply
@@ -1518,7 +1779,7 @@ export async function sendMessage(
         finalContent: fastReply,
         toolsById: sessionState.toolsById
       })
-      return
+      return { accepted: true }
     }
 
     // Use headless Electron binary (outside .app bundle on macOS to prevent Dock icon)
@@ -1562,8 +1823,38 @@ export async function sendMessage(
 
     // Override stderr handler to accumulate buffer for error reporting
     sdkOptions.stderr = (data: string) => {
+      const hookFailureMatch = data.match(/Error in hook callback\s+([A-Za-z0-9_-]+):\s*Error:\s*([^\n]+)/)
+      if (hookFailureMatch) {
+        const hookId = hookFailureMatch[1]
+        const hookMessage = hookFailureMatch[2]
+        const nextCount = (hookFailureCounts.get(hookId) || 0) + 1
+        hookFailureCounts.set(hookId, nextCount)
+
+        const shouldSuppress = nextCount >= 2
+
+        console.warn(
+          `[Agent][${conversationId}] Hook callback warning: ${hookId} x${nextCount} (${hookMessage})`
+        )
+        sendToRenderer('agent:process', spaceId, conversationId, {
+          type: 'process',
+          runId,
+          kind: 'hook_warning',
+          payload: {
+            hookId,
+            count: nextCount,
+            message: hookMessage,
+            suppressed: shouldSuppress,
+            nonBlocking: true,
+            note: 'Hook warning isolated; skill resolution and execution continue.'
+          },
+          ts: new Date().toISOString(),
+          visibility: 'debug'
+        })
+        return
+      }
+
       console.error(`[Agent][${conversationId}] CLI stderr:`, data)
-      stderrBuffer += data // Accumulate for error reporting
+      stderrBuffer += data // Accumulate for non-hook error reporting
     }
 
     const t0 = Date.now()
@@ -1810,6 +2101,23 @@ export async function sendMessage(
         })
       }
     }
+    const directiveLockPrefix = buildDirectiveLockPrefix(explicitSkillDirectiveResolution)
+    if (directiveLockPrefix) {
+      console.log(
+        `[Agent][${conversationId}] Directive lock enabled for explicit slash skills: ${explicitSkillDirectiveResolution.resolved.map((item) => item.canonical).join(', ')}`
+      )
+      sendToRenderer('agent:process', spaceId, conversationId, {
+        type: 'process',
+        runId,
+        kind: 'directive_lock',
+        payload: {
+          explicitDirectives: explicitSkillDirectiveResolution.explicitDirectives,
+          resolved: explicitSkillDirectiveResolution.resolved
+        },
+        ts: new Date().toISOString(),
+        visibility: 'debug'
+      })
+    }
 
     // NOTE: Mode prefixes are injected as user-message guards, not system prompts.
     const planModePrefix = effectiveMode === 'plan'
@@ -1880,6 +2188,7 @@ If the user asks about this project/codebase, inspect files in current workspace
       clarificationBudgetPrefix +
       responseLanguagePrefix +
       workspaceGroundingPrefix +
+      directiveLockPrefix +
       expandedMessage.text
 
     // Build message content (text-only or multi-modal with images)
@@ -2441,7 +2750,7 @@ If the user asks about this project/codebase, inspect files in current workspace
         const tools = msg.tools as string[] | undefined
         if (tools) {
           console.log(`[Agent][${conversationId}] Available tools: ${tools.length}`)
-          emitToolsSnapshot(tools)
+          emitToolsSnapshot(tools, 'ready')
         }
       } else if (sdkMessage.type === 'result') {
         if (!capturedSessionId) {
@@ -2560,6 +2869,7 @@ If the user asks about this project/codebase, inspect files in current workspace
     if (!finalized) {
       console.log(`[Agent][${conversationId}] Terminal state already emitted, skip duplicate finalize`)
     }
+    return { accepted: true }
   } catch (error: unknown) {
     // Don't report abort as error
     if (isAbortLikeError(error)) {

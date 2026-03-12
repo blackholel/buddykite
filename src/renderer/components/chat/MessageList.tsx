@@ -43,6 +43,7 @@ interface AvailableToolsSnapshot {
   runId: string | null
   snapshotVersion: number
   emittedAt: string | null
+  phase: 'initializing' | 'ready'
   tools: string[]
   toolCount: number
 }
@@ -567,7 +568,8 @@ export function MessageList({
 
   const runSummary = useMemo(() => {
     const statuses = Object.values(toolStatusById)
-    if (statuses.length === 0 && !availableToolsSnapshot) {
+    const toolsReady = availableToolsSnapshot?.phase === 'ready'
+    if (statuses.length === 0 && (!availableToolsSnapshot || !toolsReady)) {
       return null
     }
 
@@ -602,7 +604,7 @@ export function MessageList({
     }
 
     return {
-      availableTools: availableToolsSnapshot?.toolCount ?? 0,
+      availableTools: toolsReady ? (availableToolsSnapshot?.toolCount ?? 0) : null,
       totalCalls: statuses.length,
       running,
       success,
@@ -686,7 +688,11 @@ export function MessageList({
             {runSummary && (
               <div className="mb-2 rounded-xl border border-border/30 bg-secondary/10 px-3 py-2">
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
-                  <span>{t('Available tools')}: {runSummary.availableTools}</span>
+                  {runSummary.availableTools != null ? (
+                    <span>{t('Available tools')}: {runSummary.availableTools}</span>
+                  ) : (
+                    <span>{t('Available tools')}: {t('Initializing...')}</span>
+                  )}
                   <span>{t('Calls')}: {runSummary.totalCalls}</span>
                   <span>{t('Running')}: {runSummary.running}</span>
                   <span>{t('Success')}: {runSummary.success}</span>

@@ -132,8 +132,13 @@ export async function sendMessage(
         const normalizedRequest = normalizedModelOverride
           ? { ...request, modelOverride: normalizedModelOverride, invocationContext: 'interactive' as InvocationContext }
           : { ...request, invocationContext: 'interactive' as InvocationContext }
-        await agentSendMessage(mainWindow, normalizedRequest)
-        return { accepted: true as const }
+        const sendResult = await agentSendMessage(mainWindow, normalizedRequest)
+        return {
+          accepted: true as const,
+          ...(sendResult?.diagnosticCode
+            ? { diagnosticCode: sendResult.diagnosticCode }
+            : {})
+        }
       }
     })
     return withReplayMeta(execution)
@@ -159,8 +164,13 @@ export async function sendWorkflowStepMessage(
         const normalizedRequest = normalizedModelOverride
           ? { ...request, modelOverride: normalizedModelOverride, invocationContext: 'workflow-step' as InvocationContext }
           : { ...request, invocationContext: 'workflow-step' as InvocationContext }
-        await agentSendMessage(mainWindow, normalizedRequest)
-        return { accepted: true as const }
+        const sendResult = await agentSendMessage(mainWindow, normalizedRequest)
+        return {
+          accepted: true as const,
+          ...(sendResult?.diagnosticCode
+            ? { diagnosticCode: sendResult.diagnosticCode }
+            : {})
+        }
       }
     })
     return withReplayMeta(execution)

@@ -303,9 +303,36 @@ export default function App() {
         runId: string
         snapshotVersion: number
         emittedAt: string
+        phase: 'initializing' | 'ready'
         tools: string[]
         toolCount: number
       })
+    })
+
+    const unsubDirectiveResolution = api.onAgentDirectiveResolution((data) => {
+      console.log('[App] Received agent:directive-resolution event:', data)
+      const payload = data as AgentEventBase & {
+        runId: string
+        explicitDirectives: string[]
+        resolved: Array<{ token: string; canonical: string; source: string }>
+        missing: Array<{ token: string; candidates: string[] }>
+        ambiguities: Array<{ token: string; candidates: string[] }>
+        sourceCandidates: string[]
+      }
+      handleAgentProcess({
+        ...payload,
+        type: 'process',
+        kind: 'directive_resolution',
+        payload: {
+          explicitDirectives: payload.explicitDirectives,
+          resolved: payload.resolved,
+          missing: payload.missing,
+          ambiguities: payload.ambiguities,
+          sourceCandidates: payload.sourceCandidates
+        },
+        ts: new Date().toISOString(),
+        visibility: 'debug'
+      } as AgentProcessEvent)
     })
 
     // MCP status updates (global - not per-conversation)
@@ -329,6 +356,7 @@ export default function App() {
       unsubMode()
       unsubCompact()
       unsubToolsAvailable()
+      unsubDirectiveResolution()
       unsubMcpStatus()
     }
   }, [
