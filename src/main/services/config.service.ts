@@ -19,6 +19,10 @@ import {
   type LegacyApiConfig,
   type ProviderProtocol
 } from '../../shared/types/ai-profile'
+import type {
+  ObservabilityConfig,
+  LangfuseMaskMode
+} from '../../shared/types/observability'
 
 // ============================================================================
 // Config Change Notification (Callback Pattern)
@@ -35,10 +39,32 @@ const apiConfigChangeHandlers: ApiConfigChangeHandler[] = []
 const aiConfigChangeHandlers: AiConfigChangeHandler[] = []
 const CONFIG_SOURCE_MODE_VALUES = ['kite', 'claude'] as const
 const APPEARANCE_THEME_VALUES = ['light', 'dark'] as const
+const LANGFUSE_MASK_MODE_VALUES = ['summary_hash', 'off'] as const
 const LEGACY_TAXONOMY_CONFIG_KEY = 'extension' + 'Taxonomy'
 
 export type ConfigSourceMode = (typeof CONFIG_SOURCE_MODE_VALUES)[number]
 type AppearanceThemeMode = (typeof APPEARANCE_THEME_VALUES)[number]
+
+function normalizeLangfuseMaskMode(value: unknown): LangfuseMaskMode {
+  if (typeof value === 'string' && (LANGFUSE_MASK_MODE_VALUES as readonly string[]).includes(value)) {
+    return value
+  }
+
+  if (value !== undefined && value !== null) {
+    console.warn('[Observability] Invalid langfuse maskMode. Forced to "summary_hash".', value)
+  }
+
+  return 'summary_hash'
+}
+
+function normalizeSampleRate(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return 1
+  }
+  if (value <= 0) return 0
+  if (value >= 1) return 1
+  return value
+}
 
 function normalizeAppearanceTheme(value: unknown): AppearanceThemeMode {
   if (value === 'light' || value === 'dark') {
@@ -127,6 +153,7 @@ interface KiteConfig {
     enabled: boolean
     port: number
     trustedOrigins?: string[]  // Allowed CORS origins (in addition to localhost)
+    fixedToken?: string  // Optional fixed 6-digit token for remote API auth
   }
   onboarding: {
     completed: boolean
@@ -156,6 +183,7 @@ interface KiteConfig {
   commands?: {
     legacyDependencyRegexEnabled: boolean
   }
+  observability?: ObservabilityConfig
 }
 
 // MCP server configuration types
@@ -308,6 +336,17 @@ const DEFAULT_CONFIG: KiteConfig = {
   },
   commands: {
     legacyDependencyRegexEnabled: true
+  },
+  observability: {
+    langfuse: {
+      enabled: false,
+      host: 'https://cloud.langfuse.com',
+      publicKey: '',
+      secretKey: '',
+      sampleRate: 1,
+      maskMode: 'summary_hash',
+      devApiEnabled: false
+    }
   },
   claudeCode: {
     resourceRuntimePolicy: 'app-single-source',
@@ -772,6 +811,32 @@ export function getConfig(): KiteConfig {
           typeof parsed.commands?.legacyDependencyRegexEnabled === 'boolean'
             ? parsed.commands.legacyDependencyRegexEnabled
             : DEFAULT_CONFIG.commands?.legacyDependencyRegexEnabled !== false
+      },
+      observability: {
+        langfuse: {
+          enabled:
+            typeof parsed.observability?.langfuse?.enabled === 'boolean'
+              ? parsed.observability.langfuse.enabled
+              : DEFAULT_CONFIG.observability?.langfuse.enabled === true,
+          host:
+            typeof parsed.observability?.langfuse?.host === 'string'
+              ? parsed.observability.langfuse.host
+              : DEFAULT_CONFIG.observability?.langfuse.host || 'https://cloud.langfuse.com',
+          publicKey:
+            typeof parsed.observability?.langfuse?.publicKey === 'string'
+              ? parsed.observability.langfuse.publicKey
+              : DEFAULT_CONFIG.observability?.langfuse.publicKey || '',
+          secretKey:
+            typeof parsed.observability?.langfuse?.secretKey === 'string'
+              ? parsed.observability.langfuse.secretKey
+              : DEFAULT_CONFIG.observability?.langfuse.secretKey || '',
+          sampleRate: normalizeSampleRate(parsed.observability?.langfuse?.sampleRate),
+          maskMode: normalizeLangfuseMaskMode(parsed.observability?.langfuse?.maskMode),
+          devApiEnabled:
+            typeof parsed.observability?.langfuse?.devApiEnabled === 'boolean'
+              ? parsed.observability.langfuse.devApiEnabled
+              : DEFAULT_CONFIG.observability?.langfuse.devApiEnabled === true
+        }
       }
     }
 
@@ -855,6 +920,48 @@ export function saveConfig(config: Partial<KiteConfig>): KiteConfig {
     newConfig.commands = {
       ...currentConfig.commands,
       ...(updatesWithoutLegacy.commands as Record<string, unknown>)
+    }
+  }
+  if (updatesWithoutLegacy.observability !== undefined) {
+    const rawObservability = isPlainObject(updatesWithoutLegacy.observability)
+      ? updatesWithoutLegacy.observability as Record<string, unknown>
+      : {}
+    const rawLangfuse = isPlainObject(rawObservability.langfuse)
+      ? rawObservability.langfuse as Record<string, unknown>
+      : {}
+    newConfig.observability = {
+      langfuse: {
+        ...currentConfig.observability?.langfuse,
+        ...rawLangfuse,
+        enabled:
+          typeof rawLangfuse.enabled === 'boolean'
+            ? rawLangfuse.enabled
+            : currentConfig.observability?.langfuse.enabled === true,
+        host:
+          typeof rawLangfuse.host === 'string'
+            ? rawLangfuse.host
+            : currentConfig.observability?.langfuse.host || DEFAULT_CONFIG.observability?.langfuse.host || 'https://cloud.langfuse.com',
+        publicKey:
+          typeof rawLangfuse.publicKey === 'string'
+            ? rawLangfuse.publicKey
+            : currentConfig.observability?.langfuse.publicKey || '',
+        secretKey:
+          typeof rawLangfuse.secretKey === 'string'
+            ? rawLangfuse.secretKey
+            : currentConfig.observability?.langfuse.secretKey || '',
+        sampleRate:
+          rawLangfuse.sampleRate !== undefined
+            ? normalizeSampleRate(rawLangfuse.sampleRate)
+            : normalizeSampleRate(currentConfig.observability?.langfuse.sampleRate),
+        maskMode:
+          rawLangfuse.maskMode !== undefined
+            ? normalizeLangfuseMaskMode(rawLangfuse.maskMode)
+            : normalizeLangfuseMaskMode(currentConfig.observability?.langfuse.maskMode),
+        devApiEnabled:
+          typeof rawLangfuse.devApiEnabled === 'boolean'
+            ? rawLangfuse.devApiEnabled
+            : currentConfig.observability?.langfuse.devApiEnabled === true
+      }
     }
   }
   // mcpServers: replace entirely when provided (not merged)

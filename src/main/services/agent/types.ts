@@ -296,6 +296,11 @@ export interface SessionState {
   askUserQuestionUsedInRun: boolean
   textClarificationFallbackUsedInConversation: boolean
   textClarificationDetectedInRun: boolean
+  observabilityContext?: {
+    traceId: string
+    rootObservationId: string
+    startedAt: string
+  }
   thoughts: Thought[]
   processTrace: ProcessTraceNode[]
 }

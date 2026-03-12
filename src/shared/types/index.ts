@@ -5,3 +5,4 @@
  */
 
 export * from './claude-code'
+export * from './observability'

@@ -83,9 +83,9 @@ import {
   initializeExtendedServices,
   cleanupExtendedServices
 } from './bootstrap'
-import { initializeApp, getMinimizeToTray } from './services/config.service'
+import { initializeApp, getConfig, getMinimizeToTray } from './services/config.service'
 import { initConfigSourceModeLock } from './services/config-source-mode.service'
-import { disableRemoteAccess } from './services/remote.service'
+import { disableRemoteAccess, enableRemoteAccess } from './services/remote.service'
 import { stopOpenAICompatRouter } from './openai-compat-router'
 import {
   createTray,
@@ -98,6 +98,7 @@ import { checkForUpdates } from './services/updater.service'
 import { initAnalytics } from './services/analytics'
 import { registerProtocols } from './services/protocol.service'
 import { runDependencyConsistencySelfCheck } from './services/dependency-consistency.service'
+import { shutdownObservability } from './services/observability'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -373,6 +374,18 @@ app.whenReady().then(async () => {
     createTray(mainWindow)
   }
 
+  // Auto-start remote access when configured as enabled.
+  // This allows fixed local endpoint/token usage without manual UI toggles on each launch.
+  try {
+    const remoteConfig = getConfig().remoteAccess
+    if (remoteConfig?.enabled) {
+      await enableRemoteAccess(mainWindow, remoteConfig.port)
+      console.log(`[Main] Remote access auto-enabled on port ${remoteConfig.port}`)
+    }
+  } catch (error) {
+    console.error('[Main] Failed to auto-enable remote access:', error)
+  }
+
   app.on('activate', function () {
     // On macOS, re-show the window when clicking dock icon
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -387,6 +400,9 @@ app.whenReady().then(async () => {
 // Set quitting flag before quit
 app.on('before-quit', () => {
   setIsQuitting(true)
+  shutdownObservability().catch((error) => {
+    console.warn('[Main] Failed to shutdown observability during before-quit:', error)
+  })
 })
 
 app.on('window-all-closed', () => {
@@ -399,6 +415,10 @@ app.on('window-all-closed', () => {
   disableRemoteAccess().catch(console.error)
   // Clean up local OpenAI compat router (if started)
   stopOpenAICompatRouter().catch(console.error)
+  // Flush and shutdown observability runtime
+  shutdownObservability().catch((error) => {
+    console.warn('[Main] Failed to shutdown observability during window-all-closed:', error)
+  })
 
   // Clean up extended services (AI Browser, Overlay, Search, etc.)
   cleanupExtendedServices()

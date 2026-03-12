@@ -15,10 +15,17 @@ import * as conversationController from '../../controllers/conversation.controll
 import * as configController from '../../controllers/config.controller'
 import * as changeSetController from '../../controllers/change-set.controller'
 import { listArtifacts } from '../../services/artifact.service'
-import { getTempSpacePath, getSpacesDir } from '../../services/config.service'
+import { getConfig, getTempSpacePath, getSpacesDir, saveConfig } from '../../services/config.service'
 import { getSpace, getAllSpacePaths } from '../../services/space.service'
 import { isWorkDirAllowed } from '../../utils/path-validation'
 import { isResourceListView, type ResourceListView } from '../../../shared/resource-access'
+import {
+  getAgentRunObservation,
+  getObservabilityConfigSnapshot,
+  isObservabilityInternalApiEnabled,
+  listAgentRunObservations,
+  refreshObservabilityRuntime
+} from '../../services/observability'
 import {
   addToolkitResource,
   clearSpaceToolkit,
@@ -86,6 +93,14 @@ function safeRoute(fn: (req: Request, res: Response) => Promise<void>) {
   }
 }
 
+function ensureObservabilityInternalApiEnabled(res: Response): boolean {
+  if (isObservabilityInternalApiEnabled()) {
+    return true
+  }
+  res.status(404).json({ success: false, error: 'Not Found' })
+  return false
+}
+
 // Helper: collect all files in a directory recursively for tar-like output
 function collectFiles(dir: string, baseDir: string, files: { path: string; fullPath: string }[] = []): { path: string; fullPath: string }[] {
   if (!existsSync(dir)) return files
@@ -124,6 +139,72 @@ export function registerApiRoutes(app: Express, mainWindow: BrowserWindow | null
     const { apiKey, apiUrl, provider, protocol } = req.body
     const result = await configController.validateApi(apiKey, apiUrl, provider, protocol)
     res.json(result)
+  })
+
+  // ===== Internal Observability Routes (Developer Hidden) =====
+  app.get('/api/internal/observability/runs', async (req: Request, res: Response) => {
+    if (!ensureObservabilityInternalApiEnabled(res)) return
+
+    const rawLimit = typeof req.query.limit === 'string' ? Number.parseInt(req.query.limit, 10) : Number.NaN
+    const limit = Number.isFinite(rawLimit) ? rawLimit : 50
+    res.json({
+      success: true,
+      data: {
+        config: getObservabilityConfigSnapshot(),
+        runs: listAgentRunObservations(limit)
+      }
+    })
+  })
+
+  app.get('/api/internal/observability/runs/:runId', async (req: Request, res: Response) => {
+    if (!ensureObservabilityInternalApiEnabled(res)) return
+
+    const runId = typeof req.params.runId === 'string' ? req.params.runId.trim() : ''
+    if (!runId) {
+      res.status(400).json({ success: false, error: 'runId is required' })
+      return
+    }
+
+    const run = getAgentRunObservation(runId)
+    if (!run) {
+      res.status(404).json({ success: false, error: `run not found: ${runId}` })
+      return
+    }
+
+    res.json({ success: true, data: run })
+  })
+
+  app.post('/api/internal/observability/toggle', async (req: Request, res: Response) => {
+    if (!ensureObservabilityInternalApiEnabled(res)) return
+
+    const payload = req.body && typeof req.body === 'object' ? req.body as Record<string, unknown> : {}
+    if (typeof payload.enabled !== 'boolean') {
+      res.status(400).json({ success: false, error: 'enabled (boolean) is required' })
+      return
+    }
+
+    const currentLangfuse = getConfig().observability?.langfuse
+    const updated = saveConfig({
+      observability: {
+        langfuse: {
+          enabled: payload.enabled,
+          devApiEnabled:
+            typeof payload.devApiEnabled === 'boolean'
+              ? payload.devApiEnabled
+              : currentLangfuse?.devApiEnabled === true
+        }
+      }
+    })
+
+    await refreshObservabilityRuntime()
+    res.json({
+      success: true,
+      data: {
+        enabled: updated.observability?.langfuse.enabled === true,
+        devApiEnabled: updated.observability?.langfuse.devApiEnabled === true,
+        config: getObservabilityConfigSnapshot()
+      }
+    })
   })
 
   // ===== Space Routes =====

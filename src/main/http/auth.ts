@@ -3,14 +3,38 @@
  */
 
 import { Request, Response, NextFunction } from 'express'
+import { getConfig } from '../services/config.service'
 
 // Store active tokens (in memory, reset on restart)
 let accessToken: string | null = null
+
+function normalizeFixedAccessToken(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const token = value.trim()
+  if (!/^\d{6}$/.test(token)) return null
+  return token
+}
 
 /**
  * Generate a new access token
  */
 export function generateAccessToken(): string {
+  const envToken = normalizeFixedAccessToken(process.env.KITE_REMOTE_ACCESS_TOKEN)
+  if (envToken) {
+    accessToken = envToken
+    console.log('[Auth] Using fixed access token from env')
+    return envToken
+  }
+
+  const configToken = normalizeFixedAccessToken(
+    (getConfig().remoteAccess as { fixedToken?: string } | undefined)?.fixedToken
+  )
+  if (configToken) {
+    accessToken = configToken
+    console.log('[Auth] Using fixed access token from config')
+    return configToken
+  }
+
   // Generate a simple 6-digit PIN for easy mobile entry
   const pin = Math.floor(100000 + Math.random() * 900000).toString()
   accessToken = pin
