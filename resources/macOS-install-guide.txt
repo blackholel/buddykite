@@ -1,0 +1,16 @@
+buddykite macOS 安装说明（可复制）
+
+推荐安装流程（无需命令）：
+1) 在 DMG 窗口里把 buddykite 拖到右侧 Applications。
+2) 去 Applications 打开 buddykite。
+3) 如果提示“无法验证开发者”或“已损坏”，请先走：
+   系统设置 -> 隐私与安全性 -> 点击「仍要打开」。
+
+只有在上面步骤仍失败时，再使用命令方式：
+1) 打开终端，粘贴下面命令并执行：
+   xattr -dr com.apple.quarantine "/Applications/buddykite.app"
+2) 然后执行：
+   open "/Applications/buddykite.app"
+
+你也可以直接在 DMG 里双击：fix-open.command
+它会自动执行上面两条命令。

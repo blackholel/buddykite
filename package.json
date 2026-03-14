@@ -197,6 +197,18 @@
           "y": 170,
           "type": "link",
           "path": "/Applications"
+        },
+        {
+          "x": 180,
+          "y": 360,
+          "type": "file",
+          "path": "resources/macOS-install-guide.txt"
+        },
+        {
+          "x": 360,
+          "y": 360,
+          "type": "file",
+          "path": "resources/fix-open.command"
         }
       ]
     },
