@@ -1,22 +1,22 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ChevronDown,
   ChevronRight,
   FolderPlus,
+  Loader2,
   MessageSquarePlus,
   Pencil,
   Trash2
 } from 'lucide-react'
 import type { ConversationMeta, CreateSpaceInput, Space } from '../../types'
 import { SpaceIcon } from '../icons/ToolIcons'
-import { useTranslation } from '../../i18n'
+import { getCurrentLanguage, useTranslation } from '../../i18n'
 
 interface UnifiedSidebarProps {
   spaces: Space[]
   currentSpaceId: string | null
   currentConversationId: string | null
   conversationsBySpaceId: Map<string, ConversationMeta[]>
-  isLoading: boolean
   onSelectSpace: (spaceId: string) => Promise<void>
   onExpandSpace: (spaceId: string) => Promise<void>
   onSelectConversation: (spaceId: string, conversationId: string) => Promise<void>
@@ -49,12 +49,30 @@ function persistExpandedSpaces(spaceIds: Set<string>) {
   }
 }
 
+function formatRelativeTime(dateString: string, t: (key: string, options?: Record<string, unknown>) => string): string {
+  const date = new Date(dateString)
+  const now = new Date()
+  const diffMs = now.getTime() - date.getTime()
+  const diffMins = Math.floor(diffMs / 60000)
+  const diffHours = Math.floor(diffMs / 3600000)
+  const diffDays = Math.floor(diffMs / 86400000)
+
+  if (diffMins < 1) return t('Just now')
+  if (diffMins < 60) return t('{{count}} minutes ago', { count: diffMins })
+  if (diffHours < 24) return t('{{count}} hours ago', { count: diffHours })
+  if (diffDays < 7) return t('{{count}} days ago', { count: diffDays })
+
+  return new Intl.DateTimeFormat(getCurrentLanguage(), {
+    month: 'short',
+    day: 'numeric'
+  }).format(date)
+}
+
 export function UnifiedSidebar({
   spaces,
   currentSpaceId,
   currentConversationId,
   conversationsBySpaceId,
-  isLoading,
   onSelectSpace,
   onExpandSpace,
   onSelectConversation,
@@ -66,6 +84,8 @@ export function UnifiedSidebar({
 }: UnifiedSidebarProps) {
   const { t } = useTranslation()
   const [expandedSpaceIds, setExpandedSpaceIds] = useState<Set<string>>(() => readExpandedSpaces())
+  const [loadingSpaceIds, setLoadingSpaceIds] = useState<Set<string>>(new Set())
+  const loadingSpaceIdsRef = useRef<Set<string>>(new Set())
   const [hoveredSpaceId, setHoveredSpaceId] = useState<string | null>(null)
   const [creatingSpace, setCreatingSpace] = useState(false)
   const [newSpaceName, setNewSpaceName] = useState('')
@@ -79,12 +99,43 @@ export function UnifiedSidebar({
     return [...spaces].sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
   }, [spaces])
 
-  const toggleExpanded = async (spaceId: string) => {
+  const markSpaceLoading = useCallback((spaceId: string, loading: boolean) => {
+    setLoadingSpaceIds((prev) => {
+      const next = new Set(prev)
+      if (loading) {
+        next.add(spaceId)
+      } else {
+        next.delete(spaceId)
+      }
+      return next
+    })
+  }, [])
+
+  const ensureExpandedSpaceLoaded = useCallback(async (spaceId: string) => {
+    if (conversationsBySpaceId.has(spaceId) || loadingSpaceIdsRef.current.has(spaceId)) return
+    loadingSpaceIdsRef.current.add(spaceId)
+    markSpaceLoading(spaceId, true)
+    try {
+      await onExpandSpace(spaceId)
+    } finally {
+      loadingSpaceIdsRef.current.delete(spaceId)
+      markSpaceLoading(spaceId, false)
+    }
+  }, [conversationsBySpaceId, markSpaceLoading, onExpandSpace])
+
+  useEffect(() => {
+    for (const spaceId of expandedSpaceIds) {
+      if (!spaces.some((space) => space.id === spaceId)) continue
+      void ensureExpandedSpaceLoaded(spaceId)
+    }
+  }, [ensureExpandedSpaceLoaded, expandedSpaceIds, spaces])
+
+  const toggleExpanded = (spaceId: string) => {
     const next = new Set(expandedSpaceIds)
     const willExpand = !next.has(spaceId)
     if (willExpand) {
       next.add(spaceId)
-      await onExpandSpace(spaceId)
+      void ensureExpandedSpaceLoaded(spaceId)
     } else {
       next.delete(spaceId)
     }
@@ -151,7 +202,11 @@ export function UnifiedSidebar({
         <div className="flex-1 overflow-y-auto px-2 py-2">
           {sortedSpaces.map((space) => {
             const isExpanded = expandedSpaceIds.has(space.id)
-            const conversations = conversationsBySpaceId.get(space.id) || []
+            const hasLoadedConversations = conversationsBySpaceId.has(space.id)
+            const isSpaceLoading = loadingSpaceIds.has(space.id)
+            const conversations = (conversationsBySpaceId.get(space.id) || [])
+              .slice()
+              .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
             const isActiveSpace = currentSpaceId === space.id
 
             return (
@@ -177,6 +232,11 @@ export function UnifiedSidebar({
                     <SpaceIcon iconId={space.icon} size={16} />
                     <span className="text-sm truncate">{space.isTemp ? 'Kite' : space.name}</span>
                   </button>
+                  {hasLoadedConversations && (
+                    <span className="text-[11px] text-muted-foreground bg-background/60 rounded-md px-1.5 py-0.5">
+                      {conversations.length}
+                    </span>
+                  )}
 
                   {hoveredSpaceId === space.id && (
                     <button
@@ -192,19 +252,28 @@ export function UnifiedSidebar({
 
                 {isExpanded && (
                   <div className="pl-7 pr-2 pb-1">
-                    {conversations.length === 0 ? (
+                    {!hasLoadedConversations || isSpaceLoading ? (
                       <div className="text-xs text-muted-foreground px-2 py-1.5">
-                        {isLoading ? t('Loading...') : t('No conversations')}
+                        <span className="inline-flex items-center gap-1.5">
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                          {t('Loading...')}
+                        </span>
+                      </div>
+                    ) : conversations.length === 0 ? (
+                      <div className="text-xs text-muted-foreground px-2 py-1.5">
+                        {t('No conversations yet')}
                       </div>
                     ) : (
                       conversations.map((conversation) => {
                         const isActiveConversation = isActiveSpace && currentConversationId === conversation.id
                         const isEditing = editingConversation?.conversationId === conversation.id
+                        const titleText = conversation.title.trim() || t('New conversation')
+                        const relativeTimeText = formatRelativeTime(conversation.updatedAt, t)
 
                         return (
                           <div
                             key={`${space.id}:${conversation.id}`}
-                            className={`group flex items-center gap-1 px-2 py-1 rounded-lg ${isActiveConversation ? 'bg-primary/10 text-primary' : 'hover:bg-secondary/50'}`}
+                            className={`group flex items-start gap-1 px-2 py-1.5 rounded-lg ${isActiveConversation ? 'bg-primary/10 text-primary' : 'hover:bg-secondary/50'}`}
                           >
                             {isEditing ? (
                               <input
@@ -227,13 +296,25 @@ export function UnifiedSidebar({
                                 className="flex-1 min-w-0 bg-background border border-border rounded px-2 py-0.5 text-xs"
                               />
                             ) : (
-                              <button
-                                onClick={() => void onSelectConversation(space.id, conversation.id)}
-                                className="flex-1 min-w-0 text-left text-xs truncate py-0.5"
-                                title={conversation.title}
-                              >
-                                {conversation.title}
-                              </button>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <button
+                                    onClick={() => void onSelectConversation(space.id, conversation.id)}
+                                    className="flex-1 min-w-0 text-left text-xs truncate leading-5"
+                                    title={conversation.title}
+                                  >
+                                    {titleText}
+                                  </button>
+                                  <span
+                                    className={`text-[11px] shrink-0 ${
+                                      isActiveConversation ? 'text-primary/80' : 'text-muted-foreground'
+                                    }`}
+                                    title={new Date(conversation.updatedAt).toLocaleString(getCurrentLanguage())}
+                                  >
+                                    {relativeTimeText}
+                                  </span>
+                                </div>
+                              </div>
                             )}
 
                             {!isEditing && (

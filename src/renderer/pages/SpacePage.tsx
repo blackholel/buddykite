@@ -32,9 +32,8 @@ import { api } from '../api'
 import { useLayoutPreferences } from '../hooks/useLayoutPreferences'
 import { useWindowMaximize } from '../components/canvas/viewers/useWindowMaximize'
 import { useCanvasLifecycle } from '../hooks/useCanvasLifecycle'
-import { PanelLeftClose, PanelLeft, X, MessageSquare, Columns2, LayoutGrid, FolderOpen } from 'lucide-react'
+import { X, MessageSquare } from 'lucide-react'
 import { shallow } from 'zustand/shallow'
-import { SearchIcon } from '../components/search/SearchIcon'
 import { useSearchShortcuts } from '../hooks/useSearchShortcuts'
 import { useTranslation } from '../i18n'
 import { persistWorkspaceViewMode } from '../utils/workspace-view-mode'
@@ -232,8 +231,8 @@ export function SpacePage() {
     renameConversation: state.renameConversation
   }), shallow)
 
-  // Show conversation list sidebar - default to true for better UX
-  const [showConversationList, setShowConversationList] = useState(true)
+  // Keep conversation list visible in classic space mode
+  const showConversationList = true
   const [showArtifactRail, setShowArtifactRail] = useState(() => {
     return localStorage.getItem(RAIL_VISIBLE_STORAGE_KEY) === '1'
   })
@@ -505,7 +504,7 @@ export function SpacePage() {
   }, [currentSpace?.id, currentSpace?.isTemp, isToolkitLoaded, loadToolkit])
 
   // Layout mode: 'split' = 分栏布局 (左侧固定 ChatView), 'tabs-only' = 纯标签页模式
-  const [layoutMode, setLayoutMode] = useState<'split' | 'tabs-only'>(() => {
+  const [layoutMode] = useState<'split' | 'tabs-only'>(() => {
     // Restore from localStorage, default to 'tabs-only'
     const saved = localStorage.getItem('kite-layout-mode')
     return (saved === 'split') ? 'split' : 'tabs-only'
@@ -922,76 +921,6 @@ export function SpacePage() {
         }
         right={
           <>
-            {/* New conversation */}
-            <button
-              onClick={handleNewConversation}
-              className="space-studio-header-btn p-2 rounded-lg transition-all duration-200 group"
-              title={t('New conversation')}
-              aria-label={t('New conversation')}
-            >
-              <svg className="w-[18px] h-[18px] text-muted-foreground group-hover:text-foreground transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-            </button>
-
-            {/* Sidebar toggle */}
-            <button
-              onClick={() => setShowConversationList(!showConversationList)}
-              className={`p-2 rounded-lg transition-all duration-200 ${
-                showConversationList
-                  ? 'space-studio-header-btn space-studio-header-btn-active'
-                  : 'space-studio-header-btn text-muted-foreground hover:text-foreground'
-              }`}
-              title={t('Sidebar')}
-              aria-label={t('Toggle sidebar')}
-            >
-              {showConversationList ? (
-                <PanelLeftClose className="w-[18px] h-[18px]" />
-              ) : (
-                <PanelLeft className="w-[18px] h-[18px]" />
-              )}
-            </button>
-
-            {/* Search */}
-            <SearchIcon onClick={openSearch} isInSpace={true} />
-
-            {/* Files panel toggle (desktop) */}
-            {!isMobile && (
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={() => setShowArtifactRail((prev) => !prev)}
-                  className={`p-2 rounded-lg transition-all duration-200 ${
-                    showArtifactRail
-                      ? 'space-studio-header-btn space-studio-header-btn-active'
-                      : 'space-studio-header-btn text-muted-foreground hover:text-foreground'
-                  }`}
-                  title={showArtifactRail ? t('Hide files panel') : t('Show files panel')}
-                  aria-label={showArtifactRail ? t('Hide files panel') : t('Show files panel')}
-                  aria-expanded={showArtifactRail}
-                >
-                  <FolderOpen className="w-[18px] h-[18px]" />
-                </button>
-              </div>
-            )}
-
-            {/* Layout mode toggle */}
-            <button
-              onClick={() => setLayoutMode(layoutMode === 'split' ? 'tabs-only' : 'split')}
-              className={`p-2 rounded-lg transition-all duration-200 ${
-                layoutMode === 'tabs-only'
-                  ? 'space-studio-header-btn space-studio-header-btn-active'
-                  : 'space-studio-header-btn text-muted-foreground hover:text-foreground'
-              }`}
-              title={layoutMode === 'split' ? t('Switch to tabs-only mode') : t('Switch to split mode')}
-              aria-label={layoutMode === 'split' ? t('Switch to tabs-only mode') : t('Switch to split mode')}
-            >
-              {layoutMode === 'split' ? (
-                <LayoutGrid className="w-[18px] h-[18px]" />
-              ) : (
-                <Columns2 className="w-[18px] h-[18px]" />
-              )}
-            </button>
-
             <div className="flex items-center rounded-lg border border-border/80 bg-card/70 p-0.5">
               <button
                 className="px-2.5 py-1 text-xs rounded-md bg-secondary text-foreground"
@@ -1137,12 +1066,14 @@ export function SpacePage() {
             </div>
           )}
 
-          {/* Desktop right file tree panel (inline for drag-and-drop context) */}
-          {!isMobile && showArtifactRail && !isCanvasMaximized && (
+          {/* Desktop right file tree panel (always mounted; expanded/collapsed from right rail) */}
+          {!isMobile && !isCanvasMaximized && (
             <ArtifactRail
               spaceId={currentSpace.id}
               isTemp={currentSpace.isTemp}
               displayMode="inline"
+              externalExpanded={showArtifactRail}
+              onExpandedChange={setShowArtifactRail}
             />
           )}
 

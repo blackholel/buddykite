@@ -28,9 +28,7 @@ const isWebMode = api.isRemoteMode()
 const VIEW_MODE_STORAGE_KEY = 'kite:artifact-view-mode'
 
 // Width constraints (in pixels) - Desktop only
-const MIN_WIDTH = 180
-const MAX_WIDTH = 400
-const DEFAULT_WIDTH = 240
+const PANEL_WIDTH = 320
 const COLLAPSED_WIDTH = 48
 
 // Mobile breakpoint (matches Tailwind sm)
@@ -94,8 +92,6 @@ export function ArtifactRail({
 
   const [isLoading, setIsLoading] = useState(false)
   const [railHint, setRailHint] = useState<string | null>(null)
-  const [width, setWidth] = useState(DEFAULT_WIDTH)
-  const [isDragging, setIsDragging] = useState(false)
   const [viewMode, setViewMode] = useState<ArtifactViewMode>(getInitialViewMode)
   const [mobileOverlayOpen, setMobileOverlayOpen] = useState(false)
   const railRef = useRef<HTMLDivElement>(null)
@@ -130,7 +126,7 @@ export function ArtifactRail({
     // UI-first optimization: When browser tab exists, directly update DOM
     // before React state update to ensure BrowserView resizes immediately
     if (hasBrowserTab && railRef.current) {
-      const targetWidth = newExpanded ? width : COLLAPSED_WIDTH
+      const targetWidth = newExpanded ? PANEL_WIDTH : COLLAPSED_WIDTH
       railRef.current.style.width = `${targetWidth}px`
       console.log('[ArtifactRail] 🚀 Direct DOM update:', targetWidth, 'time:', Date.now())
     }
@@ -141,7 +137,7 @@ export function ArtifactRail({
     } else {
       setInternalExpanded(newExpanded)
     }
-  }, [isExpanded, isControlled, isOverlayMode, onExpandedChange, hasBrowserTab, width])
+  }, [isExpanded, isControlled, isOverlayMode, onExpandedChange, hasBrowserTab])
 
   // Debug: log when isExpanded changes
   useEffect(() => {
@@ -171,36 +167,6 @@ export function ArtifactRail({
       return next
     })
   }, [])
-
-  // Handle drag resize (desktop only)
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    if (isMobile) return
-    e.preventDefault()
-    setIsDragging(true)
-  }, [isMobile])
-
-  useEffect(() => {
-    if (!isDragging || isMobile) return
-
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!railRef.current) return
-      const newWidth = window.innerWidth - e.clientX
-      const clampedWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, newWidth))
-      setWidth(clampedWidth)
-    }
-
-    const handleMouseUp = () => {
-      setIsDragging(false)
-    }
-
-    document.addEventListener('mousemove', handleMouseMove)
-    document.addEventListener('mouseup', handleMouseUp)
-
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove)
-      document.removeEventListener('mouseup', handleMouseUp)
-    }
-  }, [isDragging, isMobile])
 
   // Close mobile overlay when switching to desktop
   useEffect(() => {
@@ -320,6 +286,11 @@ export function ArtifactRail({
   }, [isControlled, isMobile, isOverlayMode, onExpandedChange])
 
   // Shared content renderer
+  const fileCount = artifacts.reduce((count, artifact) => {
+    return artifact.type === 'file' ? count + 1 : count
+  }, 0)
+  const displayCount = fileCount > 99 ? '99+' : String(fileCount)
+
   const renderContent = () => (
     <div className="flex-1 overflow-hidden">
       {viewMode === 'tree' ? (
@@ -437,11 +408,9 @@ export function ArtifactRail({
           aria-label={t('Open artifacts panel')}
         >
           <FolderOpen className="w-4 h-4 text-amber-500" />
-          {artifacts.length > 0 && (
-            <span className="text-[10px] font-medium text-muted-foreground">
-              {artifacts.length}
-            </span>
-          )}
+          <span className="text-[10px] font-medium text-muted-foreground">
+            {displayCount}
+          </span>
         </button>
 
         {/* Overlay backdrop + panel */}
@@ -466,7 +435,9 @@ export function ArtifactRail({
               {/* Header */}
               <div className="p-3 border-b border-border flex items-center justify-between">
                 <div className="flex items-center gap-1.5">
-                  <span className="text-sm font-medium text-muted-foreground">{t('Artifacts')}</span>
+                  <span className="text-sm font-medium text-muted-foreground">
+                    {t('Resources')} ({displayCount})
+                  </span>
                   <button
                     onClick={toggleViewMode}
                     className={`
@@ -510,7 +481,9 @@ export function ArtifactRail({
       <div className="space-studio-rail space-studio-rail-overlay h-full w-full flex flex-col relative">
         <div className="flex-shrink-0 px-3 h-10 border-b border-border flex items-center justify-between">
           <div className="flex items-center gap-1.5">
-            <span className="text-sm font-medium text-muted-foreground">{t('Artifacts')}</span>
+            <span className="text-sm font-medium text-muted-foreground">
+              {t('Resources')} ({displayCount})
+            </span>
             <button
               onClick={toggleViewMode}
               className={`
@@ -544,7 +517,7 @@ export function ArtifactRail({
   }
 
   // ==================== Desktop Inline Mode ====================
-  const displayWidth = isExpanded ? width : COLLAPSED_WIDTH
+  const displayWidth = isExpanded ? PANEL_WIDTH : COLLAPSED_WIDTH
 
   return (
     <div
@@ -552,28 +525,17 @@ export function ArtifactRail({
       className="space-studio-rail h-full bg-card/30 flex flex-col relative"
       style={{
         width: displayWidth,
-        // Disable transition when: dragging OR browser tab exists (to sync with native BrowserView)
-        transition: (isDragging || hasBrowserTab) ? 'none' : 'width 0.2s ease'
+        // Disable transition when browser tab exists (to sync with native BrowserView)
+        transition: hasBrowserTab ? 'none' : 'width 0.2s ease'
       }}
     >
-      {/* Drag handle - only show when expanded */}
-      {isExpanded && (
-        <div
-          className={`absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-primary/50 transition-colors z-20 ${
-            isDragging ? 'bg-primary/50' : ''
-          }`}
-          onMouseDown={handleMouseDown}
-          title={t('Drag to resize')}
-          role="separator"
-          aria-orientation="vertical"
-        />
-      )}
-
       {/* Header - height matches CanvasTabs (py-1.5 + h-7 content = ~40px) */}
       <div className="flex-shrink-0 px-3 h-10 border-b border-border flex items-center justify-between">
         {isExpanded && (
           <div className="flex items-center gap-1.5">
-            <span className="text-sm font-medium text-muted-foreground">{t('Artifacts')}</span>
+            <span className="text-sm font-medium text-muted-foreground">
+              {t('Resources')} ({displayCount})
+            </span>
             <button
               onClick={toggleViewMode}
               className={`
@@ -610,6 +572,9 @@ export function ArtifactRail({
       {/* Collapsed state - show both folder and browser icons */}
       {!isExpanded && (
         <div className="flex-1 flex flex-col items-center py-4 gap-2">
+          <div className="px-1.5 py-0.5 text-[10px] rounded-md bg-secondary text-muted-foreground">
+            {displayCount}
+          </div>
           {isWebMode ? (
             <div
               className="p-2 rounded-lg cursor-not-allowed opacity-50"

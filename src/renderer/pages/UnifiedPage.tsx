@@ -1,10 +1,8 @@
-import { useCallback, useEffect, useMemo } from 'react'
-import { Plus } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { shallow } from 'zustand/shallow'
 import { Header } from '../components/layout/Header'
 import { ChatView } from '../components/chat/ChatView'
 import { UnifiedSidebar } from '../components/unified/UnifiedSidebar'
-import { SearchIcon } from '../components/search/SearchIcon'
 import { GitBashWarningBanner } from '../components/setup/GitBashWarningBanner'
 import { useSearchShortcuts } from '../hooks/useSearchShortcuts'
 import { useAppStore } from '../stores/app.store'
@@ -58,7 +56,6 @@ export function UnifiedPage() {
     currentSpaceId,
     currentConversationId,
     spaceStates,
-    isLoading,
     setCurrentSpace: setChatCurrentSpace,
     loadConversations,
     createConversation,
@@ -69,7 +66,6 @@ export function UnifiedPage() {
     currentSpaceId: state.currentSpaceId,
     currentConversationId: state.getCurrentConversationId(),
     spaceStates: state.spaceStates,
-    isLoading: state.isLoading,
     setCurrentSpace: state.setCurrentSpace,
     loadConversations: state.loadConversations,
     createConversation: state.createConversation,
@@ -93,6 +89,17 @@ export function UnifiedPage() {
     }
     return result
   }, [spaceStates])
+  const loadingSpaceIdsRef = useRef<Set<string>>(new Set())
+
+  const ensureSpaceConversationsLoaded = useCallback(async (spaceId: string) => {
+    if (spaceStates.has(spaceId) || loadingSpaceIdsRef.current.has(spaceId)) return
+    loadingSpaceIdsRef.current.add(spaceId)
+    try {
+      await loadConversations(spaceId)
+    } finally {
+      loadingSpaceIdsRef.current.delete(spaceId)
+    }
+  }, [loadConversations, spaceStates])
 
   const handleSearchShortcut = useCallback((scope: SearchScope) => {
     openSearch(scope)
@@ -134,8 +141,14 @@ export function UnifiedPage() {
 
   useEffect(() => {
     if (!currentSpaceId || spaceStates.has(currentSpaceId)) return
-    void loadConversations(currentSpaceId)
-  }, [currentSpaceId, loadConversations, spaceStates])
+    void ensureSpaceConversationsLoaded(currentSpaceId)
+  }, [currentSpaceId, ensureSpaceConversationsLoaded, spaceStates])
+
+  useEffect(() => {
+    for (const space of allSpaces) {
+      void ensureSpaceConversationsLoaded(space.id)
+    }
+  }, [allSpaces, ensureSpaceConversationsLoaded])
 
   useEffect(() => {
     if (!currentSpaceId) return
@@ -165,10 +178,8 @@ export function UnifiedPage() {
   ])
 
   const handleExpandSpace = useCallback(async (spaceId: string) => {
-    if (!spaceStates.has(spaceId)) {
-      await loadConversations(spaceId)
-    }
-  }, [loadConversations, spaceStates])
+    await ensureSpaceConversationsLoaded(spaceId)
+  }, [ensureSpaceConversationsLoaded])
 
   const handleSelectConversation = useCallback(async (spaceId: string, conversationId: string) => {
     await navigateToConversationContext({
@@ -261,11 +272,6 @@ export function UnifiedPage() {
     await deleteConversation(spaceId, conversationId)
   }, [deleteConversation])
 
-  const handleCreateConversationInCurrentSpace = useCallback(async () => {
-    if (!currentSpaceId) return
-    await handleCreateConversation(currentSpaceId)
-  }, [currentSpaceId, handleCreateConversation])
-
   const handleBackToCurrentSpaceMode = useCallback(() => {
     persistWorkspaceViewMode('classic')
     setView('space')
@@ -297,15 +303,6 @@ export function UnifiedPage() {
         )}
         right={(
           <>
-            <button
-              onClick={() => void handleCreateConversationInCurrentSpace()}
-              className="space-studio-header-btn p-2 rounded-lg transition-all duration-200 group"
-              title={t('New conversation')}
-              aria-label={t('New conversation')}
-            >
-              <Plus className="w-[18px] h-[18px] text-muted-foreground group-hover:text-foreground transition-colors" />
-            </button>
-            <SearchIcon onClick={openSearch} isInSpace={true} />
             <div className="flex items-center rounded-lg border border-border/80 bg-card/70 p-0.5">
               <button
                 onClick={handleBackToCurrentSpaceMode}
@@ -351,7 +348,6 @@ export function UnifiedPage() {
           currentSpaceId={currentSpaceId}
           currentConversationId={currentConversationId}
           conversationsBySpaceId={conversationsBySpaceId}
-          isLoading={isLoading}
           onSelectSpace={handleSelectSpace}
           onExpandSpace={handleExpandSpace}
           onSelectConversation={handleSelectConversation}
