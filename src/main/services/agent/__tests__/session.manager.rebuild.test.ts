@@ -55,6 +55,7 @@ import {
   acquireSessionWithResumeFallback,
   classifyResumeError,
   closeAllV2Sessions,
+  closeV2Session,
   deleteActiveSession,
   ensureSessionWarm,
   getOrCreateV2Session,
@@ -609,5 +610,23 @@ describe('session.manager cleanup', () => {
     expect(close).toHaveBeenCalledTimes(1)
     expect(debugSpy).toHaveBeenCalled()
     debugSpy.mockRestore()
+  })
+
+  it('底层 query session 缺少 close 时，清理不会抛错', async () => {
+    vi.mocked(query).mockReturnValueOnce({
+      initializationResult: vi.fn().mockResolvedValue({}),
+      [Symbol.asyncIterator]: () => ({
+        next: async () => ({ done: true, value: undefined })
+      }),
+      setPermissionMode: vi.fn().mockResolvedValue(undefined),
+      setMaxThinkingTokens: vi.fn().mockResolvedValue(undefined),
+      setModel: vi.fn().mockResolvedValue(undefined),
+      interrupt: vi.fn().mockResolvedValue(undefined),
+      reconnectMcpServer: vi.fn().mockResolvedValue(undefined),
+      toggleMcpServer: vi.fn().mockResolvedValue(undefined)
+    } as any)
+
+    await getOrCreateV2Session('space-1', 'conv-no-close', {}, undefined, baseConfig)
+    expect(() => closeV2Session('space-1', 'conv-no-close')).not.toThrow()
   })
 })

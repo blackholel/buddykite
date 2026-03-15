@@ -53,6 +53,7 @@ const RESOURCE_INDEX_REBUILD_DEBOUNCE_MS = 3000
 let cleanupIntervalId: NodeJS.Timeout | null = null
 const lastResourceIndexRebuildAt = new Map<string, number>()
 const sessionAcquireLockChains = new Map<string, Promise<void>>()
+const closedOrClosingSessions = new WeakSet<V2SDKSession>()
 
 class AsyncInputQueue<T> implements AsyncIterable<T> {
   private readonly queue: T[] = []
@@ -171,8 +172,11 @@ function createQueryBackedSession(
     }
     closed = true
     inputQueue.close()
-    const queryClose = (querySession as unknown as { close: () => void | Promise<void> }).close
-    return queryClose()
+    const queryClose = (querySession as unknown as { close?: () => void | Promise<void> }).close
+    if (typeof queryClose !== 'function') {
+      return
+    }
+    return queryClose.call(querySession)
   }
 
   return {
@@ -439,6 +443,14 @@ export function classifyResumeError(error: unknown): {
 }
 
 function closeSessionSafely(session: V2SDKSession, context: string): void {
+  if (!session || typeof session.close !== 'function') {
+    console.warn(`${context} Skip closing session: close() is unavailable`)
+    return
+  }
+  if (closedOrClosingSessions.has(session)) {
+    return
+  }
+  closedOrClosingSessions.add(session)
   try {
     const maybePromise = session.close()
     if (maybePromise && typeof (maybePromise as Promise<void>).then === 'function') {
@@ -478,9 +490,9 @@ function startSessionCleanup(): void {
       const idleMs = now - info.lastUsedAt
       if (idleMs > idleTimeoutMs) {
         console.log(`[Agent] Cleaning up idle V2 session: ${sessionKey} (idleMs=${idleMs}, timeoutMs=${idleTimeoutMs})`)
-        closeSessionSafely(info.session, `[Agent][${sessionKey}]`)
         v2Sessions.delete(sessionKey)
         lastResourceIndexRebuildAt.delete(sessionKey)
+        closeSessionSafely(info.session, `[Agent][${sessionKey}]`)
       }
     }
   }, 60 * 1000)
@@ -556,8 +568,8 @@ function closeV2SessionForRebuild(spaceId: string, conversationId: string): void
   const existing = v2Sessions.get(sessionKey)
   if (existing) {
     console.log(`[Agent][${sessionKey}] Closing V2 session for rebuild`)
-    closeSessionSafely(existing.session, `[Agent][${sessionKey}]`)
     v2Sessions.delete(sessionKey)
+    closeSessionSafely(existing.session, `[Agent][${sessionKey}]`)
   }
 }
 
@@ -993,8 +1005,8 @@ export function closeV2Session(spaceId: string, conversationId: string): void {
   const info = v2Sessions.get(sessionKey)
   if (info) {
     console.log(`[Agent][${sessionKey}] Closing V2 session`)
-    closeSessionSafely(info.session, `[Agent][${sessionKey}]`)
     v2Sessions.delete(sessionKey)
+    closeSessionSafely(info.session, `[Agent][${sessionKey}]`)
   }
   lastResourceIndexRebuildAt.delete(sessionKey)
 }
@@ -1048,9 +1060,9 @@ function invalidateAllSessions(): void {
     }
 
     console.log(`[Agent] Closing non-running session for config switch: ${sessionKey}`)
+    v2Sessions.delete(sessionKey)
     closeSessionSafely(info.session, `[Agent][${sessionKey}][config-switch]`)
     closedCount += 1
-    v2Sessions.delete(sessionKey)
   }
   for (const sessionKey of Array.from(lastResourceIndexRebuildAt.keys())) {
     if (!v2Sessions.has(sessionKey)) {

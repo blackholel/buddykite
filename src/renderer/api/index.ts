@@ -766,6 +766,39 @@ export const api = {
     return httpRequest('POST', '/api/artifacts/file', { path: filePath, content })
   },
 
+  // Create a file/folder in parent directory (desktop IPC only)
+  createArtifactEntry: async <T = unknown>(params: {
+    type: 'file' | 'folder'
+    parentPath: string
+    name: string
+    content?: string
+  }): Promise<ApiResponse<T>> => {
+    if (!isElectron()) {
+      return { success: false, error: 'Create entry is only supported in desktop mode' }
+    }
+
+    try {
+      // Preferred path: new unified IPC
+      if (typeof window.kite.createArtifactEntry === 'function') {
+        return window.kite.createArtifactEntry(params)
+      }
+
+      // Backward-compatible fallback for clients with old preload
+      const trimmedParent = params.parentPath.replace(/[\\/]+$/, '')
+      const separator = trimmedParent.includes('\\') && !trimmedParent.includes('/') ? '\\' : '/'
+      const fullPath = trimmedParent ? `${trimmedParent}${separator}${params.name}` : params.name
+      if (params.type === 'folder') {
+        return window.kite.createFolder(fullPath)
+      }
+      return window.kite.createFile(fullPath, params.content)
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to create entry'
+      }
+    }
+  },
+
   // Rename a file or folder
   renameArtifact: async (oldPath: string, newName: string): Promise<ApiResponse> => {
     if (isElectron()) {

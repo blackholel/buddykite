@@ -8,6 +8,7 @@ import {
   listArtifactsTree,
   readArtifactContent,
   writeArtifactContent,
+  createArtifactEntry,
   createFolder,
   createFile,
   renameArtifact,
@@ -120,6 +121,23 @@ export function registerArtifactHandlers(): void {
     }
   })
 
+  // Create file/folder entry in a parent directory
+  ipcMain.handle(
+    'artifact:create-entry',
+    async (_event, params: { type: 'file' | 'folder'; parentPath: string; name: string; content?: string }) => {
+      try {
+        console.log(
+          `[IPC] artifact:create-entry - type: ${params.type}, parentPath: ${params.parentPath}, name: ${params.name}`
+        )
+        const result = await createArtifactEntry(params)
+        return result
+      } catch (error) {
+        console.error('[IPC] artifact:create-entry error:', error)
+        return { success: false, error: (error as Error).message }
+      }
+    }
+  )
+
   // Rename a file or folder
   ipcMain.handle('artifact:rename', async (_event, oldPath: string, newName: string) => {
     try {
@@ -179,6 +197,7 @@ export function unregisterArtifactHandlers(): void {
   ipcMain.removeHandler('artifact:write-content')
   ipcMain.removeHandler('artifact:create-folder')
   ipcMain.removeHandler('artifact:create-file')
+  ipcMain.removeHandler('artifact:create-entry')
   ipcMain.removeHandler('artifact:rename')
   ipcMain.removeHandler('artifact:delete')
   ipcMain.removeHandler('artifact:move')

@@ -24,7 +24,6 @@ import {
 } from 'lucide-react'
 import { useIsGenerating } from '../../stores/chat.store'
 import { useTranslation } from '../../i18n'
-import { dirname, join } from 'path-browserify'
 
 // Context to pass openFile function to tree nodes without each node subscribing to store
 // This prevents massive re-renders when canvas state changes
@@ -39,22 +38,6 @@ interface TreeOperationsContext {
 const TreeOperationsContext = createContext<TreeOperationsContext | null>(null)
 
 const isWebMode = api.isRemoteMode()
-
-// File types that can be viewed in the Content Canvas
-const CANVAS_VIEWABLE_EXTENSIONS = new Set([
-  // Code
-  'js', 'jsx', 'ts', 'tsx', 'py', 'rb', 'go', 'rs', 'java', 'c', 'cpp', 'h', 'hpp',
-  'cs', 'swift', 'kt', 'php', 'sh', 'bash', 'zsh', 'sql', 'yaml', 'yml', 'xml',
-  'vue', 'svelte', 'css', 'scss', 'less',
-  // Documents
-  'md', 'markdown', 'txt', 'log', 'env', 'pdf',
-  // Data
-  'json', 'csv',
-  // Web
-  'html', 'htm',
-  // Images
-  'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'ico', 'bmp',
-])
 
 interface ArtifactTreeProps {
   spaceId: string
@@ -86,27 +69,53 @@ interface TreeNodeData {
   id: string
   name: string
   path: string
+  parentPath: string
   extension: string
   isFolder: boolean
   children?: TreeNodeData[]
 }
 
-function transformToArboristData(nodes: ArtifactTreeNode[]): TreeNodeData[] {
+function transformToArboristData(nodes: ArtifactTreeNode[], parentPath: string): TreeNodeData[] {
   return nodes.map(node => ({
     id: node.id,
     name: node.name,
     path: node.path,
+    parentPath,
     extension: node.extension,
     isFolder: node.type === 'folder',
-    children: node.children ? transformToArboristData(node.children) : undefined
+    children: node.children ? transformToArboristData(node.children, node.path) : undefined
   }))
+}
+
+function inferParentPath(filePath: string): string {
+  const normalizedPath = filePath.replace(/[\\/]+$/g, '')
+  const separatorIndex = Math.max(
+    normalizedPath.lastIndexOf('/'),
+    normalizedPath.lastIndexOf('\\')
+  )
+  if (separatorIndex <= 0) return ''
+  return normalizedPath.slice(0, separatorIndex)
+}
+
+function buildChildPath(parentPath: string, name: string): string {
+  const trimmedParent = parentPath.replace(/[\\/]+$/, '')
+  if (!trimmedParent) return name
+  const separator = trimmedParent.includes('\\') && !trimmedParent.includes('/') ? '\\' : '/'
+  return `${trimmedParent}${separator}${name}`
+}
+
+interface CreateDraftState {
+  type: 'file' | 'folder'
+  parentPath: string
+  name: string
 }
 
 // Context menu state
 interface ContextMenuState {
   x: number
   y: number
-  node: TreeNodeData
+  node?: TreeNodeData
+  createTargetDir: string
 }
 
 export function ArtifactTree({ spaceId }: ArtifactTreeProps) {
@@ -115,9 +124,12 @@ export function ArtifactTree({ spaceId }: ArtifactTreeProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
   const [spaceWorkingDir, setSpaceWorkingDir] = useState<string>('')
+  const [createDraft, setCreateDraft] = useState<CreateDraftState | null>(null)
+  const [isComposingNameInput, setIsComposingNameInput] = useState(false)
   const isGenerating = useIsGenerating()
   const treeHeight = useTreeHeight()
   const containerRef = useRef<HTMLDivElement>(null)
+  const createInputRef = useRef<HTMLInputElement>(null)
 
   // Subscribe to openFile once at parent level, pass down via context
   // This prevents each TreeNodeComponent from subscribing to the store
@@ -129,22 +141,32 @@ export function ArtifactTree({ spaceId }: ArtifactTreeProps) {
 
     try {
       setIsLoading(true)
+      let resolvedSpaceDir = ''
+      const spaceResponse = await api.getSpace(spaceId)
+      if (spaceResponse.success && spaceResponse.data) {
+        resolvedSpaceDir = (spaceResponse.data as { path: string }).path
+        setSpaceWorkingDir(resolvedSpaceDir)
+      } else if (spaceId === 'kite-temp') {
+        const kiteSpaceResponse = await api.getKiteSpace()
+        if (kiteSpaceResponse.success && kiteSpaceResponse.data) {
+          resolvedSpaceDir = (kiteSpaceResponse.data as { path: string }).path
+          setSpaceWorkingDir(resolvedSpaceDir)
+        }
+      }
+
       const response = await api.listArtifactsTree(spaceId)
       if (response.success && response.data) {
-        const transformed = transformToArboristData(response.data as ArtifactTreeNode[])
-        setTreeData(transformed)
-
-        // Get working directory from first item's parent or space
-        if (transformed.length > 0) {
-          const firstPath = transformed[0].path
-          setSpaceWorkingDir(dirname(firstPath))
-        } else {
-          // Get space info to determine working dir
-          const spaceResponse = await api.getSpace(spaceId)
-          if (spaceResponse.success && spaceResponse.data) {
-            setSpaceWorkingDir((spaceResponse.data as { path: string }).path)
-          }
+        const sourceNodes = response.data as ArtifactTreeNode[]
+        if (!resolvedSpaceDir && sourceNodes.length > 0) {
+          resolvedSpaceDir = inferParentPath(sourceNodes[0].path)
+          setSpaceWorkingDir(resolvedSpaceDir)
         }
+
+        const transformed = transformToArboristData(
+          sourceNodes,
+          resolvedSpaceDir
+        )
+        setTreeData(transformed)
       }
     } catch (error) {
       console.error('[ArtifactTree] Failed to load tree:', error)
@@ -189,6 +211,15 @@ export function ArtifactTree({ spaceId }: ArtifactTreeProps) {
     return () => document.removeEventListener('click', handleClickOutside)
   }, [contextMenu])
 
+  useEffect(() => {
+    if (!createDraft) return
+    const raf = window.requestAnimationFrame(() => {
+      createInputRef.current?.focus()
+      createInputRef.current?.select()
+    })
+    return () => window.cancelAnimationFrame(raf)
+  }, [createDraft?.type, createDraft?.parentPath])
+
   // Count total items
   const itemCount = useMemo(() => {
     const count = (nodes: TreeNodeData[]): number => {
@@ -200,43 +231,65 @@ export function ArtifactTree({ spaceId }: ArtifactTreeProps) {
   }, [treeData])
 
   // File operations
-  const handleCreateFile = useCallback(async (parentPath?: string) => {
-    const fileName = prompt(t('Enter file name:'))
-    if (!fileName) return
-
+  const startCreateDraft = useCallback((type: 'file' | 'folder', parentPath?: string) => {
     const targetDir = parentPath || spaceWorkingDir
     if (!targetDir) {
       console.error('[ArtifactTree] No target directory')
+      alert(t('Space working directory was not found.'))
       return
     }
 
-    const filePath = join(targetDir, fileName)
-    const result = await api.createFile(filePath)
-    if (result.success) {
-      loadTree()
-    } else {
-      alert(result.error || t('Failed to create file'))
-    }
-  }, [spaceWorkingDir, loadTree, t])
+    setCreateDraft({
+      type,
+      parentPath: targetDir,
+      name: ''
+    })
+    setContextMenu(null)
+  }, [spaceWorkingDir, t])
 
-  const handleCreateFolder = useCallback(async (parentPath?: string) => {
-    const folderName = prompt(t('Enter folder name:'))
-    if (!folderName) return
+  const cancelCreateDraft = useCallback(() => {
+    setIsComposingNameInput(false)
+    setCreateDraft(null)
+  }, [])
 
-    const targetDir = parentPath || spaceWorkingDir
-    if (!targetDir) {
-      console.error('[ArtifactTree] No target directory')
-      return
-    }
+  const submitCreateDraft = useCallback(async () => {
+    if (!createDraft) return
+    const name = createDraft.name.trim()
+    if (!name) return
 
-    const folderPath = join(targetDir, folderName)
-    const result = await api.createFolder(folderPath)
-    if (result.success) {
-      loadTree()
-    } else {
-      alert(result.error || t('Failed to create folder'))
+    try {
+      const result = await api.createArtifactEntry<{
+        path?: string
+        name?: string
+        type?: 'file' | 'folder'
+      }>({
+        type: createDraft.type,
+        parentPath: createDraft.parentPath,
+        name
+      })
+
+      if (result.success) {
+        setIsComposingNameInput(false)
+        setCreateDraft(null)
+        loadTree()
+        if (createDraft.type === 'file' && openFile) {
+          const createdPath = result.data?.path || buildChildPath(createDraft.parentPath, name)
+          await openFile(createdPath, name)
+        }
+        return
+      }
+
+      const fallbackError = createDraft.type === 'file'
+        ? t('Failed to create file')
+        : t('Failed to create folder')
+      alert(result.error || fallbackError)
+    } catch (error) {
+      const fallbackError = createDraft.type === 'file'
+        ? t('Failed to create file')
+        : t('Failed to create folder')
+      alert((error as Error).message || fallbackError)
     }
-  }, [spaceWorkingDir, loadTree, t])
+  }, [createDraft, loadTree, openFile, t])
 
   const handleRename = useCallback(async (node: TreeNodeData) => {
     const newName = prompt(t('Enter new name:'), node.name)
@@ -253,8 +306,8 @@ export function ArtifactTree({ spaceId }: ArtifactTreeProps) {
   const handleDelete = useCallback(async (node: TreeNodeData) => {
     const confirmed = confirm(
       node.isFolder
-        ? t('Delete folder "{name}" and all its contents?', { name: node.name })
-        : t('Delete file "{name}"?', { name: node.name })
+        ? t('Delete folder "{{name}}" and all its contents?', { name: node.name })
+        : t('Delete file "{{name}}"?', { name: node.name })
     )
     if (!confirmed) return
 
@@ -280,12 +333,25 @@ export function ArtifactTree({ spaceId }: ArtifactTreeProps) {
   const handleContextMenu = useCallback((e: React.MouseEvent, node: TreeNodeData) => {
     e.preventDefault()
     e.stopPropagation()
+    const createTargetDir = node.isFolder ? node.path : (node.parentPath || spaceWorkingDir)
     setContextMenu({
       x: e.clientX,
       y: e.clientY,
-      node
+      node,
+      createTargetDir
     })
-  }, [])
+  }, [spaceWorkingDir])
+
+  const handleBackgroundContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (!spaceWorkingDir) return
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      createTargetDir: spaceWorkingDir
+    })
+  }, [spaceWorkingDir])
 
   // Handle tree move (drag & drop within tree)
   const handleMove = useCallback(async (args: {
@@ -334,6 +400,55 @@ export function ArtifactTree({ spaceId }: ArtifactTreeProps) {
     spaceWorkingDir
   }), [handleContextMenu, spaceWorkingDir])
 
+  const renderCreateDraftInput = () => {
+    if (!createDraft) return null
+
+    return (
+      <div className="px-2 py-1 border-b border-border/50 bg-card/95">
+        <div className="flex items-center gap-2 rounded border border-primary/40 bg-background px-2 py-1">
+          {createDraft.type === 'folder' ? (
+            <FolderPlus className="w-3.5 h-3.5 text-primary flex-shrink-0" />
+          ) : (
+            <FilePlus className="w-3.5 h-3.5 text-primary flex-shrink-0" />
+          )}
+          <input
+            ref={createInputRef}
+            value={createDraft.name}
+            onChange={(e) => setCreateDraft(prev => (prev ? { ...prev, name: e.target.value } : prev))}
+            onCompositionStart={() => setIsComposingNameInput(true)}
+            onCompositionEnd={() => setIsComposingNameInput(false)}
+            onKeyDown={(e) => {
+              // IME composing enter should not trigger submit
+              if (isComposingNameInput || (e.nativeEvent as KeyboardEvent).isComposing) {
+                return
+              }
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                e.stopPropagation()
+                submitCreateDraft()
+              }
+              if (e.key === 'Escape') {
+                e.preventDefault()
+                e.stopPropagation()
+                cancelCreateDraft()
+              }
+            }}
+            className="flex-1 bg-transparent text-[13px] text-foreground outline-none placeholder:text-muted-foreground/70"
+            placeholder={createDraft.type === 'folder' ? t('Enter folder name:') : t('Enter file name:')}
+          />
+          <button
+            type="button"
+            onClick={() => submitCreateDraft()}
+            className="px-2 py-0.5 text-xs rounded border border-border/60 hover:bg-secondary/80 transition-colors disabled:opacity-40"
+            disabled={!createDraft.name.trim()}
+          >
+            {t('Create')}
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-center px-2">
@@ -349,16 +464,16 @@ export function ArtifactTree({ spaceId }: ArtifactTreeProps) {
         {/* Toolbar */}
         <div className="flex-shrink-0 flex items-center gap-1 px-2 py-1 border-b border-border/50 bg-card/95">
           <button
-            onClick={() => handleCreateFile()}
+            onClick={() => startCreateDraft('file')}
             className="p-1 rounded hover:bg-secondary/80 text-muted-foreground hover:text-foreground transition-colors"
-            title={t('New File')}
+            title={t('New file')}
           >
             <FilePlus className="w-3.5 h-3.5" />
           </button>
           <button
-            onClick={() => handleCreateFolder()}
+            onClick={() => startCreateDraft('folder')}
             className="p-1 rounded hover:bg-secondary/80 text-muted-foreground hover:text-foreground transition-colors"
-            title={t('New Folder')}
+            title={t('New folder')}
           >
             <FolderPlus className="w-3.5 h-3.5" />
           </button>
@@ -371,12 +486,73 @@ export function ArtifactTree({ spaceId }: ArtifactTreeProps) {
           </button>
         </div>
 
-        <div className="flex flex-col items-center justify-center flex-1 text-center px-2">
+        {renderCreateDraftInput()}
+
+        <div
+          className="flex flex-col items-center justify-center flex-1 text-center px-2"
+          onContextMenu={handleBackgroundContextMenu}
+        >
           <div className="w-10 h-10 rounded-lg border border-dashed border-muted-foreground/30 flex items-center justify-center mb-2">
             <ChevronRight className="w-5 h-5 text-muted-foreground/40" />
           </div>
           <p className="text-xs text-muted-foreground">{t('No files')}</p>
+          <div className="mt-3 flex items-center gap-2">
+            <button
+              onClick={() => startCreateDraft('file')}
+              className="px-2 py-1 text-xs rounded border border-border/60 hover:bg-secondary/80 transition-colors"
+            >
+              {t('New file')}
+            </button>
+            <button
+              onClick={() => startCreateDraft('folder')}
+              className="px-2 py-1 text-xs rounded border border-border/60 hover:bg-secondary/80 transition-colors"
+            >
+              {t('New folder')}
+            </button>
+          </div>
         </div>
+
+        {/* Context Menu */}
+        {contextMenu && (
+          <div
+            className="fixed z-50 min-w-[160px] bg-popover border border-border rounded-md shadow-lg py-1"
+            style={{
+              left: contextMenu.x,
+              top: contextMenu.y
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              className="w-full px-3 py-1.5 text-sm text-left hover:bg-secondary/80 flex items-center gap-2"
+              onClick={() => {
+                startCreateDraft('file', contextMenu.createTargetDir)
+              }}
+            >
+              <FilePlus className="w-4 h-4" />
+              {t('New file')}
+            </button>
+            <button
+              className="w-full px-3 py-1.5 text-sm text-left hover:bg-secondary/80 flex items-center gap-2"
+              onClick={() => {
+                startCreateDraft('folder', contextMenu.createTargetDir)
+              }}
+            >
+              <FolderPlus className="w-4 h-4" />
+              {t('New folder')}
+            </button>
+            <div className="h-px bg-border my-1" />
+            <button
+              className="w-full px-3 py-1.5 text-sm text-left hover:bg-secondary/80 flex items-center gap-2"
+              onClick={() => {
+                loadTree()
+                setContextMenu(null)
+              }}
+            >
+              <RefreshCw className="w-4 h-4" />
+              {t('Refresh')}
+            </button>
+          </div>
+        )}
       </div>
     )
   }
@@ -388,16 +564,16 @@ export function ArtifactTree({ spaceId }: ArtifactTreeProps) {
           {/* Toolbar */}
           <div className="flex-shrink-0 flex items-center gap-1 px-2 py-1 border-b border-border/50 bg-card/95">
             <button
-              onClick={() => handleCreateFile()}
+              onClick={() => startCreateDraft('file')}
               className="p-1 rounded hover:bg-secondary/80 text-muted-foreground hover:text-foreground transition-colors"
-              title={t('New File')}
+              title={t('New file')}
             >
               <FilePlus className="w-3.5 h-3.5" />
             </button>
             <button
-              onClick={() => handleCreateFolder()}
+              onClick={() => startCreateDraft('folder')}
               className="p-1 rounded hover:bg-secondary/80 text-muted-foreground hover:text-foreground transition-colors"
-              title={t('New Folder')}
+              title={t('New folder')}
             >
               <FolderPlus className="w-3.5 h-3.5" />
             </button>
@@ -415,8 +591,10 @@ export function ArtifactTree({ spaceId }: ArtifactTreeProps) {
             {t('Current space files')} ({itemCount})
           </div>
 
+          {renderCreateDraftInput()}
+
           {/* Tree - uses window height based calculation */}
-          <div className="flex-1 overflow-hidden">
+          <div className="flex-1 overflow-hidden" onContextMenu={handleBackgroundContextMenu}>
             <Tree
               data={treeData}
               openByDefault={false}
@@ -446,74 +624,74 @@ export function ArtifactTree({ spaceId }: ArtifactTreeProps) {
               }}
               onClick={(e) => e.stopPropagation()}
             >
-              {contextMenu.node.isFolder && (
+              <>
+                <button
+                  className="w-full px-3 py-1.5 text-sm text-left hover:bg-secondary/80 flex items-center gap-2"
+                  onClick={() => {
+                    startCreateDraft('file', contextMenu.createTargetDir)
+                  }}
+                >
+                  <FilePlus className="w-4 h-4" />
+                  {t('New file')}
+                </button>
+                <button
+                  className="w-full px-3 py-1.5 text-sm text-left hover:bg-secondary/80 flex items-center gap-2"
+                  onClick={() => {
+                    startCreateDraft('folder', contextMenu.createTargetDir)
+                  }}
+                >
+                  <FolderPlus className="w-4 h-4" />
+                  {t('New folder')}
+                </button>
+                {contextMenu.node && <div className="h-px bg-border my-1" />}
+              </>
+              {contextMenu.node && (
                 <>
                   <button
                     className="w-full px-3 py-1.5 text-sm text-left hover:bg-secondary/80 flex items-center gap-2"
                     onClick={() => {
-                      handleCreateFile(contextMenu.node.path)
+                      handleRename(contextMenu.node!)
                       setContextMenu(null)
                     }}
                   >
-                    <FilePlus className="w-4 h-4" />
-                    {t('New File')}
+                    <Pencil className="w-4 h-4" />
+                    {t('Rename')}
                   </button>
                   <button
                     className="w-full px-3 py-1.5 text-sm text-left hover:bg-secondary/80 flex items-center gap-2"
                     onClick={() => {
-                      handleCreateFolder(contextMenu.node.path)
+                      handleCopyPath(contextMenu.node!)
                       setContextMenu(null)
                     }}
                   >
-                    <FolderPlus className="w-4 h-4" />
-                    {t('New Folder')}
+                    <Copy className="w-4 h-4" />
+                    {t('Copy path')}
                   </button>
+                  {!isWebMode && (
+                    <button
+                      className="w-full px-3 py-1.5 text-sm text-left hover:bg-secondary/80 flex items-center gap-2"
+                      onClick={() => {
+                        handleShowInFolder(contextMenu.node!)
+                        setContextMenu(null)
+                      }}
+                    >
+                      <FolderOpen className="w-4 h-4" />
+                      {t('Open in folder')}
+                    </button>
+                  )}
                   <div className="h-px bg-border my-1" />
+                  <button
+                    className="w-full px-3 py-1.5 text-sm text-left hover:bg-secondary/80 flex items-center gap-2 text-destructive"
+                    onClick={() => {
+                      handleDelete(contextMenu.node!)
+                      setContextMenu(null)
+                    }}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    {t('Delete')}
+                  </button>
                 </>
               )}
-              <button
-                className="w-full px-3 py-1.5 text-sm text-left hover:bg-secondary/80 flex items-center gap-2"
-                onClick={() => {
-                  handleRename(contextMenu.node)
-                  setContextMenu(null)
-                }}
-              >
-                <Pencil className="w-4 h-4" />
-                {t('Rename')}
-              </button>
-              <button
-                className="w-full px-3 py-1.5 text-sm text-left hover:bg-secondary/80 flex items-center gap-2"
-                onClick={() => {
-                  handleCopyPath(contextMenu.node)
-                  setContextMenu(null)
-                }}
-              >
-                <Copy className="w-4 h-4" />
-                {t('Copy Path')}
-              </button>
-              {!isWebMode && (
-                <button
-                  className="w-full px-3 py-1.5 text-sm text-left hover:bg-secondary/80 flex items-center gap-2"
-                  onClick={() => {
-                    handleShowInFolder(contextMenu.node)
-                    setContextMenu(null)
-                  }}
-                >
-                  <FolderOpen className="w-4 h-4" />
-                  {t('Show in Folder')}
-                </button>
-              )}
-              <div className="h-px bg-border my-1" />
-              <button
-                className="w-full px-3 py-1.5 text-sm text-left hover:bg-secondary/80 flex items-center gap-2 text-destructive"
-                onClick={() => {
-                  handleDelete(contextMenu.node)
-                  setContextMenu(null)
-                }}
-              >
-                <Trash2 className="w-4 h-4" />
-                {t('Delete')}
-              </button>
             </div>
           )}
         </div>
@@ -533,9 +711,8 @@ function TreeNodeComponent({ node, style, dragHandle }: NodeRendererProps<TreeNo
   const data = node.data
   const isFolder = data.isFolder
 
-  // Check if this file can be viewed in the canvas
-  const canViewInCanvas = !isFolder && data.extension &&
-    CANVAS_VIEWABLE_EXTENSIONS.has(data.extension.toLowerCase())
+  // Desktop: open all files in canvas first (unknown suffix falls back to text viewer)
+  const canViewInCanvas = !isFolder && !isWebMode
 
   // Handle click - open in canvas, system app, or download
   const handleClick = async (e: React.MouseEvent) => {
@@ -565,22 +742,15 @@ function TreeNodeComponent({ node, style, dragHandle }: NodeRendererProps<TreeNo
     }
   }
 
-  // Handle double-click to force open with system app
+  // Keep double-click behavior aligned with single-click: open in app tab
   const handleDoubleClickFile = async (e: React.MouseEvent) => {
     e.stopPropagation()
     if (isFolder) {
       node.toggle()
       return
     }
-    if (isWebMode) {
-      api.downloadArtifact(data.path)
-    } else {
-      try {
-        await api.openArtifact(data.path)
-      } catch (error) {
-        console.error('Failed to open file:', error)
-      }
-    }
+
+    await handleClick(e)
   }
 
   // Handle right-click - show context menu

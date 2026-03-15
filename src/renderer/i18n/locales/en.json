@@ -749,5 +749,17 @@
   "Zoom in": "Zoom in",
   "Zoom in (+)": "Zoom in (+)",
   "Zoom out": "Zoom out",
-  "Zoom out (-)": "Zoom out (-)"
+  "Zoom out (-)": "Zoom out (-)",
+  "New folder": "New folder",
+  "Rename": "Rename",
+  "Enter file name:": "Enter file name:",
+  "Enter folder name:": "Enter folder name:",
+  "Enter new name:": "Enter new name:",
+  "Failed to create file": "Failed to create file",
+  "Failed to create folder": "Failed to create folder",
+  "Failed to rename": "Failed to rename",
+  "Failed to delete": "Failed to delete",
+  "Delete folder \"{{name}}\" and all its contents?": "Delete folder \"{{name}}\" and all its contents?",
+  "Delete file \"{{name}}\"?": "Delete file \"{{name}}\"?",
+  "Refresh": "Refresh"
 }

@@ -537,5 +537,17 @@
   "Anthropic Compatible": "Anthropic互換",
   "Vendor": "ベンダー",
   "Protocol": "プロトコル",
-  "Connection successful": "接続成功"
+  "Connection successful": "接続成功",
+  "New folder": "新しいフォルダ",
+  "Rename": "名前を変更",
+  "Enter file name:": "ファイル名を入力:",
+  "Enter folder name:": "フォルダ名を入力:",
+  "Enter new name:": "新しい名前を入力:",
+  "Failed to create file": "ファイルの作成に失敗しました",
+  "Failed to create folder": "フォルダの作成に失敗しました",
+  "Failed to rename": "名前の変更に失敗しました",
+  "Failed to delete": "削除に失敗しました",
+  "Delete folder \"{{name}}\" and all its contents?": "フォルダ「{{name}}」と中身をすべて削除しますか？",
+  "Delete file \"{{name}}\"?": "ファイル「{{name}}」を削除しますか？",
+  "Refresh": "更新"
 }

@@ -15,22 +15,6 @@ import { useTranslation } from '../../i18n'
 // Check if running in web mode
 const isWebMode = api.isRemoteMode()
 
-// File types that can be viewed in the Content Canvas
-const CANVAS_VIEWABLE_EXTENSIONS = new Set([
-  // Code
-  'js', 'jsx', 'ts', 'tsx', 'py', 'rb', 'go', 'rs', 'java', 'c', 'cpp', 'h', 'hpp',
-  'cs', 'swift', 'kt', 'php', 'sh', 'bash', 'zsh', 'sql', 'yaml', 'yml', 'xml',
-  'vue', 'svelte', 'css', 'scss', 'less',
-  // Documents
-  'md', 'markdown', 'txt', 'log', 'env', 'pdf',
-  // Data
-  'json', 'csv',
-  // Web
-  'html', 'htm',
-  // Images
-  'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'ico', 'bmp',
-])
-
 interface ArtifactCardProps {
   artifact: Artifact
 }
@@ -49,9 +33,8 @@ export function ArtifactCard({ artifact }: ArtifactCardProps) {
   const openFile = useCanvasStore(state => state.openFile)
   const isFolder = artifact.type === 'folder'
 
-  // Check if this file can be viewed in the canvas
-  const canViewInCanvas = !isFolder && artifact.extension &&
-    CANVAS_VIEWABLE_EXTENSIONS.has(artifact.extension.toLowerCase())
+  // Desktop: open all files in canvas first (unknown suffix falls back to text viewer)
+  const canViewInCanvas = !isFolder && !isWebMode
 
   // Handle click to open file
   // Priority: Canvas > System App (desktop) > Download (web)
@@ -79,18 +62,10 @@ export function ArtifactCard({ artifact }: ArtifactCardProps) {
     }
   }
 
-  // Handle double-click to force open with system app
+  // Keep double-click behavior aligned with single-click: open in app tab
   const handleDoubleClick = async (e: React.MouseEvent) => {
     e.stopPropagation()
-    if (isWebMode) {
-      api.downloadArtifact(artifact.path)
-    } else {
-      try {
-        await api.openArtifact(artifact.path)
-      } catch (error) {
-        console.error('Failed to open artifact:', error)
-      }
-    }
+    await handleClick()
   }
 
   // Handle right-click to show in folder (desktop only)

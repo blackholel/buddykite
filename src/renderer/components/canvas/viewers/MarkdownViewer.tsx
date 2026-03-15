@@ -9,8 +9,8 @@
  * - Window maximize for fullscreen viewing
  */
 
-import { useState, useRef, useCallback, useEffect } from 'react'
-import { Copy, Check, Code, Eye, ExternalLink } from 'lucide-react'
+import { useState, useRef, useCallback, useEffect, type RefObject } from 'react'
+import { Copy, Check, Code, Eye, ExternalLink, Save } from 'lucide-react'
 import { dirname } from 'path-browserify'
 import { api } from '../../../api'
 import type { CanvasTab } from '../../../stores/canvas.store'
@@ -20,17 +20,72 @@ import { MarkdownRenderer } from '../../chat/MarkdownRenderer'
 interface MarkdownViewerProps {
   tab: CanvasTab
   onScrollChange?: (position: number) => void
+  onContentChange?: (content: string) => void
+  onSave?: () => void
 }
 
-export function MarkdownViewer({ tab, onScrollChange }: MarkdownViewerProps) {
+export function MarkdownViewer({ tab, onScrollChange, onContentChange, onSave }: MarkdownViewerProps) {
   const { t } = useTranslation()
   const containerRef = useRef<HTMLDivElement>(null)
+  const sourceEditorRef = useRef<HTMLTextAreaElement>(null)
+  const flushTimerRef = useRef<number | null>(null)
+  const pendingDraftRef = useRef<string | null>(null)
   const [viewMode, setViewMode] = useState<'rendered' | 'source'>('rendered')
   const [copied, setCopied] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [draftContent, setDraftContent] = useState(tab.content || '')
+
+  const clearFlushTimer = useCallback(() => {
+    if (flushTimerRef.current != null) {
+      window.clearTimeout(flushTimerRef.current)
+      flushTimerRef.current = null
+    }
+  }, [])
+
+  const flushDraft = useCallback((nextContent: string) => {
+    if (onContentChange) {
+      onContentChange(nextContent)
+    }
+    pendingDraftRef.current = null
+  }, [onContentChange])
+
+  const flushPendingDraft = useCallback(() => {
+    clearFlushTimer()
+    if (pendingDraftRef.current != null) {
+      flushDraft(pendingDraftRef.current)
+    }
+  }, [clearFlushTimer, flushDraft])
+
+  const scheduleFlushDraft = useCallback((nextContent: string) => {
+    pendingDraftRef.current = nextContent
+    clearFlushTimer()
+    flushTimerRef.current = window.setTimeout(() => {
+      flushDraft(nextContent)
+    }, 200)
+  }, [clearFlushTimer, flushDraft])
+
+  useEffect(() => {
+    setDraftContent(tab.content || '')
+    pendingDraftRef.current = null
+    clearFlushTimer()
+  }, [tab.id, tab.content, clearFlushTimer])
+
+  useEffect(() => {
+    return () => {
+      flushPendingDraft()
+    }
+  }, [flushPendingDraft])
 
   // Restore scroll position
   useEffect(() => {
-    if (containerRef.current && tab.scrollPosition !== undefined) {
+    if (tab.scrollPosition === undefined) return
+    if (viewMode === 'source') {
+      if (sourceEditorRef.current) {
+        sourceEditorRef.current.scrollTop = tab.scrollPosition
+      }
+      return
+    }
+    if (containerRef.current) {
       containerRef.current.scrollTop = tab.scrollPosition
     }
   }, [tab.id, viewMode])
@@ -44,15 +99,28 @@ export function MarkdownViewer({ tab, onScrollChange }: MarkdownViewerProps) {
 
   // Copy content
   const handleCopy = async () => {
-    if (!tab.content) return
+    if (!draftContent) return
     try {
-      await navigator.clipboard.writeText(tab.content)
+      await navigator.clipboard.writeText(draftContent)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch (err) {
       console.error('Failed to copy:', err)
     }
   }
+
+  const handleContentChange = useCallback((nextContent: string) => {
+    setDraftContent(nextContent)
+    scheduleFlushDraft(nextContent)
+  }, [scheduleFlushDraft])
+
+  const handleSave = useCallback(() => {
+    if (!onSave) return
+    flushPendingDraft()
+    onSave()
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2000)
+  }, [flushPendingDraft, onSave])
 
   // Open with external application
   const handleOpenExternal = async () => {
@@ -64,7 +132,7 @@ export function MarkdownViewer({ tab, onScrollChange }: MarkdownViewerProps) {
     }
   }
 
-  const content = tab.content || ''
+  const content = draftContent
   const canOpenExternal = !api.isRemoteMode() && tab.path
   const markdownBasePath = tab.path ? dirname(tab.path) : tab.workDir
 
@@ -118,6 +186,21 @@ export function MarkdownViewer({ tab, onScrollChange }: MarkdownViewerProps) {
             )}
           </button>
 
+          {/* Save button */}
+          {onSave && (
+            <button
+              onClick={handleSave}
+              className="p-1.5 rounded hover:bg-secondary transition-colors"
+              title={t('Save (Cmd+S)')}
+            >
+              {saved ? (
+                <Check className="w-4 h-4 text-green-500" />
+              ) : (
+                <Save className="w-4 h-4 text-muted-foreground" />
+              )}
+            </button>
+          )}
+
           {/* Open with external app */}
           {canOpenExternal && (
             <button
@@ -142,7 +225,13 @@ export function MarkdownViewer({ tab, onScrollChange }: MarkdownViewerProps) {
             <MarkdownRenderer content={content} basePath={markdownBasePath} />
           </div>
         ) : (
-          <SourceView content={content} />
+          <SourceEditor
+            editorRef={sourceEditorRef}
+            content={content}
+            onContentChange={handleContentChange}
+            onSave={handleSave}
+            onScrollChange={onScrollChange}
+          />
         )}
       </div>
     </div>
@@ -150,26 +239,37 @@ export function MarkdownViewer({ tab, onScrollChange }: MarkdownViewerProps) {
 }
 
 /**
- * Source code view with line numbers
+ * Source editor for markdown with save shortcut
  */
-function SourceView({ content }: { content: string }) {
-  const lines = content.split('\n')
+function SourceEditor({
+  editorRef,
+  content,
+  onContentChange,
+  onSave,
+  onScrollChange
+}: {
+  editorRef: RefObject<HTMLTextAreaElement>
+  content: string
+  onContentChange: (content: string) => void
+  onSave?: () => void
+  onScrollChange?: (position: number) => void
+}) {
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
+      e.preventDefault()
+      onSave?.()
+    }
+  }, [onSave])
 
   return (
-    <div className="flex font-mono text-sm">
-      {/* Line numbers */}
-      <div className="sticky left-0 flex-shrink-0 select-none bg-background/80 backdrop-blur-sm border-r border-border/50 text-right text-muted-foreground/40 text-xs pr-3 pl-4 py-4">
-        {lines.map((_, i) => (
-          <div key={i + 1} className="leading-6">
-            {i + 1}
-          </div>
-        ))}
-      </div>
-
-      {/* Content */}
-      <pre className="flex-1 p-4 overflow-x-auto whitespace-pre-wrap break-words">
-        {content}
-      </pre>
-    </div>
+    <textarea
+      ref={editorRef}
+      value={content}
+      onChange={(e) => onContentChange(e.target.value)}
+      onKeyDown={handleKeyDown}
+      onScroll={(e) => onScrollChange?.(e.currentTarget.scrollTop)}
+      spellCheck={false}
+      className="w-full h-full resize-none bg-background text-foreground p-4 font-mono text-sm leading-6 outline-none"
+    />
   )
 }

@@ -798,5 +798,16 @@
   "Zoom in": "放大",
   "Zoom in (+)": "放大 (+)",
   "Zoom out": "缩小",
-  "Zoom out (-)": "缩小 (-)"
+  "Zoom out (-)": "缩小 (-)",
+  "New folder": "新文件夹",
+  "Rename": "重命名",
+  "Enter file name:": "输入文件名：",
+  "Enter folder name:": "输入文件夹名：",
+  "Enter new name:": "输入新名称：",
+  "Failed to create file": "创建文件失败",
+  "Failed to create folder": "创建文件夹失败",
+  "Failed to rename": "重命名失败",
+  "Failed to delete": "删除失败",
+  "Delete folder \"{{name}}\" and all its contents?": "删除文件夹“{{name}}”及其所有内容？",
+  "Delete file \"{{name}}\"?": "删除文件“{{name}}”？"
 }

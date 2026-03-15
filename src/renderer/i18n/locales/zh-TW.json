@@ -566,5 +566,17 @@
   "Anthropic Compatible": "Anthropic 相容",
   "Vendor": "供應商",
   "Protocol": "協定",
-  "Connection successful": "連線成功"
+  "Connection successful": "連線成功",
+  "New folder": "新資料夾",
+  "Rename": "重新命名",
+  "Enter file name:": "輸入檔案名稱：",
+  "Enter folder name:": "輸入資料夾名稱：",
+  "Enter new name:": "輸入新名稱：",
+  "Failed to create file": "建立檔案失敗",
+  "Failed to create folder": "建立資料夾失敗",
+  "Failed to rename": "重新命名失敗",
+  "Failed to delete": "刪除失敗",
+  "Delete folder \"{{name}}\" and all its contents?": "刪除資料夾「{{name}}」及其所有內容？",
+  "Delete file \"{{name}}\"?": "刪除檔案「{{name}}」？",
+  "Refresh": "重新整理"
 }

@@ -3,7 +3,7 @@
  * Provides real-time artifact discovery and file information
  */
 
-import { readdirSync, statSync, existsSync, readFileSync, promises as fsPromises } from 'fs'
+import { readdirSync, statSync, existsSync, readFileSync, promises as fsPromises, type Dirent } from 'fs'
 import { join, extname, basename, dirname, normalize } from 'path'
 import fs from 'fs'
 import { getTempSpacePath } from './config.service'
@@ -142,8 +142,8 @@ function scanDirectory(
     const entries = readdirSync(dirPath, { withFileTypes: true })
 
     for (const entry of entries) {
-      // Skip hidden files and node_modules
-      if (entry.name.startsWith('.') || entry.name === 'node_modules') {
+      // Keep hidden files (e.g. .env.local), but ignore hidden dirs and build caches
+      if (shouldSkipArtifactEntry(entry)) {
         continue
       }
 
@@ -267,13 +267,8 @@ function scanDirectoryTree(
     })
 
     for (const entry of entries) {
-      // Skip hidden files and common ignored directories
-      if (entry.name.startsWith('.') ||
-          entry.name === 'node_modules' ||
-          entry.name === '__pycache__' ||
-          entry.name === 'dist' ||
-          entry.name === 'build' ||
-          entry.name === '.git') {
+      // Keep hidden files (e.g. .env.local), but ignore hidden dirs and build caches
+      if (shouldSkipArtifactEntry(entry)) {
         continue
       }
 
@@ -316,6 +311,20 @@ function scanDirectoryTree(
   }
 
   return nodes
+}
+
+function shouldSkipArtifactEntry(entry: Dirent): boolean {
+  if (entry.isDirectory()) {
+    return entry.name.startsWith('.') ||
+      entry.name === 'node_modules' ||
+      entry.name === '__pycache__' ||
+      entry.name === 'dist' ||
+      entry.name === 'build' ||
+      entry.name === '.git'
+  }
+
+  // Ignore common OS metadata files
+  return entry.name === '.DS_Store'
 }
 
 // List artifacts as tree structure for developer view
@@ -563,46 +572,115 @@ export async function writeArtifactContent(
 // File Management Operations
 // ============================================
 
+export interface CreateArtifactEntryParams {
+  type: 'file' | 'folder'
+  parentPath: string
+  name: string
+  content?: string
+}
+
+export interface CreateArtifactEntryResult {
+  success: boolean
+  error?: string
+  data?: {
+    path: string
+    name: string
+    type: 'file' | 'folder'
+  }
+}
+
+function validateArtifactEntryName(name: string): { valid: true; normalizedName: string } | { valid: false; error: string } {
+  const normalizedName = name.trim()
+  if (!normalizedName) {
+    return { valid: false, error: 'Name cannot be empty' }
+  }
+  if (normalizedName === '.' || normalizedName === '..') {
+    return { valid: false, error: 'Invalid name' }
+  }
+  if (/[\\/]/.test(normalizedName)) {
+    return { valid: false, error: 'Name cannot contain path separators' }
+  }
+  return { valid: true, normalizedName }
+}
+
+export async function createArtifactEntry(params: CreateArtifactEntryParams): Promise<CreateArtifactEntryResult> {
+  const { type, parentPath, name, content = '' } = params
+  const normalizedParentPath = normalize(parentPath)
+  const nameValidation = validateArtifactEntryName(name)
+
+  if (!nameValidation.valid) {
+    const error = nameValidation.error
+    console.error('[Artifact] Create entry rejected:', { type, parentPath, name, error })
+    return { success: false, error }
+  }
+
+  const targetPath = normalize(join(normalizedParentPath, nameValidation.normalizedName))
+  console.log('[Artifact] Creating entry:', { type, parentPath: normalizedParentPath, targetPath })
+
+  try {
+    if (!isPathInAllowedSpace(normalizedParentPath)) {
+      const error = 'Parent path not in allowed space'
+      console.error('[Artifact] Create entry denied:', { type, parentPath: normalizedParentPath, name, error })
+      return { success: false, error }
+    }
+
+    if (!isPathInAllowedSpace(targetPath)) {
+      const error = 'Path not in allowed space'
+      console.error('[Artifact] Create entry denied:', { type, targetPath, name, error })
+      return { success: false, error }
+    }
+
+    if (existsSync(targetPath)) {
+      const error = 'File or folder already exists'
+      console.error('[Artifact] Create entry failed:', { type, targetPath, name, error })
+      return { success: false, error }
+    }
+
+    await fs.promises.mkdir(normalizedParentPath, { recursive: true })
+
+    if (type === 'folder') {
+      await fs.promises.mkdir(targetPath)
+    } else {
+      await fs.promises.writeFile(targetPath, content, 'utf-8')
+    }
+
+    console.log('[Artifact] Create entry succeeded:', { type, targetPath })
+    return {
+      success: true,
+      data: {
+        path: targetPath,
+        name: nameValidation.normalizedName,
+        type
+      }
+    }
+  } catch (error) {
+    const errorMessage = `Failed to create ${type}: ${(error as Error).message}`
+    console.error('[Artifact] Create entry error:', { type, parentPath: normalizedParentPath, name, targetPath, error: errorMessage })
+    return { success: false, error: errorMessage }
+  }
+}
+
 /**
  * Create a new folder
  */
 export async function createFolder(folderPath: string): Promise<{ success: boolean; error?: string }> {
-  console.log(`[Artifact] Creating folder: ${folderPath}`)
-
-  try {
-    if (!isPathInAllowedSpace(folderPath)) {
-      return { success: false, error: 'Path not in allowed space' }
-    }
-    await fs.promises.mkdir(folderPath, { recursive: true })
-    console.log(`[Artifact] Successfully created folder: ${folderPath}`)
-    return { success: true }
-  } catch (error) {
-    const errorMessage = `Failed to create folder: ${(error as Error).message}`
-    console.error(`[Artifact] ${errorMessage}`)
-    return { success: false, error: errorMessage }
-  }
+  return createArtifactEntry({
+    type: 'folder',
+    parentPath: dirname(folderPath),
+    name: basename(folderPath)
+  })
 }
 
 /**
  * Create a new file with optional content
  */
 export async function createFile(filePath: string, content: string = ''): Promise<{ success: boolean; error?: string }> {
-  console.log(`[Artifact] Creating file: ${filePath}`)
-
-  try {
-    if (!isPathInAllowedSpace(filePath)) {
-      return { success: false, error: 'Path not in allowed space' }
-    }
-    const dir = dirname(filePath)
-    await fs.promises.mkdir(dir, { recursive: true })
-    await fs.promises.writeFile(filePath, content, 'utf-8')
-    console.log(`[Artifact] Successfully created file: ${filePath}`)
-    return { success: true }
-  } catch (error) {
-    const errorMessage = `Failed to create file: ${(error as Error).message}`
-    console.error(`[Artifact] ${errorMessage}`)
-    return { success: false, error: errorMessage }
-  }
+  return createArtifactEntry({
+    type: 'file',
+    parentPath: dirname(filePath),
+    name: basename(filePath),
+    content
+  })
 }
 
 /**

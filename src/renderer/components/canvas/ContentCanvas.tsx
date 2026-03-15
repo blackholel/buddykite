@@ -302,7 +302,7 @@ function TabContent({ tab, onScrollChange, onContentChange, onSave }: TabContent
     case 'markdown':
       return (
         <Suspense fallback={viewerFallback}>
-          <LazyMarkdownViewer tab={tab} onScrollChange={onScrollChange} />
+          <LazyMarkdownViewer tab={tab} onScrollChange={onScrollChange} onContentChange={onContentChange} onSave={onSave} />
         </Suspense>
       )
 

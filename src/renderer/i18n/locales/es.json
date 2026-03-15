@@ -556,5 +556,17 @@
   "Anthropic Compatible": "Compatible con Anthropic",
   "Vendor": "Proveedor",
   "Protocol": "Protocolo",
-  "Connection successful": "Conexión exitosa"
+  "Connection successful": "Conexión exitosa",
+  "New folder": "Nueva carpeta",
+  "Rename": "Renombrar",
+  "Enter file name:": "Introduce el nombre del archivo:",
+  "Enter folder name:": "Introduce el nombre de la carpeta:",
+  "Enter new name:": "Introduce el nuevo nombre:",
+  "Failed to create file": "No se pudo crear el archivo",
+  "Failed to create folder": "No se pudo crear la carpeta",
+  "Failed to rename": "No se pudo renombrar",
+  "Failed to delete": "No se pudo eliminar",
+  "Delete folder \"{{name}}\" and all its contents?": "¿Eliminar la carpeta \"{{name}}\" y todo su contenido?",
+  "Delete file \"{{name}}\"?": "¿Eliminar el archivo \"{{name}}\"?",
+  "Refresh": "Actualizar"
 }
