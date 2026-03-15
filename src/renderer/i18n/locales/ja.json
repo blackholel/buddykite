@@ -549,5 +549,7 @@
   "Failed to delete": "削除に失敗しました",
   "Delete folder \"{{name}}\" and all its contents?": "フォルダ「{{name}}」と中身をすべて削除しますか？",
   "Delete file \"{{name}}\"?": "ファイル「{{name}}」を削除しますか？",
-  "Refresh": "更新"
+  "Refresh": "更新",
+  "General": "一般",
+  "Network": "ネットワーク"
 }

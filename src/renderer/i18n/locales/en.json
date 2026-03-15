@@ -637,6 +637,8 @@
   "Start a new conversation to create history": "Start a new conversation to create history",
   "Start fast with one click": "Start fast with one click",
   "Start in 3 simple steps": "Start in 3 simple steps",
+  "Starter experience": "Starter experience",
+  "Show starter cards and quick-start actions": "Show starter cards and quick-start actions",
   "Start Tunnel": "Start Tunnel",
   "Start using Kite": "Start using Kite",
   "Starter tasks": "Starter tasks",
@@ -762,5 +764,7 @@
   "Failed to delete": "Failed to delete",
   "Delete folder \"{{name}}\" and all its contents?": "Delete folder \"{{name}}\" and all its contents?",
   "Delete file \"{{name}}\"?": "Delete file \"{{name}}\"?",
-  "Refresh": "Refresh"
+  "Refresh": "Refresh",
+  "General": "General",
+  "Network": "Network"
 }

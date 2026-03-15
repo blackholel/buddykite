@@ -116,7 +116,13 @@ function directiveLookupKeys(ref: DirectiveRef): string[] {
 
 export function HomePage(): JSX.Element {
   const { t } = useTranslation()
-  const { setView, config, setConfig } = useAppStore()
+  const {
+    setView,
+    config,
+    setConfig,
+    starterExperienceHiddenForSession,
+    setStarterExperienceHiddenForSession
+  } = useAppStore()
   const requestInsert = useComposerStore(state => state.requestInsert)
   const {
     kiteSpace,
@@ -170,12 +176,14 @@ export function HomePage(): JSX.Element {
   const [customPath, setCustomPath] = useState<string | null>(null)
   const [defaultPath, setDefaultPath] = useState<string>('')
   const [activeTab, setActiveTab] = useState<'spaces' | 'extensions'>('spaces')
-  const [showHomeOnboarding, setShowHomeOnboarding] = useState(true)
   const [showHomeOnboardingDialog, setShowHomeOnboardingDialog] = useState(false)
   const [showModelSetupHint, setShowModelSetupHint] = useState(true)
   const [createSpaceSuccessPath, setCreateSpaceSuccessPath] = useState<string | null>(null)
   const [preferredWorkspaceView, setPreferredWorkspaceView] = useState<WorkspaceViewMode>(() => readWorkspaceViewMode())
   const aiSetupState = useMemo(() => getAiSetupState(config), [config])
+  const starterExperienceHiddenByConfig = config?.onboarding?.starterExperienceHidden === true
+    || config?.onboarding?.homeGuideHidden === true
+  const starterExperienceHidden = starterExperienceHiddenForSession || starterExperienceHiddenByConfig
   const createSpacePathPreview = useMemo(() => {
     if (useCustomPath && customPath) return customPath
     if (!useCustomPath && defaultPath && newSpaceName.trim()) {
@@ -222,28 +230,25 @@ export function HomePage(): JSX.Element {
   }, [loadDefaultPath])
 
   useEffect(() => {
-    const hiddenByConfig = config?.onboarding?.homeGuideHidden === true
-    if (hiddenByConfig) {
-      setShowHomeOnboarding(false)
-      return
-    }
+    if (starterExperienceHiddenByConfig) return
 
     // Migration path: old versions stored this preference in localStorage only.
     if (typeof window === 'undefined') return
     const visibility = localStorage.getItem(LEGACY_HOME_ONBOARDING_VISIBILITY_KEY)
     if (visibility !== 'hide-forever') return
 
-    setShowHomeOnboarding(false)
+    setStarterExperienceHiddenForSession(true)
     localStorage.removeItem(LEGACY_HOME_ONBOARDING_VISIBILITY_KEY)
 
-    void api.setConfig({ onboarding: { homeGuideHidden: true } })
+    void api.setConfig({ onboarding: { homeGuideHidden: true, starterExperienceHidden: true } })
       .then((response) => {
         if (response.success && config) {
           setConfig({
             ...config,
             onboarding: {
               ...config.onboarding,
-              homeGuideHidden: true
+              homeGuideHidden: true,
+              starterExperienceHidden: true
             }
           })
         }
@@ -251,7 +256,7 @@ export function HomePage(): JSX.Element {
       .catch((error) => {
         console.error('[HomePage] Failed to migrate home onboarding visibility:', error)
       })
-  }, [config, setConfig])
+  }, [config, setConfig, setStarterExperienceHiddenForSession, starterExperienceHiddenByConfig])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -414,25 +419,26 @@ export function HomePage(): JSX.Element {
   }
 
   const handleHideHomeOnboardingForNow = (): void => {
-    setShowHomeOnboarding(false)
+    setStarterExperienceHiddenForSession(true)
     setShowHomeOnboardingDialog(false)
   }
 
   const handleHideHomeOnboardingForever = (): void => {
-    setShowHomeOnboarding(false)
+    setStarterExperienceHiddenForSession(true)
     setShowHomeOnboardingDialog(false)
     if (typeof window !== 'undefined') {
       localStorage.setItem(LEGACY_HOME_ONBOARDING_VISIBILITY_KEY, 'hide-forever')
     }
 
-    void api.setConfig({ onboarding: { homeGuideHidden: true } })
+    void api.setConfig({ onboarding: { homeGuideHidden: true, starterExperienceHidden: true } })
       .then((response) => {
         if (response.success && config) {
           setConfig({
             ...config,
             onboarding: {
               ...config.onboarding,
-              homeGuideHidden: true
+              homeGuideHidden: true,
+              starterExperienceHidden: true
             }
           })
         }
@@ -696,34 +702,36 @@ export function HomePage(): JSX.Element {
                   </div>
                 )}
                 <section className="space-y-4 mb-9">
-                  <div className="home-onboard-card stagger-item" style={{ animationDelay: '0ms' }}>
-                    <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-                      <div className="rounded-xl border border-border/70 bg-card/80 p-4">
-                        <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground mb-1.5">
-                          {t('What can I do')}
-                        </p>
-                        <p className="text-sm font-medium leading-relaxed">
-                          {t('Describe your goal and Kite will produce files, drafts, code, and task steps.')}
-                        </p>
-                      </div>
-                      <div className="rounded-xl border border-border/70 bg-card/80 p-4">
-                        <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground mb-1.5">
-                          {t('Where should I start')}
-                        </p>
-                        <p className="text-sm font-medium leading-relaxed">
-                          {t('Pick one starter task below, then iterate with plain language.')}
-                        </p>
-                      </div>
-                      <div className="rounded-xl border border-border/70 bg-card/80 p-4">
-                        <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground mb-1.5">
-                          {t('What should I click now')}
-                        </p>
-                        <p className="text-sm font-medium leading-relaxed">
-                          {t('Use Enter Kite for quick start, or create a dedicated space for long projects.')}
-                        </p>
+                  {!starterExperienceHidden && (
+                    <div className="home-onboard-card stagger-item" style={{ animationDelay: '0ms' }}>
+                      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                        <div className="rounded-xl border border-border/70 bg-card/80 p-4">
+                          <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground mb-1.5">
+                            {t('What can I do')}
+                          </p>
+                          <p className="text-sm font-medium leading-relaxed">
+                            {t('Describe your goal and Kite will produce files, drafts, code, and task steps.')}
+                          </p>
+                        </div>
+                        <div className="rounded-xl border border-border/70 bg-card/80 p-4">
+                          <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground mb-1.5">
+                            {t('Where should I start')}
+                          </p>
+                          <p className="text-sm font-medium leading-relaxed">
+                            {t('Pick one starter task below, then iterate with plain language.')}
+                          </p>
+                        </div>
+                        <div className="rounded-xl border border-border/70 bg-card/80 p-4">
+                          <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground mb-1.5">
+                            {t('What should I click now')}
+                          </p>
+                          <p className="text-sm font-medium leading-relaxed">
+                            {t('Use Enter Kite for quick start, or create a dedicated space for long projects.')}
+                          </p>
+                        </div>
                       </div>
                     </div>
-                  </div>
+                  )}
 
                   {!aiSetupState.configured && showModelSetupHint && (
                     <div className="home-onboard-card stagger-item" style={{ animationDelay: '30ms' }}>
@@ -834,7 +842,7 @@ export function HomePage(): JSX.Element {
                     </div>
                   )}
 
-                  {showHomeOnboarding && (
+                  {!starterExperienceHidden && (
                     <div className="home-onboard-card stagger-item" style={{ animationDelay: '90ms' }}>
                       <div className="flex items-start justify-between gap-4">
                         <div className="min-w-0">
@@ -893,40 +901,42 @@ export function HomePage(): JSX.Element {
                     </div>
                   )}
 
-                  <div className="stagger-item" style={{ animationDelay: '120ms' }}>
-                    <div className="mb-3 flex items-center justify-between">
-                      <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                        {t('Starter tasks')}
-                      </h3>
-                      <span className="text-xs text-muted-foreground">{t('Click once to insert a complete prompt')}</span>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-                      {QUICK_ACTIONS.map((action, index) => {
-                        const Icon = action.icon
-                        return (
-                          <button
-                            key={action.id}
-                            type="button"
-                            onClick={() => handleQuickAction(t(action.promptKey))}
-                            className="space-card p-4 text-left group"
-                            style={{ animationDelay: `${120 + index * 35}ms` }}
-                          >
-                            <div className="flex items-center gap-3">
-                              <div className="w-9 h-9 rounded-lg border border-border/70 bg-card/80 flex items-center justify-center">
-                                <Icon className="w-4 h-4 text-foreground/75" />
+                  {!starterExperienceHidden && (
+                    <div className="stagger-item" style={{ animationDelay: '120ms' }}>
+                      <div className="mb-3 flex items-center justify-between">
+                        <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                          {t('Starter tasks')}
+                        </h3>
+                        <span className="text-xs text-muted-foreground">{t('Click once to insert a complete prompt')}</span>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                        {QUICK_ACTIONS.map((action, index) => {
+                          const Icon = action.icon
+                          return (
+                            <button
+                              key={action.id}
+                              type="button"
+                              onClick={() => handleQuickAction(t(action.promptKey))}
+                              className="space-card p-4 text-left group"
+                              style={{ animationDelay: `${120 + index * 35}ms` }}
+                            >
+                              <div className="flex items-center gap-3">
+                                <div className="w-9 h-9 rounded-lg border border-border/70 bg-card/80 flex items-center justify-center">
+                                  <Icon className="w-4 h-4 text-foreground/75" />
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="text-sm font-medium truncate">{t(action.titleKey)}</p>
+                                  <p className="text-xs text-muted-foreground mt-0.5">
+                                    {kiteSpace ? t('Insert and open') : t('Insert and create space')}
+                                  </p>
+                                </div>
                               </div>
-                              <div className="min-w-0">
-                                <p className="text-sm font-medium truncate">{t(action.titleKey)}</p>
-                                <p className="text-xs text-muted-foreground mt-0.5">
-                                  {kiteSpace ? t('Insert and open') : t('Insert and create space')}
-                                </p>
-                              </div>
-                            </div>
-                          </button>
-                        )
-                      })}
+                            </button>
+                          )
+                        })}
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </section>
 
                 {/* Spaces Section Header */}

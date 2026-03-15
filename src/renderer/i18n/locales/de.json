@@ -549,5 +549,7 @@
   "Failed to delete": "Löschen fehlgeschlagen",
   "Delete folder \"{{name}}\" and all its contents?": "Ordner \"{{name}}\" und alle Inhalte löschen?",
   "Delete file \"{{name}}\"?": "Datei \"{{name}}\" löschen?",
-  "Refresh": "Aktualisieren"
+  "Refresh": "Aktualisieren",
+  "General": "Allgemein",
+  "Network": "Netzwerk"
 }

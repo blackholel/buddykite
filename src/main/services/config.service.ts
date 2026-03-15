@@ -158,6 +158,7 @@ interface KiteConfig {
   onboarding: {
     completed: boolean
     homeGuideHidden: boolean
+    starterExperienceHidden: boolean
   }
   // MCP servers configuration (compatible with Cursor / Claude Desktop format)
   mcpServers: Record<string, McpServerConfig>
@@ -323,7 +324,8 @@ const DEFAULT_CONFIG: KiteConfig = {
   },
   onboarding: {
     completed: false,
-    homeGuideHidden: false
+    homeGuideHidden: false,
+    starterExperienceHidden: false
   },
   mcpServers: {},  // Empty by default
   isFirstLaunch: true,
@@ -840,10 +842,18 @@ export function getConfig(): KiteConfig {
       }
     }
 
+    const hasStarterExperienceFlag = typeof parsed.onboarding?.starterExperienceHidden === 'boolean'
+    const hasLegacyHomeGuideHidden = parsed.onboarding?.homeGuideHidden === true
+    let shouldPersistOnboardingMigration = false
+    if (!hasStarterExperienceFlag && hasLegacyHomeGuideHidden) {
+      mergedConfig.onboarding.starterExperienceHidden = true
+      shouldPersistOnboardingMigration = true
+    }
+
     const shouldPersistThemeMigration = parsed.appearance?.theme !== undefined
       && parsed.appearance.theme !== mergedConfig.appearance.theme
 
-    if (hadLegacyTaxonomyField || shouldPersistThemeMigration) {
+    if (hadLegacyTaxonomyField || shouldPersistThemeMigration || shouldPersistOnboardingMigration) {
       writeFileSync(configPath, JSON.stringify(mergedConfig, null, 2))
     }
 

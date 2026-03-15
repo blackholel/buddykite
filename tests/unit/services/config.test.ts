@@ -604,6 +604,7 @@ describe('Config Service', () => {
       expect(config.api.apiUrl).toBe('https://api.anthropic.com')
       expect(config.permissions.commandExecution).toBe('ask')
       expect(config.appearance.theme).toBe('light')
+      expect(config.onboarding.starterExperienceHidden).toBe(false)
       expect(config.isFirstLaunch).toBe(true)
       expect(config.configSourceMode).toBe('kite')
     })
@@ -660,6 +661,26 @@ describe('Config Service', () => {
       const saved = JSON.parse(fs.readFileSync(configPath, 'utf-8')) as Record<string, unknown>
       expect(saved[LEGACY_TAXONOMY_KEY]).toBeUndefined()
       expect(saved.isFirstLaunch).toBe(false)
+    })
+
+    it('should migrate onboarding.homeGuideHidden to starterExperienceHidden and persist', async () => {
+      await initializeApp()
+
+      const configPath = getConfigPath()
+      fs.writeFileSync(configPath, JSON.stringify({
+        onboarding: {
+          completed: false,
+          homeGuideHidden: true
+        }
+      }))
+
+      const config = getConfig()
+      expect(config.onboarding.homeGuideHidden).toBe(true)
+      expect(config.onboarding.starterExperienceHidden).toBe(true)
+
+      const saved = JSON.parse(fs.readFileSync(configPath, 'utf-8'))
+      expect(saved.onboarding.homeGuideHidden).toBe(true)
+      expect(saved.onboarding.starterExperienceHidden).toBe(true)
     })
   })
 

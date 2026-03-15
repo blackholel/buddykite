@@ -212,7 +212,7 @@ interface UpdaterState {
 
 export function SettingsPage() {
   const { t } = useTranslation()
-  const { config, setConfig, goBack } = useAppStore()
+  const { config, setConfig, goBack, setStarterExperienceHiddenForSession } = useAppStore()
 
   const initialAiConfig = ensureAiConfig(config?.ai, config?.api)
   const [profiles, setProfiles] = useState<ApiProfile[]>(ensureTemplateProfiles(initialAiConfig.profiles))
@@ -494,6 +494,33 @@ export function SettingsPage() {
     } catch (error) {
       console.error('[Settings] Failed to set minimize to tray:', error)
       setMinimizeToTray(!enabled) // Revert on error
+    }
+  }
+
+  const handleStarterExperienceVisibilityChange = async (visible: boolean) => {
+    const hidden = !visible
+    try {
+      await api.setConfig({
+        onboarding: {
+          homeGuideHidden: hidden,
+          starterExperienceHidden: hidden
+        }
+      })
+      if (config) {
+        setConfig({
+          ...config,
+          onboarding: {
+            ...config.onboarding,
+            homeGuideHidden: hidden,
+            starterExperienceHidden: hidden
+          }
+        } as KiteConfig)
+      }
+      if (visible) {
+        setStarterExperienceHiddenForSession(false)
+      }
+    } catch (error) {
+      console.error('[Settings] Failed to set starter experience visibility:', error)
     }
   }
 
@@ -1256,6 +1283,19 @@ export function SettingsPage() {
         <p className="text-sm text-muted-foreground">{t('System settings are unavailable in remote mode')}</p>
       ) : (
         <div className="space-y-3">
+          <div className="settings-setting-row">
+            <div className="flex-1 pr-4">
+              <p className="font-medium">{t('Starter experience')}</p>
+              <p className="text-sm text-muted-foreground">{t('Show starter cards and quick-start actions')}</p>
+            </div>
+            <AppleToggle
+              checked={!(
+                config?.onboarding?.starterExperienceHidden === true
+                || config?.onboarding?.homeGuideHidden === true
+              )}
+              onChange={handleStarterExperienceVisibilityChange}
+            />
+          </div>
           <div className="settings-setting-row">
             <div className="flex-1 pr-4">
               <p className="font-medium">{t('Auto Launch on Startup')}</p>

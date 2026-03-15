@@ -578,5 +578,7 @@
   "Failed to delete": "刪除失敗",
   "Delete folder \"{{name}}\" and all its contents?": "刪除資料夾「{{name}}」及其所有內容？",
   "Delete file \"{{name}}\"?": "刪除檔案「{{name}}」？",
-  "Refresh": "重新整理"
+  "Refresh": "重新整理",
+  "General": "一般",
+  "Network": "網路"
 }

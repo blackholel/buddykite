@@ -215,6 +215,7 @@ export interface KiteConfig {
   onboarding: {
     completed: boolean;
     homeGuideHidden: boolean;
+    starterExperienceHidden: boolean;
   };
   mcpServers: McpServersConfig;  // MCP servers configuration
   isFirstLaunch: boolean;
@@ -850,6 +851,11 @@ export const DEFAULT_CONFIG: KiteConfig = {
   remoteAccess: {
     enabled: false,
     port: 3456
+  },
+  onboarding: {
+    completed: false,
+    homeGuideHidden: false,
+    starterExperienceHidden: false
   },
   mcpServers: {},  // Empty by default
   isFirstLaunch: true,

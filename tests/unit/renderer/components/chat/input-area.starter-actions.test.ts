@@ -4,6 +4,7 @@ import { shouldShowStarterActions } from '../../../../../src/renderer/components
 describe('shouldShowStarterActions', () => {
   it('returns true when composer is clean and idle', () => {
     expect(shouldShowStarterActions({
+      starterExperienceHidden: false,
       isGenerating: false,
       isOnboardingSendStep: false,
       hasConversationStarted: false,
@@ -16,6 +17,7 @@ describe('shouldShowStarterActions', () => {
 
   it('returns false when there is any user input context', () => {
     expect(shouldShowStarterActions({
+      starterExperienceHidden: false,
       isGenerating: false,
       isOnboardingSendStep: false,
       hasConversationStarted: false,
@@ -26,6 +28,7 @@ describe('shouldShowStarterActions', () => {
     })).toBe(false)
 
     expect(shouldShowStarterActions({
+      starterExperienceHidden: false,
       isGenerating: false,
       isOnboardingSendStep: false,
       hasConversationStarted: false,
@@ -36,6 +39,7 @@ describe('shouldShowStarterActions', () => {
     })).toBe(false)
 
     expect(shouldShowStarterActions({
+      starterExperienceHidden: false,
       isGenerating: false,
       isOnboardingSendStep: false,
       hasConversationStarted: false,
@@ -46,6 +50,7 @@ describe('shouldShowStarterActions', () => {
     })).toBe(false)
 
     expect(shouldShowStarterActions({
+      starterExperienceHidden: false,
       isGenerating: false,
       isOnboardingSendStep: false,
       hasConversationStarted: false,
@@ -58,6 +63,7 @@ describe('shouldShowStarterActions', () => {
 
   it('returns false during generation and onboarding send step', () => {
     expect(shouldShowStarterActions({
+      starterExperienceHidden: false,
       isGenerating: true,
       isOnboardingSendStep: false,
       hasConversationStarted: false,
@@ -68,6 +74,7 @@ describe('shouldShowStarterActions', () => {
     })).toBe(false)
 
     expect(shouldShowStarterActions({
+      starterExperienceHidden: false,
       isGenerating: false,
       isOnboardingSendStep: true,
       hasConversationStarted: false,
@@ -80,9 +87,23 @@ describe('shouldShowStarterActions', () => {
 
   it('returns false once conversation has started', () => {
     expect(shouldShowStarterActions({
+      starterExperienceHidden: false,
       isGenerating: false,
       isOnboardingSendStep: false,
       hasConversationStarted: true,
+      content: '',
+      selectedResourceChipCount: 0,
+      imageCount: 0,
+      fileContextCount: 0
+    })).toBe(false)
+  })
+
+  it('returns false when starter experience is hidden globally', () => {
+    expect(shouldShowStarterActions({
+      starterExperienceHidden: true,
+      isGenerating: false,
+      isOnboardingSendStep: false,
+      hasConversationStarted: false,
       content: '',
       selectedResourceChipCount: 0,
       imageCount: 0,

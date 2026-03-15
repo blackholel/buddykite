@@ -683,6 +683,8 @@
   "Start a new conversation to create history": "开始新对话以创建历史记录",
   "Start fast with one click": "一键快速开始",
   "Start in 3 simple steps": "3 步开始使用",
+  "Starter experience": "起步体验",
+  "Show starter cards and quick-start actions": "显示首页起步卡片和输入框快速开始",
   "Start Tunnel": "启动隧道",
   "Start using Kite": "开始使用 Kite",
   "Starter tasks": "起步任务",
@@ -810,5 +812,7 @@
   "Failed to rename": "重命名失败",
   "Failed to delete": "删除失败",
   "Delete folder \"{{name}}\" and all its contents?": "删除文件夹“{{name}}”及其所有内容？",
-  "Delete file \"{{name}}\"?": "删除文件“{{name}}”？"
+  "Delete file \"{{name}}\"?": "删除文件“{{name}}”？",
+  "General": "通用",
+  "Network": "网络"
 }

@@ -23,6 +23,7 @@ interface AppState {
 
   // Config
   config: KiteConfig | null
+  starterExperienceHiddenForSession: boolean
 
   // MCP Status (cached from last conversation)
   mcpStatus: McpServerStatus[]
@@ -39,6 +40,7 @@ interface AppState {
   setError: (error: string | null) => void
   setConfig: (config: KiteConfig) => void
   updateConfig: (updates: Partial<KiteConfig>) => void
+  setStarterExperienceHiddenForSession: (hidden: boolean) => void
   setMcpStatus: (status: McpServerStatus[], timestamp: number) => void
 
   // Git Bash actions
@@ -57,6 +59,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   isLoading: true,
   error: null,
   config: null,
+  starterExperienceHiddenForSession: false,
   mcpStatus: [],
   mcpStatusTimestamp: null,
   mockBashMode: false,
@@ -82,6 +85,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   setLoading: (isLoading) => set({ isLoading }),
   setError: (error) => set({ error }),
   setConfig: (config) => set({ config }),
+  setStarterExperienceHiddenForSession: (hidden) => set({ starterExperienceHiddenForSession: hidden }),
 
   updateConfig: (updates) => {
     const currentConfig = get().config

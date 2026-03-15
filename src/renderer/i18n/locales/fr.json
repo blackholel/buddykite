@@ -568,5 +568,7 @@
   "Failed to delete": "Échec de la suppression",
   "Delete folder \"{{name}}\" and all its contents?": "Supprimer le dossier \"{{name}}\" et tout son contenu ?",
   "Delete file \"{{name}}\"?": "Supprimer le fichier \"{{name}}\" ?",
-  "Refresh": "Actualiser"
+  "Refresh": "Actualiser",
+  "General": "Général",
+  "Network": "Réseau"
 }

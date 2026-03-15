@@ -25,6 +25,7 @@ import { useOnboardingStore } from '../../stores/onboarding.store'
 import { useAIBrowserStore } from '../../stores/ai-browser.store'
 import { api } from '../../api'
 import { getComposerMruMap, touchComposerMru } from '../../stores/composer-mru.store'
+import { useAppStore } from '../../stores/app.store'
 import { useSpaceStore } from '../../stores/space.store'
 import { useSkillsStore } from '../../stores/skills.store'
 import { useAgentsStore } from '../../stores/agents.store'
@@ -149,6 +150,7 @@ const STARTER_ACTIONS = [
 ] as const
 
 export function shouldShowStarterActions({
+  starterExperienceHidden,
   isGenerating,
   isOnboardingSendStep,
   hasConversationStarted,
@@ -157,6 +159,7 @@ export function shouldShowStarterActions({
   imageCount,
   fileContextCount
 }: {
+  starterExperienceHidden: boolean
   isGenerating: boolean
   isOnboardingSendStep: boolean
   hasConversationStarted: boolean
@@ -165,6 +168,7 @@ export function shouldShowStarterActions({
   imageCount: number
   fileContextCount: number
 }): boolean {
+  if (starterExperienceHidden) return false
   if (isGenerating || isOnboardingSendStep) return false
   if (hasConversationStarted) return false
   if (content.trim().length > 0) return false
@@ -386,6 +390,10 @@ export function InputArea({
   const isTriggerPanelOpen = Boolean(triggerContext) && !isOnboardingSendStep
 
   const mruSpaceId = spaceId || 'no-space'
+  const starterExperienceHiddenForSession = useAppStore(state => state.starterExperienceHiddenForSession)
+  const starterExperienceHidden = starterExperienceHiddenForSession
+    || config?.onboarding?.starterExperienceHidden === true
+    || config?.onboarding?.homeGuideHidden === true
   const conversationProfileId = conversation?.ai?.profileId
   const aiSetupState = useMemo(
     () => getAiSetupState(config, conversationProfileId),
@@ -1041,6 +1049,7 @@ export function InputArea({
   const hasImages = images.length > 0
   const hasFileContexts = fileContexts.length > 0
   const showStarterActions = shouldShowStarterActions({
+    starterExperienceHidden,
     isGenerating,
     isOnboardingSendStep,
     hasConversationStarted,

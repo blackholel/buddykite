@@ -568,5 +568,7 @@
   "Failed to delete": "No se pudo eliminar",
   "Delete folder \"{{name}}\" and all its contents?": "¿Eliminar la carpeta \"{{name}}\" y todo su contenido?",
   "Delete file \"{{name}}\"?": "¿Eliminar el archivo \"{{name}}\"?",
-  "Refresh": "Actualizar"
+  "Refresh": "Actualizar",
+  "General": "General",
+  "Network": "Red"
 }
