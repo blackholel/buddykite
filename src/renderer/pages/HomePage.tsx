@@ -26,6 +26,7 @@ import {
   pickWorkspaceSwitchTarget,
   type WorkspaceViewMode
 } from '../utils/workspace-view-mode'
+import { getWindowChromeInsets } from '../utils/window-chrome'
 import {
   SpaceIcon,
   Sparkles,
@@ -183,6 +184,7 @@ export function HomePage(): JSX.Element {
   const [createSpaceSuccessPath, setCreateSpaceSuccessPath] = useState<string | null>(null)
   const [preferredWorkspaceView, setPreferredWorkspaceView] = useState<WorkspaceViewMode>(() => readWorkspaceViewMode())
   const aiSetupState = useMemo(() => getAiSetupState(config), [config])
+  const windowChromeInsets = useMemo(() => getWindowChromeInsets(), [])
   const starterExperienceHiddenByConfig = config?.onboarding?.starterExperienceHidden === true
     || config?.onboarding?.homeGuideHidden === true
   const starterExperienceHidden = starterExperienceHiddenForSession || starterExperienceHiddenByConfig
@@ -663,55 +665,62 @@ export function HomePage(): JSX.Element {
       </div>
 
       {/* Content */}
-      <div className="flex-1 flex overflow-hidden relative z-10">
-        <HomeActivityBar
-          activeTab={activeTab}
-          onTabChange={setActiveTab}
-          onCreateSpace={() => setShowCreateDialog(true)}
-          onOpenSettings={() => setView('settings')}
-          spacesCount={spaces.length}
-          extensionsCount={skills.length + agents.length + commands.length}
-          className="hidden sm:block"
-        />
+      <div className="flex-1 flex flex-col overflow-hidden relative z-10">
+        {windowChromeInsets.top > 0 && (
+          <div
+            className="flex-shrink-0 drag-region border-b border-border/30 bg-background/90 backdrop-blur-xl"
+            style={{ height: `${windowChromeInsets.top}px` }}
+          />
+        )}
+        <div className="flex-1 flex overflow-hidden">
+          <HomeActivityBar
+            activeTab={activeTab}
+            onTabChange={setActiveTab}
+            onCreateSpace={() => setShowCreateDialog(true)}
+            onOpenSettings={() => setView('settings')}
+            spacesCount={spaces.length}
+            extensionsCount={skills.length + agents.length + commands.length}
+            className="hidden sm:block"
+          />
 
-        <div className="flex-1 flex flex-col overflow-hidden">
-          <div className="sm:hidden px-4 pt-4 space-y-2">
-            <div className="glass-card p-2 flex items-center gap-1.5">
+          <div className="flex-1 flex flex-col overflow-hidden">
+            <div className="sm:hidden px-4 pt-4 space-y-2">
+              <div className="glass-card p-2 flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('spaces')}
+                  className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs transition-all duration-200 ${
+                    activeTab === 'spaces'
+                      ? 'bg-secondary text-foreground font-medium'
+                      : 'text-muted-foreground hover:bg-secondary/75'
+                  }`}
+                >
+                  <LayoutGrid className="w-4 h-4" />
+                  {t('Spaces')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('extensions')}
+                  className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs transition-all duration-200 ${
+                    activeTab === 'extensions'
+                      ? 'bg-secondary text-foreground font-medium'
+                      : 'text-muted-foreground hover:bg-secondary/75'
+                  }`}
+                >
+                  <Puzzle className="w-4 h-4" />
+                  {t('Extensions')}
+                </button>
+              </div>
               <button
                 type="button"
-                onClick={() => setActiveTab('spaces')}
-                className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs transition-all duration-200 ${
-                  activeTab === 'spaces'
-                    ? 'bg-secondary text-foreground font-medium'
-                    : 'text-muted-foreground hover:bg-secondary/75'
-                }`}
+                onClick={() => setView('settings')}
+                className="w-full h-10 rounded-xl text-sm text-muted-foreground hover:text-foreground hover:bg-secondary/80 transition-all duration-200 border border-border/75 bg-card/70"
               >
-                <LayoutGrid className="w-4 h-4" />
-                {t('Spaces')}
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab('extensions')}
-                className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs transition-all duration-200 ${
-                  activeTab === 'extensions'
-                    ? 'bg-secondary text-foreground font-medium'
-                    : 'text-muted-foreground hover:bg-secondary/75'
-                }`}
-              >
-                <Puzzle className="w-4 h-4" />
-                {t('Extensions')}
+                {t('Settings')}
               </button>
             </div>
-            <button
-              type="button"
-              onClick={() => setView('settings')}
-              className="w-full h-10 rounded-xl text-sm text-muted-foreground hover:text-foreground hover:bg-secondary/80 transition-all duration-200 border border-border/75 bg-card/70"
-            >
-              {t('Settings')}
-            </button>
-          </div>
 
-          <main className="flex-1 overflow-auto">
+            <main className="flex-1 overflow-auto">
             {activeTab === 'spaces' ? (
               <div className="max-w-6xl mx-auto px-6 py-8 lg:py-10">
                 {createSpaceSuccessPath && (
@@ -1082,7 +1091,8 @@ export function HomePage(): JSX.Element {
             ) : (
               <ExtensionsView />
             )}
-          </main>
+            </main>
+          </div>
         </div>
       </div>
 

@@ -7,16 +7,16 @@
  * - Platform-aware padding for window controls
  *
  * Platform handling:
- * - macOS Electron: traffic lights on the left (pl-20)
- * - Windows/Linux Electron: titleBarOverlay buttons on the right (pr-36)
+ * - macOS Electron: reserve safe inset for traffic lights
+ * - Windows/Linux Electron: reserve safe inset for titleBarOverlay controls
  * - Browser/Mobile: no extra padding needed (pl-4)
  *
  * Height: 44px (slightly taller for elegance)
  * Traffic light vertical center formula: y = height/2 - 7 = 15
  */
 
-import { ReactNode } from 'react'
-import { isElectron } from '../../api/transport'
+import type { CSSProperties, ReactNode } from 'react'
+import { getPlatformInfo, getWindowChromeInsets } from '../../utils/window-chrome'
 
 interface HeaderProps {
   /** Left side content (after platform padding) */
@@ -27,28 +27,12 @@ interface HeaderProps {
   className?: string
 }
 
-// Get platform info with fallback for SSR/browser
-const getPlatform = () => {
-  if (typeof window !== 'undefined' && window.platform) {
-    return window.platform
-  }
-  return {
-    platform: 'darwin' as const,
-    isMac: true,
-    isWindows: false,
-    isLinux: false
-  }
-}
-
 export function Header({ left, right, className = '' }: HeaderProps) {
-  const platform = getPlatform()
-  const isInElectron = isElectron()
-
-  const platformPadding = isInElectron
-    ? platform.isMac
-      ? 'pl-20 pr-4'
-      : 'pl-4 pr-36'
-    : 'pl-4 pr-4'
+  const chromeInsets = getWindowChromeInsets()
+  const style: CSSProperties = {
+    paddingLeft: `${16 + chromeInsets.left}px`,
+    paddingRight: `${16 + chromeInsets.right}px`
+  }
 
   return (
     <header
@@ -58,9 +42,9 @@ export function Header({ left, right, className = '' }: HeaderProps) {
         bg-background/95
         backdrop-filter backdrop-blur-xl backdrop-saturate-180
         relative z-20
-        ${platformPadding}
         ${className}
       `.trim().replace(/\s+/g, ' ')}
+      style={style}
     >
       <div className="flex items-center gap-4 no-drag min-w-0">
         {left}
@@ -75,5 +59,5 @@ export function Header({ left, right, className = '' }: HeaderProps) {
 
 // Export platform detection hook for use in other components
 export function usePlatform() {
-  return getPlatform()
+  return getPlatformInfo()
 }
