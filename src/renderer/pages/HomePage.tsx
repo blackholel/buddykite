@@ -23,6 +23,7 @@ import { resolveSpacePathKind, shortenDisplayPath } from '../utils/space-path'
 import {
   persistWorkspaceViewMode,
   readWorkspaceViewMode,
+  pickWorkspaceSwitchTarget,
   type WorkspaceViewMode
 } from '../utils/workspace-view-mode'
 import {
@@ -127,6 +128,7 @@ export function HomePage(): JSX.Element {
   const {
     kiteSpace,
     spaces,
+    currentSpace,
     loadSpaces,
     setCurrentSpace,
     createSpace,
@@ -488,6 +490,32 @@ export function HomePage(): JSX.Element {
   const handleSpaceClick = (space: Space): void => {
     openSpaceByPreference(space)
   }
+
+  const handleWorkspaceViewToggle = useCallback((mode: WorkspaceViewMode): void => {
+    const modeChanged = preferredWorkspaceView !== mode
+    applyPreferredWorkspaceView(mode)
+
+    if (!modeChanged) return
+
+    const targetSpace = pickWorkspaceSwitchTarget({
+      currentSpace,
+      kiteSpace,
+      spaces
+    })
+
+    if (!targetSpace) return
+
+    setCurrentSpace(targetSpace)
+    setView(mode === 'unified' ? 'unified' : 'space')
+  }, [
+    applyPreferredWorkspaceView,
+    currentSpace,
+    kiteSpace,
+    preferredWorkspaceView,
+    setCurrentSpace,
+    setView,
+    spaces
+  ])
 
   const handleQuickAction = (prompt: string): void => {
     requestInsert(prompt)
@@ -950,7 +978,8 @@ export function HomePage(): JSX.Element {
                   <div className="flex items-center gap-2">
                     <div className="flex items-center rounded-lg border border-border/80 bg-card/70 p-0.5">
                       <button
-                        onClick={() => applyPreferredWorkspaceView('classic')}
+                        type="button"
+                        onClick={() => handleWorkspaceViewToggle('classic')}
                         className={`px-2.5 py-1 text-xs rounded-md transition-colors ${
                           preferredWorkspaceView === 'classic'
                             ? 'bg-secondary text-foreground'
@@ -961,7 +990,8 @@ export function HomePage(): JSX.Element {
                         {t('Current space')}
                       </button>
                       <button
-                        onClick={() => applyPreferredWorkspaceView('unified')}
+                        type="button"
+                        onClick={() => handleWorkspaceViewToggle('unified')}
                         className={`px-2.5 py-1 text-xs rounded-md transition-colors ${
                           preferredWorkspaceView === 'unified'
                             ? 'bg-secondary text-foreground'
