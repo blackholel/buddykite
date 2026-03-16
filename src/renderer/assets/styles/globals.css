@@ -1415,12 +1415,31 @@ body {
   scrollbar-gutter: stable both-edges;
 }
 
+.space-studio-message-stream {
+  width: 100%;
+  margin-inline: auto;
+}
+
+.space-studio-message-stream-regular {
+  max-width: 920px;
+}
+
+.space-studio-message-stream-compact {
+  max-width: 860px;
+}
+
 .space-studio-message-stream > * + * {
   margin-top: 2px;
 }
 
 .space-studio-message-lane {
   width: 100%;
+  justify-content: center;
+}
+
+.space-studio-message-stack {
+  width: min(760px, 100%);
+  margin-inline: auto;
 }
 
 .space-studio-message-stack > * + * {
@@ -2061,6 +2080,61 @@ body {
   border-radius: 16px;
 }
 
+.space-studio-message-flat {
+  padding: 0;
+  border-radius: 0;
+  overflow: visible;
+}
+
+.space-studio-assistant-content {
+  margin-inline: auto;
+  max-width: 78ch;
+  font-size: 15px;
+  line-height: 1.78;
+  letter-spacing: 0.002em;
+  color: hsl(var(--space-ink) / 0.92);
+  text-wrap: pretty;
+}
+
+.space-studio-assistant-markdown h1,
+.space-studio-assistant-markdown h2,
+.space-studio-assistant-markdown h3 {
+  letter-spacing: -0.012em;
+}
+
+.space-studio-assistant-markdown p,
+.space-studio-assistant-markdown li {
+  color: hsl(var(--space-ink) / 0.92);
+}
+
+.space-studio-assistant-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
+  border-top: 1px solid hsl(var(--line-soft) / 0.28);
+}
+
+.space-studio-assistant-footer-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  border-radius: 8px;
+  color: hsl(var(--space-ink) / 0.56);
+  font-size: 11px;
+  line-height: 1;
+  transition: color 140ms ease, background-color 140ms ease;
+}
+
+.space-studio-assistant-footer-action:hover {
+  color: hsl(var(--space-ink) / 0.82);
+  background: hsl(var(--canvas-bg) / 0.62);
+}
+
 .message-user {
   background: hsl(var(--chrome-bg) / 0.84);
   border: 1px solid hsl(var(--line-soft) / 0.76);
@@ -2074,6 +2148,14 @@ body {
 }
 
 .message-assistant {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  transition: none;
+}
+
+.message-assistant.message-working {
   background: hsl(var(--canvas-bg) / 0.98);
   border: 1px solid hsl(var(--line-soft) / 0.72);
   border-radius: 16px;

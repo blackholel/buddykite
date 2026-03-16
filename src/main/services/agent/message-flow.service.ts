@@ -129,6 +129,26 @@ interface TokenUsageInfo {
   contextWindow: number
 }
 
+function hasUsageTokenFields(usage: {
+  input_tokens?: number
+  output_tokens?: number
+  cache_read_input_tokens?: number
+  cache_creation_input_tokens?: number
+} | undefined | null): usage is {
+  input_tokens?: number
+  output_tokens?: number
+  cache_read_input_tokens?: number
+  cache_creation_input_tokens?: number
+} {
+  if (!usage) return false
+  return (
+    usage.input_tokens != null ||
+    usage.output_tokens != null ||
+    usage.cache_read_input_tokens != null ||
+    usage.cache_creation_input_tokens != null
+  )
+}
+
 const getErrorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : typeof error === 'string' ? error : ''
 
@@ -2405,13 +2425,13 @@ If the user asks about this project/codebase, inspect files in current workspace
       if (sdkMessage.type === 'assistant') {
         const assistantMsg = sdkMessage as any
         const msgUsage = assistantMsg.message?.usage
-        if (msgUsage) {
+        if (hasUsageTokenFields(msgUsage)) {
           // Save last API call usage (overwrite each time, keep final one)
           lastSingleUsage = {
-            inputTokens: msgUsage.input_tokens || 0,
-            outputTokens: msgUsage.output_tokens || 0,
-            cacheReadTokens: msgUsage.cache_read_input_tokens || 0,
-            cacheCreationTokens: msgUsage.cache_creation_input_tokens || 0
+            inputTokens: msgUsage.input_tokens ?? 0,
+            outputTokens: msgUsage.output_tokens ?? 0,
+            cacheReadTokens: msgUsage.cache_read_input_tokens ?? 0,
+            cacheCreationTokens: msgUsage.cache_creation_input_tokens ?? 0
           }
         }
       }
@@ -2775,32 +2795,36 @@ If the user asks about this project/codebase, inspect files in current workspace
           }
         }
 
-        // Use last API call usage (single) + cumulative cost
+        const usage = msg.usage as
+          | {
+              input_tokens?: number
+              output_tokens?: number
+              cache_read_input_tokens?: number
+              cache_creation_input_tokens?: number
+            }
+          | undefined
+        const resultUsage = hasUsageTokenFields(usage)
+          ? {
+              inputTokens: usage.input_tokens ?? 0,
+              outputTokens: usage.output_tokens ?? 0,
+              cacheReadTokens: usage.cache_read_input_tokens ?? 0,
+              cacheCreationTokens: usage.cache_creation_input_tokens ?? 0
+            }
+          : null
+
+        // Prefer single API usage (current context snapshot). Fallback to result usage.
         if (lastSingleUsage) {
           tokenUsage = {
             ...lastSingleUsage,
             totalCostUsd: totalCostUsd || 0,
             contextWindow
           }
-        } else {
-          // Fallback: If no assistant message, use result.usage (cumulative, less accurate but has data)
-          const usage = msg.usage as
-            | {
-                input_tokens?: number
-                output_tokens?: number
-                cache_read_input_tokens?: number
-                cache_creation_input_tokens?: number
-              }
-            | undefined
-          if (usage) {
-            tokenUsage = {
-              inputTokens: usage.input_tokens || 0,
-              outputTokens: usage.output_tokens || 0,
-              cacheReadTokens: usage.cache_read_input_tokens || 0,
-              cacheCreationTokens: usage.cache_creation_input_tokens || 0,
-              totalCostUsd: totalCostUsd || 0,
-              contextWindow
-            }
+        } else if (resultUsage) {
+          // Fallback: If no assistant usage, use result.usage (cumulative)
+          tokenUsage = {
+            ...resultUsage,
+            totalCostUsd: totalCostUsd || 0,
+            contextWindow
           }
         }
         if (tokenUsage) {

@@ -411,7 +411,11 @@ function StreamingBubble({
           <div ref={historyRef}>
             {segments.map((seg, i) => (
               <div key={i} className="pb-4 break-words leading-relaxed">
-                <MarkdownRenderer content={seg} workDir={workDir} />
+                <MarkdownRenderer
+                  content={seg}
+                  workDir={workDir}
+                  className="space-studio-assistant-markdown"
+                />
               </div>
             ))}
           </div>
@@ -421,7 +425,11 @@ function StreamingBubble({
             {isStreaming ? (
               <span className="whitespace-pre-wrap">{displayContent}</span>
             ) : (
-              <MarkdownRenderer content={throttledMarkdownContent} workDir={workDir} />
+              <MarkdownRenderer
+                content={throttledMarkdownContent}
+                workDir={workDir}
+                className="space-studio-assistant-markdown"
+              />
             )}
             {isStreaming && (
               <span className="inline-block w-0.5 h-5 ml-0.5 bg-foreground/70 streaming-cursor align-middle" />
@@ -628,7 +636,7 @@ export function MessageList({
   return (
     <div className={`
       space-studio-message-stream space-y-3.5 transition-[max-width] duration-300 ease-out
-      ${isCompact ? 'max-w-full' : 'max-w-3xl mx-auto'}
+      ${isCompact ? 'space-studio-message-stream-compact' : 'space-studio-message-stream-regular'}
     `}>
       {/* Render completed messages - thoughts shown above assistant messages */}
       {mainMessages.map((message) => {
@@ -640,9 +648,9 @@ export function MessageList({
             (message.toolCalls || []).map((toolCall) => [toolCall.id, toolCall.status])
           ) as Record<string, ToolStatus>
           return (
-            <div key={message.id} className="flex justify-start space-studio-message-lane">
+            <div key={message.id} className="flex space-studio-message-lane">
               {/* Fixed width container - prevents width jumping when content changes */}
-              <div className="w-[85%] space-studio-message-stack">
+              <div className="space-studio-message-stack">
                 {/* Thought process above the message (completed mode = collapsed by default) */}
                 <ThoughtProcess
                   thoughts={messageProcessThoughts}
@@ -682,9 +690,9 @@ export function MessageList({
       {/* Current generation block: Timeline segments + Streaming content below */}
       {/* Use fixed width container to prevent jumping when content changes */}
       {isGenerating && (
-        <div className="flex justify-start animate-fade-in space-studio-message-lane">
+        <div className="flex animate-fade-in space-studio-message-lane">
           {/* Fixed width - same as completed messages */}
-          <div className="w-[85%] relative space-studio-message-stack">
+          <div className="relative space-studio-message-stack">
             {runSummary && (
               <div className="space-studio-thought-summary mb-2 rounded-xl border border-border/30 bg-secondary/10 px-3 py-2">
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
@@ -837,8 +845,8 @@ export function MessageList({
       {/* TaskPanel persists after generation completes */}
       {/* Only reset when new TodoWrite is called (handled by task.store) */}
       {!isGenerating && hasTasks && (
-        <div className="flex justify-start animate-fade-in space-studio-message-lane">
-          <div className="w-[85%] space-studio-message-stack">
+        <div className="flex animate-fade-in space-studio-message-lane">
+          <div className="space-studio-message-stack">
             {runSummary && (
               <div className="space-studio-thought-summary mb-2 rounded-xl border border-border/30 bg-secondary/10 px-3 py-2">
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
@@ -860,8 +868,8 @@ export function MessageList({
       )}
 
       {!isGenerating && !hasTasks && runSummary && (
-        <div className="flex justify-start animate-fade-in space-studio-message-lane">
-          <div className="w-[85%] space-studio-message-stack">
+        <div className="flex animate-fade-in space-studio-message-lane">
+          <div className="space-studio-message-stack">
             <div className="space-studio-thought-summary mb-2 rounded-xl border border-border/30 bg-secondary/10 px-3 py-2">
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
                 <span>{t('Available tools')}: {runSummary.availableTools}</span>
@@ -881,8 +889,8 @@ export function MessageList({
 
       {/* Error message - shown when generation fails (not during generation) */}
       {!isGenerating && error && (
-        <div className="flex justify-start animate-fade-in space-studio-message-lane">
-          <div className="w-[85%] space-studio-message-stack">
+        <div className="flex animate-fade-in space-studio-message-lane">
+          <div className="space-studio-message-stack">
             <div className="rounded-2xl px-4 py-3 bg-destructive/10 border border-destructive/30">
               <div className="flex items-center gap-2 text-destructive">
                 <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

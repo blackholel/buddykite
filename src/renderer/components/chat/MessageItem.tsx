@@ -19,7 +19,6 @@ import {
 } from 'lucide-react'
 import { MarkdownRenderer } from './MarkdownRenderer'
 import { MessageImages } from './ImageAttachmentPreview'
-import { TokenUsageIndicator } from './TokenUsageIndicator'
 import { PlanCard } from './PlanCard'
 import { FileIcon } from '../icons/ToolIcons'
 import type { Message } from '../../types'
@@ -85,14 +84,27 @@ export const MessageItem = memo(function MessageItem({
   }, [message.content])
 
   // Message bubble content
+  const widthClass = isUser
+    ? (isInContainer ? 'w-full' : 'max-w-[85%]')
+    : 'w-full'
+
   const bubbleClasses = [
-    'space-studio-message-bubble rounded-2xl px-4 py-3.5 overflow-hidden transition-all duration-300',
+    isUser
+      ? 'space-studio-message-bubble rounded-2xl px-4 py-3.5 overflow-hidden'
+      : 'space-studio-message-flat',
+    'transition-all duration-300',
     isUser ? 'message-user' : 'message-assistant',
     isUser ? 'space-studio-message-user' : 'space-studio-message-assistant',
     isStreaming && 'streaming-message',
     isWorking && 'message-working',
-    isInContainer ? 'w-full' : 'max-w-[85%]',
+    widthClass,
   ].filter(Boolean).join(' ')
+
+  const contentClasses = [
+    'break-words',
+    isUser ? 'leading-relaxed' : 'space-studio-assistant-content'
+  ].join(' ')
+  const showAssistantFooter = !isUser && !isWorking && Boolean(message.content)
 
   const bubble = (
     <div className={bubbleClasses}>
@@ -126,7 +138,7 @@ export const MessageItem = memo(function MessageItem({
       )}
 
       {/* Message content with streaming cursor */}
-      <div className="break-words leading-relaxed" data-message-content>
+      <div className={contentClasses} data-message-content>
         {message.content && (
           isUser ? (
             <>
@@ -160,7 +172,11 @@ export const MessageItem = memo(function MessageItem({
             />
           ) : (
             // Assistant messages: full markdown rendering
-            <MarkdownRenderer content={message.content} workDir={workDir} />
+            <MarkdownRenderer
+              content={message.content}
+              workDir={workDir}
+              className="space-studio-assistant-markdown"
+            />
           )
         )}
         {/* Streaming cursor when actively receiving tokens */}
@@ -173,28 +189,28 @@ export const MessageItem = memo(function MessageItem({
         )}
       </div>
 
-      {/* Token usage indicator + copy button - only for completed assistant messages with tokenUsage */}
-      {!isUser && !isWorking && message.tokenUsage && (
-        <div className="flex justify-end items-center gap-1.5 mt-3 pt-2 border-t border-border/10">
-          {/* Token usage indicator */}
-          <TokenUsageIndicator tokenUsage={message.tokenUsage} previousCost={previousCost} />
-
-          {/* Copy button */}
+      {/* Assistant footer: action row under body */}
+      {showAssistantFooter && (
+        <div className="space-studio-assistant-footer mt-4 pt-2.5">
           <button
             onClick={handleCopyMessage}
-            className="flex items-center gap-1 px-2 py-1 text-[11px] text-muted-foreground/40
-              hover:text-foreground/70 hover:bg-secondary/30 rounded-lg transition-all duration-200"
+            className="space-studio-assistant-footer-action"
             title={t('Copy message')}
+            aria-label={t('Copy message')}
           >
             {copied ? (
               <>
-                <Check size={12} className="text-kite-success" />
+                <Check size={13} className="text-kite-success" />
                 <span className="text-kite-success">{t('Copied')}</span>
               </>
             ) : (
-              <Copy size={12} />
+              <>
+                <Copy size={13} />
+                <span>{t('Copy')}</span>
+              </>
             )}
           </button>
+
         </div>
       )}
     </div>
