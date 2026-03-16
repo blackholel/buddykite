@@ -1,5 +1,6 @@
-import { LayoutGrid, Plus, Puzzle, Settings, Sparkles } from 'lucide-react'
+import { LayoutGrid, Plus, Puzzle, Settings } from 'lucide-react'
 import { useTranslation } from '../../i18n'
+import { KiteGlyph } from '../brand/KiteLogo'
 
 type HomeTab = 'spaces' | 'extensions'
 
@@ -41,7 +42,9 @@ export function HomeActivityBar({
       <div className="h-full flex flex-col px-3 py-4">
         <div className="flex items-center gap-3 px-2 pb-4 border-b border-border/70">
           <div className="w-9 h-9 rounded-xl bg-card/80 border border-border/80 flex items-center justify-center">
-            <Sparkles className="w-4.5 h-4.5 text-foreground/80" />
+            <div className="w-7 h-7 rounded-[10px] bg-[#f6f7f9] border border-[#d8dee8] shadow-[0_4px_10px_rgba(15,23,42,0.12)] flex items-center justify-center">
+              <KiteGlyph size={15} strokeWidth={2.6} className="text-[#1d62d8]" />
+            </div>
           </div>
           <div className="min-w-0">
             <p className="text-sm font-semibold tracking-tight text-foreground">Kite</p>
