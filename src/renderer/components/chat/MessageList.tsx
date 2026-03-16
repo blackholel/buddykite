@@ -20,8 +20,6 @@ import { MarkdownRenderer } from './MarkdownRenderer'
 import { BrowserTaskCard, isBrowserTool } from '../tool/BrowserTaskCard'
 import { SubAgentCard } from './SubAgentCard'
 import { SkillCard } from './SkillCard'
-import { TaskPanel } from '../task'
-import { useTaskStore } from '../../stores/task.store'
 import { useSkillsStore } from '../../stores/skills.store'
 import { useCommandsStore } from '../../stores/commands.store'
 import { useAgentsStore } from '../../stores/agents.store'
@@ -461,8 +459,7 @@ export function MessageList({
   workDir,
   onOpenPlanInCanvas,
   onExecutePlan,
-  toolStatusById = {},
-  availableToolsSnapshot
+  toolStatusById = {}
 }: MessageListProps) {
   const { t } = useTranslation()
   const skills = useSkillsStore(state => state.skills)
@@ -574,65 +571,6 @@ export function MessageList({
     return calls
   }, [runtimeThoughts, toolStatusById])
 
-  const runSummary = useMemo(() => {
-    const statuses = Object.values(toolStatusById)
-    const toolsReady = availableToolsSnapshot?.phase === 'ready'
-    if (statuses.length === 0 && (!availableToolsSnapshot || !toolsReady)) {
-      return null
-    }
-
-    let running = 0
-    let success = 0
-    let error = 0
-    let cancelled = 0
-    let unknown = 0
-    for (const status of statuses) {
-      switch (status) {
-        case 'pending':
-        case 'running':
-        case 'waiting_approval':
-          running += 1
-          break
-        case 'success':
-          success += 1
-          break
-        case 'error':
-          error += 1
-          break
-        case 'cancelled':
-          cancelled += 1
-          break
-        case 'unknown':
-          unknown += 1
-          break
-        default:
-          unknown += 1
-          break
-      }
-    }
-
-    return {
-      availableTools: toolsReady ? (availableToolsSnapshot?.toolCount ?? 0) : null,
-      totalCalls: statuses.length,
-      running,
-      success,
-      error,
-      cancelled,
-      unknown
-    }
-  }, [toolStatusById, availableToolsSnapshot])
-
-  // Update global task store when thoughts change (for TaskPanel)
-  const updateTasksFromThoughts = useTaskStore(state => state.updateTasksFromThoughts)
-  useEffect(() => {
-    if (runtimeThoughts.length > 0) {
-      updateTasksFromThoughts(runtimeThoughts)
-    }
-  }, [runtimeThoughts, updateTasksFromThoughts])
-
-  // Check if there are tasks to display
-  const hasTasks = useTaskStore(state => state.tasks.length > 0)
-
   return (
     <div className={`
       space-studio-message-stream space-y-3.5 transition-[max-width] duration-300 ease-out
@@ -693,26 +631,6 @@ export function MessageList({
         <div className="flex animate-fade-in space-studio-message-lane">
           {/* Fixed width - same as completed messages */}
           <div className="relative space-studio-message-stack">
-            {runSummary && (
-              <div className="space-studio-thought-summary mb-2 rounded-xl border border-border/30 bg-secondary/10 px-3 py-2">
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
-                  {runSummary.availableTools != null ? (
-                    <span>{t('Available tools')}: {runSummary.availableTools}</span>
-                  ) : (
-                    <span>{t('Available tools')}: {t('Initializing...')}</span>
-                  )}
-                  <span>{t('Calls')}: {runSummary.totalCalls}</span>
-                  <span>{t('Running')}: {runSummary.running}</span>
-                  <span>{t('Success')}: {runSummary.success}</span>
-                  <span>{t('Error')}: {runSummary.error}</span>
-                  <span>{t('Cancelled')}: {runSummary.cancelled}</span>
-                  {runSummary.unknown > 0 && (
-                    <span>{t('Unknown')}: {runSummary.unknown}</span>
-                  )}
-                </div>
-              </div>
-            )}
-
             {/* Render timeline segments in order (thoughts, skills, sub-agents interleaved) */}
             {timelineSegments.map((segment, index) => {
               const isLastSegment = index === timelineSegments.length - 1
@@ -798,14 +716,6 @@ export function MessageList({
               </div>
             )}
 
-            {/* Global Task Panel - shows all tasks from TodoWrite */}
-            {/* Positioned ABOVE StreamingBubble so user sees progress before text output */}
-            {hasTasks && (
-              <div className="mb-2">
-                <TaskPanel defaultExpanded={false} />
-              </div>
-            )}
-
             {/* Guided user updates for active run (rendered inside execution block, not right-side user lane) */}
             {guidedMessages.length > 0 && (
               <div className="mb-2 space-y-2">
@@ -838,51 +748,7 @@ export function MessageList({
                 workDir={workDir}
               />
             )}
-          </div>
-        </div>
-      )}
 
-      {/* TaskPanel persists after generation completes */}
-      {/* Only reset when new TodoWrite is called (handled by task.store) */}
-      {!isGenerating && hasTasks && (
-        <div className="flex animate-fade-in space-studio-message-lane">
-          <div className="space-studio-message-stack">
-            {runSummary && (
-              <div className="space-studio-thought-summary mb-2 rounded-xl border border-border/30 bg-secondary/10 px-3 py-2">
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
-                  <span>{t('Available tools')}: {runSummary.availableTools}</span>
-                  <span>{t('Calls')}: {runSummary.totalCalls}</span>
-                  <span>{t('Running')}: {runSummary.running}</span>
-                  <span>{t('Success')}: {runSummary.success}</span>
-                  <span>{t('Error')}: {runSummary.error}</span>
-                  <span>{t('Cancelled')}: {runSummary.cancelled}</span>
-                  {runSummary.unknown > 0 && (
-                    <span>{t('Unknown')}: {runSummary.unknown}</span>
-                  )}
-                </div>
-              </div>
-            )}
-            <TaskPanel defaultExpanded={false} />
-          </div>
-        </div>
-      )}
-
-      {!isGenerating && !hasTasks && runSummary && (
-        <div className="flex animate-fade-in space-studio-message-lane">
-          <div className="space-studio-message-stack">
-            <div className="space-studio-thought-summary mb-2 rounded-xl border border-border/30 bg-secondary/10 px-3 py-2">
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
-                <span>{t('Available tools')}: {runSummary.availableTools}</span>
-                <span>{t('Calls')}: {runSummary.totalCalls}</span>
-                <span>{t('Running')}: {runSummary.running}</span>
-                <span>{t('Success')}: {runSummary.success}</span>
-                <span>{t('Error')}: {runSummary.error}</span>
-                <span>{t('Cancelled')}: {runSummary.cancelled}</span>
-                {runSummary.unknown > 0 && (
-                  <span>{t('Unknown')}: {runSummary.unknown}</span>
-                )}
-              </div>
-            </div>
           </div>
         </div>
       )}

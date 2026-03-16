@@ -210,7 +210,6 @@ export const MessageItem = memo(function MessageItem({
               </>
             )}
           </button>
-
         </div>
       )}
     </div>
