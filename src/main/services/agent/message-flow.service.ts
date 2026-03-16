@@ -2434,7 +2434,10 @@ If the user asks about this project/codebase, inspect files in current workspace
       }
 
       // Parse SDK message into thought array (single message may include multiple blocks)
-      const thoughts = parseSDKMessages(sdkMessage, { nextLocalToolCallId })
+      const thoughts = parseSDKMessages(sdkMessage, {
+        nextLocalToolCallId,
+        connectedModelDisplay: resolved.effectiveModel
+      })
 
       if (thoughts.length > 0) {
         for (const thought of thoughts) {

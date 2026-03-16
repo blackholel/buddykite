@@ -32,4 +32,19 @@ describe('message-parser visibility', () => {
     expect(initThoughts[0]?.visibility).toBe('user')
     expect(taskThoughts[0]?.visibility).toBe('user')
   })
+
+  it('prefers effective model display for init message', () => {
+    const initThoughts = parseSDKMessages(
+      {
+        type: 'system',
+        subtype: 'init',
+        model: 'claude-sonnet-4-20250514'
+      },
+      {
+        connectedModelDisplay: 'gpt-5.4'
+      }
+    )
+
+    expect(initThoughts[0]?.content).toBe('Connected | Model: gpt-5.4')
+  })
 })

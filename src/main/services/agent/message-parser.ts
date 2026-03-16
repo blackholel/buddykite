@@ -9,6 +9,7 @@ import type { Thought, ThoughtType, CanvasContext, ImageAttachment } from './typ
 
 interface ParseSDKMessageOptions {
   nextLocalToolCallId?: () => string
+  connectedModelDisplay?: string
 }
 
 /**
@@ -117,10 +118,18 @@ export function parseSDKMessages(message: any, options?: ParseSDKMessageOptions)
   // System initialization and new message types (SDK 0.2.22+)
   if (message.type === 'system') {
     if (message.subtype === 'init') {
+      const sdkModel =
+        typeof message.model === 'string' && message.model.trim().length > 0
+          ? message.model.trim()
+          : ''
+      const displayModel =
+        typeof options?.connectedModelDisplay === 'string' && options.connectedModelDisplay.trim().length > 0
+          ? options.connectedModelDisplay.trim()
+          : (sdkModel || 'claude')
       thoughts.push({
         id: generateId(),
         type: 'system',
-        content: `Connected | Model: ${message.model || 'claude'}`,
+        content: `Connected | Model: ${displayModel}`,
         timestamp,
         visibility: 'user',
         parentToolUseId
