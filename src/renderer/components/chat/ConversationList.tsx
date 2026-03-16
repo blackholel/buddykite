@@ -1,10 +1,10 @@
 /**
- * Conversation List - Apple-style sidebar
+ * Conversation List - Minimal sidebar history
  *
  * Design:
- * - Clean glass sidebar with subtle depth
- * - Conversation items with elegant hover states
- * - Skills & Agents panels at bottom
+ * - Clean single-line rows
+ * - Subtle active state
+ * - Compact right-aligned time
  * - Drag-to-resize support
  * - Inline title editing
  */
@@ -12,9 +12,9 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import type { ConversationMeta } from '../../types'
 import { Plus } from '../icons/ToolIcons'
-import { ExternalLink, Pencil, Trash2, MessageCircle } from 'lucide-react'
+import { ExternalLink, Pencil, Trash2, MessageCircle, MoreHorizontal } from 'lucide-react'
 import { useCanvasLifecycle } from '../../hooks/useCanvasLifecycle'
-import { useTranslation } from '../../i18n'
+import { getCurrentLanguage, useTranslation } from '../../i18n'
 import { shallow } from 'zustand/shallow'
 import { SkillsPanel } from '../skills/SkillsPanel'
 import { AgentsPanel } from '../agents/AgentsPanel'
@@ -30,9 +30,9 @@ import { toResourceKey } from '../../utils/resource-key'
 import { commandKey } from '../../../shared/command-utils'
 
 // Width constraints (in pixels)
-const MIN_WIDTH = 220
+const MIN_WIDTH = 240
 const MAX_WIDTH = 360
-const DEFAULT_WIDTH = 248
+const DEFAULT_WIDTH = 286
 const CREATE_SKILLS_TRIGGER = '创建技能'
 const CREATE_AGENTS_TRIGGER = '创建代理'
 const CREATE_COMMANDS_TRIGGER = '创建命令'
@@ -40,6 +40,46 @@ const CREATE_COMMANDS_TRIGGER = '创建命令'
 function localizedResourceName(item: { name: string; displayName?: string; namespace?: string }): string {
   const base = item.displayName || item.name
   return item.namespace ? `${item.namespace}:${base}` : base
+}
+
+function formatRelativeTime(dateString: string, t: (key: string, options?: Record<string, unknown>) => string): string {
+  const date = new Date(dateString)
+  const now = new Date()
+  const diffMs = now.getTime() - date.getTime()
+  const diffMins = Math.floor(diffMs / 60000)
+  const diffHours = Math.floor(diffMs / 3600000)
+  const diffDays = Math.floor(diffMs / 86400000)
+
+  if (diffMins < 1) return t('Just now')
+  if (diffMins < 60) return t('{{count}} minutes ago', { count: diffMins })
+  if (diffHours < 24) return t('{{count}} hours ago', { count: diffHours })
+  if (diffDays < 7) return t('{{count}} days ago', { count: diffDays })
+
+  return new Intl.DateTimeFormat(getCurrentLanguage(), {
+    month: 'short',
+    day: 'numeric'
+  }).format(date)
+}
+
+function formatCompactTime(dateString: string): string {
+  const date = new Date(dateString)
+  const now = new Date()
+  const diffMs = now.getTime() - date.getTime()
+  const diffMins = Math.floor(diffMs / 60000)
+  const diffHours = Math.floor(diffMs / 3600000)
+  const diffDays = Math.floor(diffMs / 86400000)
+  const language = getCurrentLanguage().toLowerCase()
+  const isChinese = language.startsWith('zh')
+
+  if (diffMins < 1) return isChinese ? '刚刚' : 'now'
+  if (diffMins < 60) return isChinese ? `${diffMins}分` : `${diffMins}m`
+  if (diffHours < 24) return isChinese ? `${diffHours}时` : `${diffHours}h`
+  if (diffDays < 7) return isChinese ? `${diffDays}天` : `${diffDays}d`
+
+  return new Intl.DateTimeFormat(getCurrentLanguage(), {
+    month: 'numeric',
+    day: 'numeric'
+  }).format(date)
 }
 
 interface ConversationListProps {
@@ -87,6 +127,8 @@ export function ConversationList({
   const [isDragging, setIsDragging] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingTitle, setEditingTitle] = useState('')
+  const [actionTriggerId, setActionTriggerId] = useState<string | null>(null)
+  const [actionMenuId, setActionMenuId] = useState<string | null>(null)
   const dragWidthRafRef = useRef<number | null>(null)
   const pendingDragWidthRef = useRef<number | null>(null)
   const latestWidthRef = useRef(DEFAULT_WIDTH)
@@ -97,6 +139,7 @@ export function ConversationList({
     if (workDir && workDir.trim()) return workDir
     return currentSpace?.path
   }, [currentSpace?.path, workDir])
+
   const { skills, loadedWorkDir: loadedSkillsWorkDir, loadSkills } = useSkillsStore((state) => ({
     skills: state.skills,
     loadedWorkDir: state.loadedWorkDir,
@@ -155,6 +198,10 @@ export function ConversationList({
     return map
   }, [commands])
 
+  const sortedConversations = useMemo(() => {
+    return [...conversations].sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
+  }, [conversations])
+
   const localizeTriggerText = useCallback((text: string): string => {
     const match = text.match(/^([/@])([^\s]+)([\s\S]*)$/)
     if (!match) return text
@@ -170,8 +217,6 @@ export function ConversationList({
 
     const localizedSkill = skillDisplayMap.get(key)
     const localizedCommand = commandDisplayMap.get(key)
-
-    // Keep original text when both resource types share the same key but map to different localized names.
     if (localizedSkill && localizedCommand && localizedSkill !== localizedCommand) {
       return text
     }
@@ -186,7 +231,7 @@ export function ConversationList({
 
   const applyDragWidth = useCallback((nextWidth: number) => {
     latestWidthRef.current = nextWidth
-    setWidth(prevWidth => (prevWidth === nextWidth ? prevWidth : nextWidth))
+    setWidth((prevWidth) => (prevWidth === nextWidth ? prevWidth : nextWidth))
   }, [])
 
   const scheduleDragWidthUpdate = useCallback((nextWidth: number) => {
@@ -216,7 +261,6 @@ export function ConversationList({
     return pendingWidth
   }, [applyDragWidth])
 
-  // Handle drag resize
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
     setIsDragging(true)
@@ -266,7 +310,6 @@ export function ConversationList({
     }
   }, [])
 
-  // Focus input when entering edit mode
   useEffect(() => {
     if (editingId && editInputRef.current) {
       editInputRef.current.focus()
@@ -274,29 +317,61 @@ export function ConversationList({
     }
   }, [editingId])
 
-  // Start editing
-  const handleStartEdit = (e: React.MouseEvent, conv: ConversationMeta) => {
-    e.stopPropagation()
+  useEffect(() => {
+    setActionMenuId(null)
+    setActionTriggerId(null)
+  }, [currentConversationId])
+
+  useEffect(() => {
+    if (!actionMenuId) return
+
+    const handleOutsidePointer = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null
+      if (!target?.closest('[data-conversation-action-root=\"true\"]')) {
+        setActionMenuId(null)
+        setActionTriggerId(null)
+      }
+    }
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setActionMenuId(null)
+        setActionTriggerId(null)
+      }
+    }
+
+    document.addEventListener('mousedown', handleOutsidePointer)
+    document.addEventListener('keydown', handleEscape)
+    return () => {
+      document.removeEventListener('mousedown', handleOutsidePointer)
+      document.removeEventListener('keydown', handleEscape)
+    }
+  }, [actionMenuId])
+
+  const handleStartEdit = (conv: ConversationMeta) => {
+    setActionMenuId(null)
+    setActionTriggerId(null)
     setEditingId(conv.id)
     setEditingTitle(conv.title || '')
   }
 
-  // Save edit
   const handleSaveEdit = () => {
     if (editingId && editingTitle.trim() && onRename) {
       onRename(editingId, editingTitle.trim())
     }
+    setActionMenuId(null)
+    setActionTriggerId(null)
     setEditingId(null)
     setEditingTitle('')
   }
 
-  // Cancel edit
   const handleCancelEdit = () => {
+    setActionMenuId(null)
+    setActionTriggerId(null)
     setEditingId(null)
     setEditingTitle('')
   }
 
-  // Key events
   const handleEditKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       e.preventDefault()
@@ -308,9 +383,18 @@ export function ConversationList({
   }
 
   const handleConversationActivate = (conversationId: string) => {
-    if (editingId !== conversationId) {
-      onSelect(conversationId)
+    if (editingId === conversationId) return
+    const isCurrentConversation = currentConversationId === conversationId
+
+    if (isCurrentConversation) {
+      setActionMenuId(null)
+      setActionTriggerId(prev => (prev === conversationId ? null : conversationId))
+      return
     }
+
+    setActionMenuId(null)
+    setActionTriggerId(null)
+    onSelect(conversationId)
   }
 
   const handleConversationKeyDown = (e: React.KeyboardEvent, conversationId: string) => {
@@ -323,11 +407,10 @@ export function ConversationList({
   return (
     <div
       ref={containerRef}
-      className="space-studio-sidebar space-studio-reveal flex flex-col relative overflow-hidden"
+      className="space-studio-sidebar space-studio-conversation-panel space-studio-reveal flex flex-col relative overflow-hidden"
       style={{ width, transition: isDragging ? 'none' : 'width 0.2s ease' }}
     >
-      {/* Header */}
-      <div className="px-4 pt-4 pb-2.5 flex items-center justify-between">
+      <div className="px-3 pt-2.5 pb-2 border-b border-[hsl(var(--line-soft)/0.32)] flex items-center justify-between">
         <div className="min-w-0">
           <span className="text-[11px] font-semibold text-foreground/55 uppercase tracking-[0.2em]">
             {t('Conversations')}
@@ -338,7 +421,7 @@ export function ConversationList({
         </div>
         <button
           onClick={onNew}
-          className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-border/40 bg-background/50 hover:bg-background hover:border-border/60 transition-all duration-200 group"
+          className="h-[30px] w-[30px] inline-flex items-center justify-center rounded-xl border border-[hsl(var(--line-soft)/0.5)] bg-[hsl(var(--canvas-bg)/0.78)] hover:bg-[hsl(var(--canvas-bg)/0.94)] hover:border-[hsl(var(--line-strong)/0.56)] transition-all duration-200 group"
           title={t('New conversation')}
           aria-label={t('New conversation')}
         >
@@ -346,8 +429,7 @@ export function ConversationList({
         </button>
       </div>
 
-      {/* Conversation list */}
-      <div className="flex-1 overflow-auto px-3 py-3">
+      <div className="flex-1 overflow-auto px-2 py-2">
         {conversations.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
             <div className="w-12 h-12 rounded-2xl bg-background/60 border border-border/40 flex items-center justify-center mb-4">
@@ -356,17 +438,17 @@ export function ConversationList({
             <p className="text-xs text-muted-foreground/50">{t('No conversations yet')}</p>
           </div>
         ) : (
-          <div className="space-y-1.5">
-            {conversations.map((conversation) => {
-              const displayTitle = localizeTriggerText(conversation.title)
+          <div className="space-y-1">
+            {sortedConversations.map((conversation) => {
+              const displayTitle = localizeTriggerText((conversation.title || '').trim() || t('New conversation'))
               const isActive = conversation.id === currentConversationId
+              const relativeTime = formatRelativeTime(conversation.updatedAt, t)
+              const compactTime = formatCompactTime(conversation.updatedAt)
+              const isActionMenuOpen = actionMenuId === conversation.id
+              const showActionTrigger = actionTriggerId === conversation.id || isActionMenuOpen
 
               return (
-                <div
-                  key={conversation.id}
-                  className="group relative"
-                >
-                  {/* Edit mode */}
+                <div key={conversation.id} className="relative">
                   {editingId === conversation.id ? (
                     <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
                       <input
@@ -389,58 +471,89 @@ export function ConversationList({
                         role="button"
                         tabIndex={0}
                         aria-current={isActive ? 'true' : undefined}
-                        aria-label={displayTitle}
-                        className={`space-studio-sidebar-item space-studio-history-item w-full pr-14 ${isActive ? 'active is-active' : ''}`}
+                        aria-label={`${displayTitle} · ${relativeTime}`}
+                        className={`space-studio-history-simple-item ${isActive ? 'is-active' : ''}`}
                       >
-                        <div className="flex items-center gap-2 min-h-[26px]">
-                          <span className={`space-studio-history-title truncate flex-1 leading-5 ${
-                            isActive ? 'font-medium text-foreground' : 'text-foreground/85'
+                        <div className="min-w-0 flex items-center gap-2 flex-1">
+                          <p className={`space-studio-history-title truncate leading-6 ${
+                            isActive ? 'font-medium text-foreground' : 'text-foreground/90'
                           }`}>
                             {displayTitle}
-                          </span>
+                          </p>
                         </div>
-                      </div>
+                        <div className="space-studio-history-tail shrink-0 ml-2" data-conversation-action-root="true">
+                          <span className={`space-studio-history-tail-time text-[11px] text-muted-foreground/76 ${showActionTrigger ? 'opacity-0' : 'opacity-100'}`}>
+                            {compactTime}
+                          </span>
+                          <div className={`space-studio-history-tail-trigger ${showActionTrigger ? 'is-visible' : ''}`}>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                e.preventDefault()
+                                setActionTriggerId(conversation.id)
+                                setActionMenuId(prev => prev === conversation.id ? null : conversation.id)
+                              }}
+                              className="h-6 w-6 inline-flex items-center justify-center rounded-md border border-[hsl(var(--line-soft)/0.48)] bg-[hsl(var(--canvas-bg)/0.9)] hover:bg-[hsl(var(--canvas-bg)/1)] transition-colors"
+                              title="Conversation actions"
+                              aria-label="Conversation actions"
+                              aria-expanded={isActionMenuOpen}
+                            >
+                              <MoreHorizontal className="w-3.5 h-3.5 text-muted-foreground" />
+                            </button>
+                          </div>
 
-                      {/* Action buttons (on hover) */}
-                      <div className="absolute right-1.5 top-1.5 flex items-center gap-1 px-1 py-0.5 rounded-lg border border-border/35 bg-background/75 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-all duration-150">
-                        {spaceId && layoutMode !== 'tabs-only' && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              e.preventDefault()
-                              openChat(spaceId, conversation.id, conversation.title, resolvedWorkDir)
-                            }}
-                            className="p-1.5 hover:bg-background/90 rounded-lg transition-colors"
-                            title={t('Open in tab')}
-                            aria-label={t('Open in tab')}
-                          >
-                          <ExternalLink className="w-3.5 h-3.5 text-muted-foreground" />
-                          </button>
-                        )}
-                        {onRename && (
-                          <button
-                            onClick={(e) => handleStartEdit(e, conversation)}
-                            className="p-1.5 hover:bg-background/90 rounded-lg transition-colors"
-                            title={t('Edit title')}
-                            aria-label={t('Edit title')}
-                          >
-                            <Pencil className="w-3.5 h-3.5 text-muted-foreground" />
-                          </button>
-                        )}
-                        {onDelete && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              e.preventDefault()
-                              onDelete(conversation.id)
-                            }}
-                            className="p-1.5 hover:bg-destructive/10 rounded-lg transition-colors"
-                            title={t('Delete conversation')}
-                            aria-label={t('Delete conversation')}
-                          >
-                            <Trash2 className="w-3.5 h-3.5 text-destructive/70" />
-                          </button>
-                        )}
+                          {isActionMenuOpen && (
+                            <div className="space-studio-conversation-actions-menu">
+                              {spaceId && layoutMode !== 'tabs-only' && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    e.preventDefault()
+                                    setActionMenuId(null)
+                                    openChat(spaceId, conversation.id, conversation.title, resolvedWorkDir)
+                                  }}
+                                  className="space-studio-conversation-actions-item"
+                                  title={t('Open in tab')}
+                                  aria-label={t('Open in tab')}
+                                >
+                                  <ExternalLink className="w-3.5 h-3.5" />
+                                  <span>{t('Open in tab')}</span>
+                                </button>
+                              )}
+                              {onRename && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    e.preventDefault()
+                                    handleStartEdit(conversation)
+                                  }}
+                                  className="space-studio-conversation-actions-item"
+                                  title={t('Edit title')}
+                                  aria-label={t('Edit title')}
+                                >
+                                  <Pencil className="w-3.5 h-3.5" />
+                                  <span>{t('Edit title')}</span>
+                                </button>
+                              )}
+                              {onDelete && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    e.preventDefault()
+                                    setActionMenuId(null)
+                                    onDelete(conversation.id)
+                                  }}
+                                  className="space-studio-conversation-actions-item is-danger"
+                                  title={t('Delete conversation')}
+                                  aria-label={t('Delete conversation')}
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                  <span>{t('Delete conversation')}</span>
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </>
                   )}
@@ -451,7 +564,6 @@ export function ConversationList({
         )}
       </div>
 
-      {/* Skills & Agents panels */}
       <div className="space-studio-sidebar-tools p-3.5 space-y-2">
         <SkillsPanel
           workDir={resolvedWorkDir}
@@ -481,7 +593,6 @@ export function ConversationList({
         )}
       </div>
 
-      {/* Drag handle */}
       <div
         className={`
           absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize z-20
