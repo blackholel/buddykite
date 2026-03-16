@@ -20,6 +20,8 @@ import {
 import { MarkdownRenderer } from './MarkdownRenderer'
 import { MessageImages } from './ImageAttachmentPreview'
 import { PlanCard } from './PlanCard'
+import { WidgetRenderer } from './WidgetRenderer'
+import { WidgetErrorBoundary } from './WidgetErrorBoundary'
 import { FileIcon } from '../icons/ToolIcons'
 import type { Message } from '../../types'
 import { useTranslation } from '../../i18n'
@@ -27,6 +29,8 @@ import {
   parseComposerMessageForDisplay,
   type ComposerResourceDisplayLookups
 } from '../../utils/composer-resource-chip'
+import { parseAllShowWidgets } from '../../lib/widget-sanitizer'
+export { parseAllShowWidgets, computePartialWidgetKey } from '../../lib/widget-sanitizer'
 
 interface MessageItemProps {
   message: Message
@@ -70,6 +74,14 @@ export const MessageItem = memo(function MessageItem({
       resourceDisplayLookups || EMPTY_RESOURCE_DISPLAY_LOOKUPS
     )
   }, [isUser, message.content, resourceDisplayLookups])
+  const parsedAssistantSegments = useMemo(() => {
+    if (isUser || !message.content || message.isPlan) return []
+    return parseAllShowWidgets(message.content)
+  }, [isUser, message.content, message.isPlan])
+  const hasWidgetSegments = useMemo(
+    () => parsedAssistantSegments.some((segment) => segment.type === 'widget'),
+    [parsedAssistantSegments]
+  )
 
   // Handle copying message content to clipboard
   const handleCopyMessage = useCallback(async () => {
@@ -171,12 +183,46 @@ export const MessageItem = memo(function MessageItem({
               workDir={workDir}
             />
           ) : (
-            // Assistant messages: full markdown rendering
-            <MarkdownRenderer
-              content={message.content}
-              workDir={workDir}
-              className="space-studio-assistant-markdown"
-            />
+            hasWidgetSegments ? (
+              // Assistant messages: render text + show-widget segments in order
+              <div className="space-y-3">
+                {parsedAssistantSegments.map((segment) => {
+                  if (segment.type === 'text') {
+                    if (!segment.content) return null
+                    return (
+                      <MarkdownRenderer
+                        key={segment.key}
+                        content={segment.content}
+                        workDir={workDir}
+                        className="space-studio-assistant-markdown"
+                      />
+                    )
+                  }
+
+                  return (
+                    <WidgetErrorBoundary
+                      key={segment.key}
+                      fallbackTitle={t('Widget failed to render')}
+                      fallbackDetail={t('Widget render error')}
+                    >
+                      <WidgetRenderer
+                        widgetKey={segment.key}
+                        title={segment.title}
+                        widgetCode={segment.widgetCode}
+                        isPartial={false}
+                      />
+                    </WidgetErrorBoundary>
+                  )
+                })}
+              </div>
+            ) : (
+              // Assistant messages: full markdown rendering
+              <MarkdownRenderer
+                content={message.content}
+                workDir={workDir}
+                className="space-studio-assistant-markdown"
+              />
+            )
           )
         )}
         {/* Streaming cursor when actively receiving tokens */}

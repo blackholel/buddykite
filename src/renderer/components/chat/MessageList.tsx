@@ -17,6 +17,8 @@ import { MessageItem } from './MessageItem'
 import { ThoughtProcess } from './ThoughtProcess'
 import { CompactNotice } from './CompactNotice'
 import { MarkdownRenderer } from './MarkdownRenderer'
+import { WidgetRenderer } from './WidgetRenderer'
+import { WidgetErrorBoundary } from './WidgetErrorBoundary'
 import { BrowserTaskCard, isBrowserTool } from '../tool/BrowserTaskCard'
 import { SubAgentCard } from './SubAgentCard'
 import { SkillCard } from './SkillCard'
@@ -36,6 +38,10 @@ import type {
 } from '../../types'
 import { useTranslation } from '../../i18n'
 import { buildTimelineSegments, type TimelineSegment } from '../../utils/thought-utils'
+import {
+  parseAllShowWidgets,
+  parseShowWidgetsForStreaming
+} from '../../lib/widget-sanitizer'
 
 interface AvailableToolsSnapshot {
   runId: string | null
@@ -372,6 +378,22 @@ function StreamingBubble({
     ? content.slice(activeSnapshotLen)
     : content
   const [throttledMarkdownContent, setThrottledMarkdownContent] = useState(displayContent)
+  const historyWidgetSegments = useMemo(
+    () => segments.map((snapshot) => {
+      const parsed = parseShowWidgetsForStreaming(snapshot)
+      if (parsed.length > 0) return parsed
+      return [{ type: 'text', key: `history-plain-${snapshot.length}`, content: snapshot } as const]
+    }),
+    [segments]
+  )
+  const currentWidgetSegments = useMemo(() => {
+    const source = isStreaming ? displayContent : throttledMarkdownContent
+    const parsed = isStreaming
+      ? parseShowWidgetsForStreaming(source)
+      : parseAllShowWidgets(source)
+    if (parsed.length > 0) return parsed
+    return source ? [{ type: 'text', key: 'current-plain', content: source } as const] : []
+  }, [displayContent, isStreaming, throttledMarkdownContent])
 
   useEffect(() => {
     if (!isStreaming) {
@@ -407,28 +429,80 @@ function StreamingBubble({
         >
           {/* History segments - will be scrolled out of view */}
           <div ref={historyRef}>
-            {segments.map((seg, i) => (
-              <div key={i} className="pb-4 break-words leading-relaxed">
-                <MarkdownRenderer
-                  content={seg}
-                  workDir={workDir}
-                  className="space-studio-assistant-markdown"
-                />
+            {historyWidgetSegments.map((snapshotSegments, i) => (
+              <div key={`history:${i}`} className="pb-4 break-words leading-relaxed space-y-3">
+                {snapshotSegments.map((segment) => {
+                  if (segment.type === 'text') {
+                    if (!segment.content) return null
+                    return (
+                      <MarkdownRenderer
+                        key={`history:${i}:${segment.key}`}
+                        content={segment.content}
+                        workDir={workDir}
+                        className="space-studio-assistant-markdown"
+                      />
+                    )
+                  }
+
+                  return (
+                    <WidgetErrorBoundary
+                      key={`history:${i}:${segment.key}`}
+                      fallbackTitle={t('Widget failed to render')}
+                      fallbackDetail={t('Widget render error')}
+                    >
+                      <WidgetRenderer
+                        widgetKey={`history:${i}:${segment.key}`}
+                        title={segment.title}
+                        widgetCode={segment.widgetCode}
+                        isPartial={segment.isPartial}
+                      />
+                    </WidgetErrorBoundary>
+                  )
+                })}
               </div>
             ))}
           </div>
 
           {/* Current content - always visible, shows only NEW part after snapshots */}
-          <div ref={currentRef} className="break-words leading-relaxed">
-            {isStreaming ? (
-              <span className="whitespace-pre-wrap">{displayContent}</span>
-            ) : (
-              <MarkdownRenderer
-                content={throttledMarkdownContent}
-                workDir={workDir}
-                className="space-studio-assistant-markdown"
-              />
-            )}
+          <div ref={currentRef} className="break-words leading-relaxed space-y-3">
+            {currentWidgetSegments.map((segment) => {
+              if (segment.type === 'text') {
+                if (!segment.content) return null
+                if (isStreaming) {
+                  return (
+                    <span
+                      key={`current:${segment.key}`}
+                      className="whitespace-pre-wrap"
+                    >
+                      {segment.content}
+                    </span>
+                  )
+                }
+                return (
+                  <MarkdownRenderer
+                    key={`current:${segment.key}`}
+                    content={segment.content}
+                    workDir={workDir}
+                    className="space-studio-assistant-markdown"
+                  />
+                )
+              }
+
+              return (
+                <WidgetErrorBoundary
+                  key={`current:${segment.key}`}
+                  fallbackTitle={t('Widget failed to render')}
+                  fallbackDetail={t('Widget render error')}
+                >
+                  <WidgetRenderer
+                    widgetKey={`current:${segment.key}`}
+                    title={segment.title}
+                    widgetCode={segment.widgetCode}
+                    isPartial={segment.isPartial}
+                  />
+                </WidgetErrorBoundary>
+              )
+            })}
             {isStreaming && (
               <span className="inline-block w-0.5 h-5 ml-0.5 bg-foreground/70 streaming-cursor align-middle" />
             )}
