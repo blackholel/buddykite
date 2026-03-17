@@ -14,6 +14,7 @@
  */
 
 import { useEffect, useState, useCallback, useRef } from 'react'
+import { useAppStore } from '../stores/app.store'
 import { useSpaceStore } from '../stores/space.store'
 import { useChatStore } from '../stores/chat.store'
 import { useCanvasStore, useCanvasIsOpen, useCanvasIsMaximized } from '../stores/canvas.store'
@@ -192,6 +193,7 @@ function useIsMobile() {
 
 export function SpacePage() {
   const { t } = useTranslation()
+  const setView = useAppStore((state) => state.setView)
   const { currentSpace } = useSpaceStore((state) => ({
     currentSpace: state.currentSpace
   }), shallow)
@@ -557,6 +559,10 @@ export function SpacePage() {
     openSearch(scope)
   }, [openSearch])
 
+  const handleBackHome = useCallback(() => {
+    setView('home')
+  }, [setView])
+
   // Sync drag width with effective width when not dragging
   useEffect(() => {
     if (!isDraggingChat) {
@@ -891,6 +897,7 @@ export function SpacePage() {
               layoutMode={layoutMode}
               onSelect={handleSelectConversation}
               onNew={handleNewConversation}
+              onBackHome={handleBackHome}
               onToggleCollapse={() => setShowConversationList(false)}
               onDelete={handleDeleteConversation}
               onRename={handleRenameConversation}

@@ -1365,23 +1365,22 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 36px;
-  border: 1px solid hsl(var(--line-soft) / 0.08);
-  border-radius: 12px;
-  padding: 5px 10px;
-  transition: background-color 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
+  min-height: 50px;
+  border: 1px solid transparent;
+  border-radius: 20px;
+  padding: 0 12px 0 16px;
+  transition: background-color 150ms ease, color 150ms ease;
   cursor: pointer;
 }
 
 .space-studio-history-simple-item:hover {
-  background: hsl(var(--canvas-bg) / 0.72);
-  border-color: hsl(var(--line-soft) / 0.72);
+  background: hsl(var(--canvas-bg) / 0.62);
 }
 
 .space-studio-history-simple-item.is-active {
-  background: linear-gradient(180deg, hsl(var(--canvas-bg) / 0.95) 0%, hsl(var(--canvas-bg) / 0.88) 100%);
-  border-color: hsl(var(--line-strong) / 0.86);
-  box-shadow: var(--shadow-subtle), inset 0 1px 0 hsl(var(--glass-highlight) / 0.28);
+  background: hsl(var(--primary) / 0.16);
+  border-color: transparent;
+  box-shadow: none;
 }
 
 .space-studio-history-simple-item:focus-visible {
@@ -1390,21 +1389,29 @@ body {
   box-shadow: 0 0 0 2px hsl(var(--space-accent) / 0.14);
 }
 
+.space-studio-history-simple-title {
+  font-size: 15px;
+  line-height: 1.38;
+  font-weight: 460;
+  letter-spacing: 0;
+  color: hsl(var(--space-ink) / 0.9);
+}
+
+.space-studio-history-simple-item.is-active .space-studio-history-simple-title {
+  color: hsl(var(--primary));
+}
+
 .space-studio-history-tail {
   position: relative;
-  width: 44px;
-  height: 24px;
+  width: 38px;
+  height: 38px;
   display: inline-flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: center;
 }
 
 .space-studio-history-tail-time {
-  min-width: 42px;
-  text-align: right;
-  color: hsl(var(--space-ink) / 0.48);
-  font-variant-numeric: tabular-nums;
-  transition: opacity 150ms ease;
+  display: none;
 }
 
 .space-studio-history-tail-trigger {
@@ -1420,6 +1427,46 @@ body {
 .space-studio-history-tail-trigger.is-visible {
   opacity: 1;
   pointer-events: auto;
+}
+
+.space-studio-history-action-btn {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: none;
+  background: hsl(var(--canvas-bg) / 0.42);
+  color: hsl(var(--space-ink) / 0.54);
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+.space-studio-history-action-btn:hover {
+  background: hsl(var(--canvas-bg) / 0.65);
+  color: hsl(var(--space-ink) / 0.72);
+}
+
+.space-studio-home-return-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid hsl(var(--line-soft) / 0.72);
+  background: hsl(var(--canvas-bg) / 0.6);
+  color: hsl(var(--space-ink) / 0.72);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  transition: background-color 150ms ease, color 150ms ease, border-color 150ms ease;
+}
+
+.space-studio-home-return-btn:hover {
+  background: hsl(var(--canvas-bg) / 0.78);
+  border-color: hsl(var(--line-strong) / 0.62);
+  color: hsl(var(--space-ink) / 0.92);
 }
 
 .space-studio-conversation-actions-menu {

@@ -24,16 +24,16 @@
  */
 
 import { useState, useRef, useCallback, useEffect, forwardRef } from 'react'
-import { X, Loader2, AlertCircle, Plus, XCircle, Maximize2, Minimize2, MessageSquare, BookOpen } from 'lucide-react'
+import { X, Loader2, AlertCircle, Plus, MessageSquare, BookOpen } from 'lucide-react'
 import { type TabState } from '../../services/canvas-lifecycle'
 import { useCanvasLifecycle } from '../../hooks/useCanvasLifecycle'
-import { useCanvasStore } from '../../stores/canvas.store'
 import { useSpaceStore } from '../../stores/space.store'
 import { useChatStore } from '../../stores/chat.store'
-import { useWindowMaximize } from './viewers/useWindowMaximize'
+import { useAppStore } from '../../stores/app.store'
 import { FileIcon } from '../icons/ToolIcons'
 import { api } from '../../api'
 import { useTranslation } from '../../i18n'
+import { persistWorkspaceViewMode, type WorkspaceViewMode } from '../../utils/workspace-view-mode'
 
 interface CanvasTabsProps {
   tabs: TabState[]
@@ -42,9 +42,8 @@ interface CanvasTabsProps {
   onTabClose: (tabId: string) => void
   onRefresh?: (tabId: string) => void
   onNewTab?: () => void
-  onCloseAll?: () => void
-  isMaximized?: boolean
-  onToggleMaximize?: () => void
+  workspaceMode?: WorkspaceViewMode
+  onSwitchWorkspaceMode?: (mode: WorkspaceViewMode) => void
 }
 
 export function CanvasTabs({
@@ -54,9 +53,8 @@ export function CanvasTabs({
   onTabClose,
   onRefresh,
   onNewTab,
-  onCloseAll,
-  isMaximized = false,
-  onToggleMaximize
+  workspaceMode = 'classic',
+  onSwitchWorkspaceMode
 }: CanvasTabsProps) {
   const { t } = useTranslation()
   const { reorderTabs } = useCanvasLifecycle()
@@ -297,32 +295,31 @@ export function CanvasTabs({
         )}
       </div>
 
-      {/* Right-side action buttons */}
+      {/* Right-side actions */}
       <div className="canvas-tab-bar-actions">
-        {/* Close all tabs button */}
-        {onCloseAll && tabs.length > 0 && (
-          <button
-            onClick={onCloseAll}
-            className="canvas-tab-bar-action danger"
-            title={t('Close all tabs')}
-          >
-            <XCircle className="w-4 h-4" />
-          </button>
-        )}
-
-        {/* Maximize/Minimize toggle button */}
-        {onToggleMaximize && (
-          <button
-            onClick={onToggleMaximize}
-            className="canvas-tab-bar-action"
-            title={isMaximized ? t('Exit fullscreen') : t('Enter fullscreen')}
-          >
-            {isMaximized ? (
-              <Minimize2 className="w-4 h-4" />
-            ) : (
-              <Maximize2 className="w-4 h-4" />
-            )}
-          </button>
+        {onSwitchWorkspaceMode && (
+          <div className="canvas-tab-view-switch" role="tablist" aria-label={t('Workspace view mode')}>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={workspaceMode === 'classic'}
+              onClick={() => onSwitchWorkspaceMode('classic')}
+              className={`canvas-tab-view-switch-btn ${workspaceMode === 'classic' ? 'is-active' : ''}`}
+              title={t('Current space')}
+            >
+              {t('Current space')}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={workspaceMode === 'unified'}
+              onClick={() => onSwitchWorkspaceMode('unified')}
+              className={`canvas-tab-view-switch-btn ${workspaceMode === 'unified' ? 'is-active' : ''}`}
+              title={t('All spaces')}
+            >
+              {t('All spaces')}
+            </button>
+          </div>
         )}
       </div>
     </div>
@@ -457,15 +454,10 @@ const TabItem = forwardRef<HTMLDivElement, TabItemProps>(function TabItem({
  * Uses canvasLifecycle for all state and actions
  */
 export function CanvasTabBar() {
-  const { tabs, activeTabId, switchTab, closeTab, closeAllTabs, refreshTab, openChat } = useCanvasLifecycle()
+  const { tabs, activeTabId, switchTab, closeTab, refreshTab, openChat } = useCanvasLifecycle()
   const currentSpace = useSpaceStore(state => state.currentSpace)
   const createConversation = useChatStore(state => state.createConversation)
-  const isCanvasMaximized = useCanvasStore(state => state.isMaximized)
-  const toggleCanvasMaximized = useCanvasStore(state => state.toggleMaximized)
-  const { isMaximized: isWindowMaximized, toggleMaximize: toggleWindowMaximize } = useWindowMaximize()
-
-  // Combined maximize state: both window AND canvas are maximized
-  const isFullyMaximized = isCanvasMaximized && isWindowMaximized
+  const setView = useAppStore(state => state.setView)
 
   // Handle new tab - create a new conversation in current space
   const handleNewTab = useCallback(() => {
@@ -478,22 +470,10 @@ export function CanvasTabBar() {
     })()
   }, [createConversation, currentSpace, openChat])
 
-  // Handle combined maximize toggle: window maximize + canvas fullscreen
-  const handleToggleMaximize = useCallback(async () => {
-    if (isFullyMaximized) {
-      // Exit: restore window size first, then exit canvas fullscreen
-      await toggleWindowMaximize()
-      toggleCanvasMaximized()
-    } else {
-      // Enter: maximize window and canvas fullscreen together
-      if (!isWindowMaximized) {
-        await toggleWindowMaximize()
-      }
-      if (!isCanvasMaximized) {
-        toggleCanvasMaximized()
-      }
-    }
-  }, [isFullyMaximized, isWindowMaximized, isCanvasMaximized, toggleWindowMaximize, toggleCanvasMaximized])
+  const handleSwitchWorkspaceMode = useCallback((mode: WorkspaceViewMode) => {
+    persistWorkspaceViewMode(mode)
+    setView(mode === 'unified' ? 'unified' : 'space')
+  }, [setView])
 
   return (
     <CanvasTabs
@@ -503,9 +483,8 @@ export function CanvasTabBar() {
       onTabClose={closeTab}
       onRefresh={refreshTab}
       onNewTab={handleNewTab}
-      onCloseAll={closeAllTabs}
-      isMaximized={isFullyMaximized}
-      onToggleMaximize={handleToggleMaximize}
+      workspaceMode="classic"
+      onSwitchWorkspaceMode={handleSwitchWorkspaceMode}
     />
   )
 }
