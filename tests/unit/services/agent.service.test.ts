@@ -98,7 +98,9 @@ vi.mock('../../../src/main/services/ai-browser', () => ({
 
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   query: vi.fn(),
-  unstable_v2_createSession: vi.fn()
+  unstable_v2_createSession: vi.fn(),
+  tool: vi.fn((_name: string, _desc: string, _schema: unknown, handler: unknown) => handler),
+  createSdkMcpServer: vi.fn((config: Record<string, unknown>) => config)
 }))
 
 // Import after mocks are set up

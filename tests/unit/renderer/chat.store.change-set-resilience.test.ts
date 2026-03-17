@@ -180,7 +180,6 @@ describe('chat.store change-set resilience', () => {
     await useChatStore.getState().hydrateConversation(spaceId, conversationId)
 
     expect(useChatStore.getState().changeSets.get(conversationId)).toEqual([changeSet])
-    expect(mockSubscribeToConversation).toHaveBeenCalledWith(conversationId)
+    expect(mockSubscribeToConversation).toHaveBeenCalledWith(spaceId, conversationId)
   })
 })
-

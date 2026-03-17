@@ -10,6 +10,7 @@ import { existsSync, mkdirSync, realpathSync } from 'fs'
 import { homedir } from 'os'
 import { getConfig, getTempSpacePath } from '../config.service'
 import { getSpaceConfig, type SpaceToolkit } from '../space-config.service'
+import { getConversation } from '../conversation.service'
 import { buildHooksConfig } from '../hooks.service'
 import { listEnabledPlugins } from '../plugins.service'
 import { isValidDirectoryPath } from '../../utils/path-validation'
@@ -20,6 +21,7 @@ import { SKILLS_LAZY_SYSTEM_PROMPT } from '../skills-mcp-server'
 import { buildPluginMcpServers } from '../plugin-mcp.service'
 import { getLockedUserConfigRootDir } from '../config-source-mode.service'
 import { resolveResourceRuntimePolicy as resolveNormalizedRuntimePolicy } from '../resource-runtime-policy.service'
+import { createWidgetMcpServer, WIDGET_SYSTEM_PROMPT } from './widget-guidelines'
 import { resolveEffectiveConversationAi } from './ai-config-resolver'
 import {
   buildAnthropicCompatEnvDefaults,
@@ -370,16 +372,97 @@ export function getEnabledMcpServers(
   return Object.keys(enabled).length > 0 ? enabled : null
 }
 
+const WIDGET_VISUALIZATION_PATTERNS: RegExp[] = [
+  /\bshow-widget\b/i,
+  /\bwidget(?:s)?\b/i,
+  /\b(chart|graph|dashboard|visuali[sz]ation|diagram|flowchart|timeline|kanban|gantt|heatmap|table)\b/i,
+  /\b(render|display|visualize|draw|plot|build|create)\b.{0,36}\b(widget|chart|graph|dashboard|diagram|table|timeline|kanban|gantt)\b/i,
+  /(可视化|图表|图形|仪表盘|看板|流程图|时间线|甘特图|热力图|组件|小组件|控件|卡片|表格|数据看板|画图|画个图|做个图)/i
+]
+
+const CONVERSATION_WIDGET_SIGNAL_LOOKBACK = 8
+
+function normalizeWidgetSignalText(text: unknown): string | null {
+  if (typeof text !== 'string') return null
+  const normalized = text.trim()
+  return normalized.length > 0 ? normalized : null
+}
+
+function collectConversationWidgetSignals(spaceId: string, conversationId: string): string[] {
+  try {
+    const conversation = getConversation(spaceId, conversationId) as
+      | {
+          messages?: Array<{ role?: unknown; content?: unknown }>
+        }
+      | null
+    if (!conversation || !Array.isArray(conversation.messages) || conversation.messages.length === 0) {
+      return []
+    }
+
+    return conversation.messages
+      .slice(-CONVERSATION_WIDGET_SIGNAL_LOOKBACK)
+      .filter((message) => message?.role === 'user')
+      .map((message) => normalizeWidgetSignalText(message?.content))
+      .filter((content): content is string => Boolean(content))
+  } catch (error) {
+    console.warn('[Agent][MCP] Failed to collect conversation widget signals:', (error as Error).message)
+    return []
+  }
+}
+
+export function shouldEnableCodepilotWidgetMcp(params: {
+  prompt?: string
+  conversationHistoryTexts?: string[]
+  spaceId?: string
+  conversationId?: string
+}): boolean {
+  const candidateTexts: string[] = []
+
+  const promptText = normalizeWidgetSignalText(params.prompt)
+  if (promptText) {
+    candidateTexts.push(promptText)
+  }
+
+  if (Array.isArray(params.conversationHistoryTexts)) {
+    candidateTexts.push(
+      ...params.conversationHistoryTexts
+        .map((item) => normalizeWidgetSignalText(item))
+        .filter((item): item is string => Boolean(item))
+    )
+  }
+
+  if (
+    candidateTexts.length === 0 &&
+    typeof params.spaceId === 'string' &&
+    params.spaceId.trim().length > 0 &&
+    typeof params.conversationId === 'string' &&
+    params.conversationId.trim().length > 0
+  ) {
+    candidateTexts.push(...collectConversationWidgetSignals(params.spaceId, params.conversationId))
+  }
+
+  if (candidateTexts.length === 0) {
+    return false
+  }
+
+  return candidateTexts.some((text) =>
+    WIDGET_VISUALIZATION_PATTERNS.some((pattern) => pattern.test(text))
+  )
+}
+
 /**
  * Build MCP servers configuration
  */
 function buildMcpServersConfig(
   config: ReturnType<typeof getConfig>,
   spaceConfig: ReturnType<typeof getSpaceConfig>,
+  spaceId: string,
   workDir: string,
   conversationId: string,
   aiBrowserEnabled?: boolean,
-  enabledPluginMcps?: string[]
+  enabledPluginMcps?: string[],
+  promptForMcpRouting?: string,
+  conversationHistoryTexts?: string[]
 ): { mcpServers?: Record<string, any> } {
   const mcpDisabled =
     config.claudeCode?.mcpEnabled === false ||
@@ -397,10 +480,21 @@ function buildMcpServersConfig(
     console.log(`[Agent][${conversationId}] AI Browser MCP server added`)
   }
 
+  const widgetMcpEnabled = shouldEnableCodepilotWidgetMcp({
+    prompt: promptForMcpRouting,
+    conversationHistoryTexts,
+    spaceId,
+    conversationId
+  })
+  if (widgetMcpEnabled) {
+    mcpServers['codepilot-widget'] = createWidgetMcpServer()
+    console.log(`[Agent][${conversationId}] CodePilot Widget MCP server added`)
+  }
+
   if (mcpDisabled) {
     console.log(`[Agent][${conversationId}] MCP disabled by configuration (external only)`)
     const internalOnly = Object.fromEntries(
-      Object.entries(mcpServers).filter(([name]) => name === 'ai-browser')
+      Object.entries(mcpServers).filter(([name]) => name === 'ai-browser' || name === 'codepilot-widget')
     )
     return Object.keys(internalOnly).length > 0 ? { mcpServers: internalOnly } : {}
   }
@@ -485,6 +579,8 @@ export interface BuildSdkOptionsParams {
   stderrSuffix?: string // Optional suffix for stderr logs (e.g., "(warm)")
   canUseTool?: CanUseToolHandler
   enabledPluginMcps?: string[]
+  promptForMcpRouting?: string
+  conversationHistoryTexts?: string[]
 }
 
 /**
@@ -511,7 +607,9 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): Record<string, a
     resourceRuntimePolicy,
     stderrSuffix = '',
     canUseTool,
-    enabledPluginMcps
+    enabledPluginMcps,
+    promptForMcpRouting,
+    conversationHistoryTexts
   } = params
 
   const spaceConfig = getSpaceConfig(workDir)
@@ -578,6 +676,7 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): Record<string, a
       preset: 'claude_code' as const,
       append: [
         buildSystemPromptAppend(workDir, responseLanguage),
+        WIDGET_SYSTEM_PROMPT,
         aiBrowserEnabled ? AI_BROWSER_SYSTEM_PROMPT : '',
         effectiveLazyLoad ? SKILLS_LAZY_SYSTEM_PROMPT : ''
       ].filter(Boolean).join('\n')
@@ -604,10 +703,13 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): Record<string, a
     ...buildMcpServersConfig(
       config,
       spaceConfig,
+      spaceId,
       workDir,
       conversationId,
       aiBrowserEnabled,
-      enabledPluginMcps
+      enabledPluginMcps,
+      promptForMcpRouting,
+      conversationHistoryTexts
     )
   }
 

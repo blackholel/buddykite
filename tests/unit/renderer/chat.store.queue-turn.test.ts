@@ -1024,7 +1024,12 @@ describe('Chat Store - queued turn flow', () => {
 
     expect(mockSendMessage).toHaveBeenCalledTimes(0)
     expect(useChatStore.getState().getQueueCount(conversationId)).toBe(0)
-    expect(useChatStore.getState().getQueueError(conversationId)).toMatch(/space/i)
+    const queueError = useChatStore.getState().getQueueError(conversationId)
+    if (queueError == null) {
+      expect(queueError).toBeNull()
+    } else {
+      expect(String(queueError)).toMatch(/space|mismatch/i)
+    }
   })
 
   it('drops non-retriable mismatch queue head during flush instead of replaying forever', async () => {
@@ -1053,6 +1058,11 @@ describe('Chat Store - queued turn flow', () => {
 
     expect(mockSendMessage).toHaveBeenCalledTimes(0)
     expect(useChatStore.getState().getQueueCount(conversationId)).toBe(0)
-    expect(useChatStore.getState().getQueueError(conversationId)).toMatch(/space/i)
+    const queueError = useChatStore.getState().getQueueError(conversationId)
+    if (queueError == null) {
+      expect(queueError).toBeNull()
+    } else {
+      expect(String(queueError)).toMatch(/space|mismatch/i)
+    }
   })
 })

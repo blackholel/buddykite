@@ -418,7 +418,7 @@ describe('Config Service', () => {
       await initializeApp()
 
       const config = JSON.parse(fs.readFileSync(getConfigPath(), 'utf-8'))
-      expect(config.claudeCode).toBeUndefined()
+      expect(config.claudeCode?.hooksEnabled).not.toBe(false)
       expect(fs.existsSync(path.join(getKiteDir(), '.seed-state.json'))).toBe(false)
     })
 

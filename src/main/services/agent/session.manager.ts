@@ -509,6 +509,7 @@ function getSessionRebuildReasons(existing: SessionConfig, next: SessionConfig):
   if ((existing.providerSignature || '') !== (next.providerSignature || '')) reasons.push('providerSignature')
   if ((existing.effectiveModel || '') !== (next.effectiveModel || '')) reasons.push('effectiveModel')
   if ((existing.enabledPluginMcpsHash || '') !== (next.enabledPluginMcpsHash || '')) reasons.push('enabledPluginMcpsHash')
+  if ((existing.enabledMcpServersHash || '') !== (next.enabledMcpServersHash || '')) reasons.push('enabledMcpServersHash')
   if ((existing.resourceRuntimePolicy || '') !== (next.resourceRuntimePolicy || '')) reasons.push('resourceRuntimePolicy')
   if ((existing.resourceIndexHash || '') !== (next.resourceIndexHash || '')) reasons.push('resourceIndexHash')
   if ((existing.hasCanUseTool || false) !== (next.hasCanUseTool || false)) reasons.push('hasCanUseTool')
@@ -526,10 +527,18 @@ function buildSessionConfigSignature(config: SessionConfig): string {
     providerSignature: config.providerSignature || '',
     effectiveModel: config.effectiveModel || '',
     enabledPluginMcpsHash: config.enabledPluginMcpsHash || '',
+    enabledMcpServersHash: config.enabledMcpServersHash || '',
     resourceRuntimePolicy: config.resourceRuntimePolicy || '',
     resourceIndexHash: config.resourceIndexHash || '',
     hasCanUseTool: config.hasCanUseTool || false
   })
+}
+
+export function getEnabledMcpServersHashFromSdkOptions(sdkOptions: Record<string, unknown>): string {
+  if (!sdkOptions || typeof sdkOptions !== 'object') return ''
+  const raw = (sdkOptions as { mcpServers?: unknown }).mcpServers
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return ''
+  return Object.keys(raw as Record<string, unknown>).sort().join(',')
 }
 
 function shouldDebounceResourceIndexRebuild(sessionKey: string, reasons: string[]): boolean {
@@ -962,7 +971,12 @@ export async function ensureSessionWarm(
         skillMissingPolicy
       }
     ),
-    enabledPluginMcps: getEnabledPluginMcpList(sessionKey)
+    enabledPluginMcps: getEnabledPluginMcpList(sessionKey),
+    conversationHistoryTexts: Array.isArray(conversation?.messages)
+      ? conversation.messages
+          .map((item) => (typeof item?.content === 'string' ? item.content : ''))
+          .filter((item) => item.trim().length > 0)
+      : []
   })
 
   try {
@@ -985,6 +999,7 @@ export async function ensureSessionWarm(
         providerSignature: effectiveAi.providerSignature,
         effectiveModel: effectiveAi.effectiveModel,
         enabledPluginMcpsHash: getEnabledPluginMcpHash(sessionKey),
+        enabledMcpServersHash: getEnabledMcpServersHashFromSdkOptions(sdkOptions),
         resourceRuntimePolicy,
         resourceIndexHash: getResourceIndexHash(workDir),
         hasCanUseTool: true // Session has canUseTool callback

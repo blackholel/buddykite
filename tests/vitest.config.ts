@@ -44,6 +44,8 @@ export default defineConfig({
       '../src/renderer/components/chat/__tests__/message-list.thought-priority.test.ts',
       '../src/renderer/components/chat/__tests__/message-list.guided-order.test.ts',
       '../src/renderer/components/chat/__tests__/message-item.file-context.test.ts',
+      '../src/renderer/components/chat/__tests__/widget-sanitizer.parser.test.ts',
+      '../src/renderer/components/chat/__tests__/widget-system.test.ts',
       '../src/renderer/components/chat/__tests__/thought-process.visibility.test.ts',
       '../src/renderer/stores/__tests__/chat.store.ask-user-question.test.ts',
       '../src/renderer/stores/__tests__/chat.store.response-language.test.ts',

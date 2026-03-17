@@ -16,7 +16,8 @@ const sessionManagerMocks = vi.hoisted(() => ({
   getV2SessionConversationIds: vi.fn(() => []),
   getV2SessionsCount: vi.fn(() => 0),
   setSessionMode: vi.fn(),
-  touchV2Session: vi.fn()
+  touchV2Session: vi.fn(),
+  getEnabledMcpServersHashFromSdkOptions: vi.fn(() => '')
 }))
 
 vi.mock('../session.manager', () => ({
@@ -29,7 +30,8 @@ vi.mock('../session.manager', () => ({
   getV2SessionConversationIds: sessionManagerMocks.getV2SessionConversationIds,
   getV2SessionsCount: sessionManagerMocks.getV2SessionsCount,
   setSessionMode: sessionManagerMocks.setSessionMode,
-  touchV2Session: sessionManagerMocks.touchV2Session
+  touchV2Session: sessionManagerMocks.touchV2Session,
+  getEnabledMcpServersHashFromSdkOptions: sessionManagerMocks.getEnabledMcpServersHashFromSdkOptions
 }))
 
 function createPending(

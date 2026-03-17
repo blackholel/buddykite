@@ -162,6 +162,36 @@ describe('session.manager rebuild', () => {
     expect(closeSecond).not.toHaveBeenCalled()
   })
 
+  it('MCP server 集合变化时触发 session 重建（避免复用旧提示词/工具）', async () => {
+    const closeA = vi.fn()
+    const closeB = vi.fn()
+    vi.mocked(query)
+      .mockReset()
+      .mockReturnValueOnce(createQueryMock({ close: closeA }))
+      .mockReturnValueOnce(createQueryMock({ close: closeB }))
+
+    const base: SessionConfig = {
+      aiBrowserEnabled: false,
+      skillsLazyLoad: false,
+      profileId: 'profile-a',
+      providerSignature: 'sig-a',
+      effectiveModel: 'model-a',
+      enabledPluginMcpsHash: 'mcp-1',
+      enabledMcpServersHash: '',
+      hasCanUseTool: true
+    }
+
+    await getOrCreateV2Session('space-1', 'conv-mcp', {}, undefined, base)
+    await getOrCreateV2Session('space-1', 'conv-mcp', {}, undefined, {
+      ...base,
+      enabledMcpServersHash: 'codepilot-widget'
+    })
+
+    expect(query).toHaveBeenCalledTimes(2)
+    expect(closeA).toHaveBeenCalledTimes(1)
+    expect(closeB).not.toHaveBeenCalled()
+  })
+
   it('resourceIndexHash 高频变化时触发防抖，避免连续重建', async () => {
     const closeA = vi.fn()
     const closeB = vi.fn()

@@ -131,6 +131,30 @@ describe('renderer-comm resource-dir guard', () => {
     expect(result.behavior).toBe('allow')
   })
 
+  it('denies Bash opening local html page in browser (force inline widget rendering)', async () => {
+    const canUseTool = createHandler()
+    const result = await canUseTool(
+      'Bash',
+      { command: 'open /workspace/project/tmp/chart-preview.html' },
+      { signal: new AbortController().signal }
+    )
+
+    expect(result.behavior).toBe('deny')
+    expect(result.message).toContain('show-widget')
+  })
+
+  it('denies Bash opening external web url in browser launcher', async () => {
+    const canUseTool = createHandler()
+    const result = await canUseTool(
+      'Bash',
+      { command: 'xdg-open https://example.com/dashboard' },
+      { signal: new AbortController().signal }
+    )
+
+    expect(result.behavior).toBe('deny')
+    expect(result.message).toContain('show-widget')
+  })
+
   it('denies Bash absolute path outside current workDir in strict space mode', async () => {
     const canUseTool = createHandler()
     const result = await canUseTool(

@@ -21,8 +21,8 @@ const CDN_PATTERN = /cdnjs\.cloudflare\.com|cdn\.jsdelivr\.net|unpkg\.com|esm\.s
 
 const _heightCache = new Map<string, number>()
 
-function getHeightCacheKey(code: string, widgetKey?: string): string {
-  return widgetKey || code.slice(0, 200)
+function getHeightCacheKey(code: string): string {
+  return code.slice(0, 200)
 }
 
 export function WidgetRenderer({
@@ -35,8 +35,8 @@ export function WidgetRenderer({
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastSentRef = useRef('')
-  const finalizedRef = useRef(!isPartial)
-  const cacheKey = useMemo(() => getHeightCacheKey(widgetCode, widgetKey), [widgetCode, widgetKey])
+  const finalizedRef = useRef(false)
+  const cacheKey = useMemo(() => getHeightCacheKey(widgetCode), [widgetCode])
   const hasReceivedFirstHeight = useRef((_heightCache.get(cacheKey) || 0) > 0)
   const heightLockedRef = useRef(false)
 
@@ -53,14 +53,6 @@ export function WidgetRenderer({
     const styleBlock = getWidgetIframeStyleBlock(vars)
     return buildReceiverSrcdoc(styleBlock, isDark)
   }, [])
-
-  useEffect(() => {
-    if (!isPartial) {
-      finalizedRef.current = true
-      heightLockedRef.current = true
-      setFinalized(true)
-    }
-  }, [isPartial])
 
   useEffect(() => {
     function handleMessage(e: MessageEvent) {
@@ -107,6 +99,9 @@ export function WidgetRenderer({
           }
           break
         }
+        case 'widget:error':
+          console.warn('[WidgetRenderer] receiver error:', e.data.message || 'unknown')
+          break
       }
     }
 
@@ -126,6 +121,9 @@ export function WidgetRenderer({
   useEffect(() => {
     if (!isPartial || !iframeReady) return
     const sanitized = sanitizeForStreaming(widgetCode)
+    finalizedRef.current = false
+    setFinalized(false)
+    heightLockedRef.current = false
     if (debounceRef.current) clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(() => sendUpdate(sanitized), STREAM_DEBOUNCE)
     return () => {

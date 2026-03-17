@@ -34,7 +34,8 @@ import {
   buildSdkOptions,
   getEffectiveSkillsLazyLoad,
   getWorkingDir,
-  getEnabledMcpServers
+  getEnabledMcpServers,
+  shouldEnableCodepilotWidgetMcp
 } from './sdk-config.builder'
 import { parseSDKMessages, formatCanvasContext, buildMessageContent } from './message-parser'
 import { broadcastMcpStatus } from './mcp-status.service'
@@ -69,7 +70,8 @@ import {
   getV2SessionConversationIds,
   getV2SessionsCount,
   setSessionMode,
-  touchV2Session
+  touchV2Session,
+  getEnabledMcpServersHashFromSdkOptions
 } from './session.manager'
 import type {
   AgentRequest,
@@ -1838,7 +1840,11 @@ export async function sendMessage(
           )
         }
       }),
-      enabledPluginMcps: getEnabledPluginMcpList(sessionKey)
+      enabledPluginMcps: getEnabledPluginMcpList(sessionKey),
+      promptForMcpRouting: messageForSend,
+      conversationHistoryTexts: historyMessages
+        .map((item) => (typeof item?.content === 'string' ? item.content : ''))
+        .filter((item) => item.trim().length > 0)
     })
 
     // Override stderr handler to accumulate buffer for error reporting
@@ -1914,6 +1920,7 @@ export async function sendMessage(
       providerSignature: effectiveAi.providerSignature,
       effectiveModel: effectiveAi.effectiveModel,
       enabledPluginMcpsHash: getEnabledPluginMcpHash(sessionKey),
+      enabledMcpServersHash: getEnabledMcpServersHashFromSdkOptions(sdkOptions),
       resourceIndexHash: getResourceIndexHash(workDir),
       resourceRuntimePolicy,
       hasCanUseTool: true // Session has canUseTool callback
@@ -2178,6 +2185,28 @@ Proceed with explicit default assumptions and continue with a concrete plan/outp
 `
       : ''
 
+    const forceWidgetInline = shouldEnableCodepilotWidgetMcp({
+      prompt: messageForSend,
+      conversationHistoryTexts: historyMessages
+        .map((item) => (typeof item?.content === 'string' ? item.content : ''))
+        .filter((item) => item.trim().length > 0),
+      spaceId,
+      conversationId
+    })
+
+    const widgetOutputPolicyPrefix = forceWidgetInline
+      ? `<widget-output-policy>
+The user is requesting visualization rendering in current chat.
+Render directly now, do not ask for additional confirmation.
+If you output a widget, you MUST use exactly one show-widget fenced block.
+The fenced JSON MUST use keys: "title" (optional) and "widget_code" (required HTML string).
+Do NOT output raw JS snippets like "const option = ..." or "return { type: 'chart', ... }" outside show-widget fence.
+Do NOT create html files or open external browser pages.
+</widget-output-policy>
+
+`
+      : ''
+
     // Per-turn language guard: some compatible providers can weaken long-lived system prompts.
     // Injecting this into user-turn context makes language preference effective immediately.
     const responseLanguagePrefix = `<response-language>
@@ -2206,6 +2235,7 @@ If the user asks about this project/codebase, inspect files in current workspace
       planModePrefix +
       clarificationPolicyPrefix +
       clarificationBudgetPrefix +
+      widgetOutputPolicyPrefix +
       responseLanguagePrefix +
       workspaceGroundingPrefix +
       directiveLockPrefix +

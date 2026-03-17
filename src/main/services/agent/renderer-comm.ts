@@ -132,6 +132,25 @@ function getBashCommandPathCandidates(command: string): string[] {
   return Array.from(candidates)
 }
 
+function isExternalBrowserLaunchCommand(command: string): boolean {
+  const normalized = command.toLowerCase()
+  const hasLauncher = /\b(open|xdg-open|start)\b/.test(normalized)
+  const hasBrowserExecutable = /\b(google-chrome|chrome|chromium|safari|firefox|msedge|microsoft-edge)\b/.test(
+    normalized
+  )
+
+  const targetsWebPage = /\bhttps?:\/\/|file:\/\/|\.html?\b/i.test(command)
+  const launchesBrowserAppViaOpenA =
+    /\bopen\s+-a\s+["']?(google chrome|chrome|safari|firefox|microsoft edge|msedge|chromium)["']?/i.test(
+      command
+    )
+
+  if (launchesBrowserAppViaOpenA) return true
+  if (hasLauncher && targetsWebPage) return true
+  if (hasBrowserExecutable && targetsWebPage) return true
+  return false
+}
+
 function resolveShellPathToken(token: string, absoluteWorkDir: string): string {
   const trimmed = token.trim()
   if (!trimmed) return ''
@@ -999,6 +1018,16 @@ export function createCanUseTool(
 
     // Check Bash commands based on permission settings
     if (toolName === 'Bash') {
+      const command = typeof input.command === 'string' ? input.command : ''
+
+      if (isExternalBrowserLaunchCommand(command)) {
+        return deny(
+          'ModePolicy',
+          'Opening external browser pages via Bash is blocked. Render visualization inline with show-widget in chat.',
+          'widget.inline_render_required'
+        )
+      }
+
       const permission = config.permissions.commandExecution
 
       if (permission === 'deny') {
@@ -1060,7 +1089,6 @@ export function createCanUseTool(
 
       if (strictSpaceOnly) {
         trace.push({ layer: 'SpacePolicy', outcome: 'allow', rule: 'space.mode=strict-space-only' })
-        const command = typeof input.command === 'string' ? input.command : ''
         if (!command.trim()) {
           return deny(
             'SpacePolicy',

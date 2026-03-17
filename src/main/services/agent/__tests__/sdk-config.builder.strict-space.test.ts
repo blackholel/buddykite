@@ -60,6 +60,10 @@ vi.mock('../../space.service', () => ({
   getAllSpacePaths: vi.fn(() => ['/workspace/project', '/workspace/space-b', '/workspace/space-a'])
 }))
 
+vi.mock('../../conversation.service', () => ({
+  getConversation: vi.fn(() => null)
+}))
+
 vi.mock('../../ai-browser', () => ({
   createAIBrowserMcpServer: vi.fn(),
   AI_BROWSER_SYSTEM_PROMPT: ''
@@ -67,6 +71,11 @@ vi.mock('../../ai-browser', () => ({
 
 vi.mock('../../skills-mcp-server', () => ({
   SKILLS_LAZY_SYSTEM_PROMPT: ''
+}))
+
+vi.mock('../widget-guidelines', () => ({
+  WIDGET_SYSTEM_PROMPT: 'WIDGET_SYSTEM_PROMPT_MOCK',
+  createWidgetMcpServer: vi.fn(() => ({ name: 'codepilot-widget-mock' }))
 }))
 
 vi.mock('../../plugin-mcp.service', () => ({
@@ -80,13 +89,15 @@ vi.mock('../../../utils/path-validation', () => ({
 import { getSpaceConfig, updateSpaceConfig } from '../../space-config.service'
 import { getConfig } from '../../config.service'
 import { buildHooksConfig } from '../../hooks.service'
+import { createWidgetMcpServer } from '../widget-guidelines'
 import {
   buildPluginsConfig,
   buildSdkOptions,
   buildSettingSources,
   buildSystemPromptAppend,
   getEnabledMcpServers,
-  getWorkingDir
+  getWorkingDir,
+  shouldEnableCodepilotWidgetMcp
 } from '../sdk-config.builder'
 import { ensureSpaceResourcePolicy, getExecutionLayerAllowedSources } from '../space-resource-policy.service'
 
@@ -307,6 +318,45 @@ describe('sdk-config.builder strict space-only', () => {
     expect(append).toContain('Language policy')
     expect(append).toContain('zh-CN')
     expect(append).not.toContain('Do NOT use resources outside this list.')
+  })
+
+  it('buildSdkOptions 默认注入 WIDGET_SYSTEM_PROMPT', () => {
+    const sdkOptions = buildSdkOptions(createBuildSdkOptionsParams())
+    expect(sdkOptions.systemPrompt.append).toContain('WIDGET_SYSTEM_PROMPT_MOCK')
+  })
+
+  it('命中可视化关键词时会按需挂载 codepilot-widget MCP', () => {
+    vi.mocked(createWidgetMcpServer).mockClear()
+
+    const sdkOptions = buildSdkOptions({
+      ...createBuildSdkOptionsParams(),
+      promptForMcpRouting: '请做一个看板和图表小组件'
+    })
+
+    expect(vi.mocked(createWidgetMcpServer)).toHaveBeenCalledTimes(1)
+    expect(sdkOptions.mcpServers).toEqual(
+      expect.objectContaining({
+        'codepilot-widget': { name: 'codepilot-widget-mock' }
+      })
+    )
+  })
+
+  it('shouldEnableCodepilotWidgetMcp 支持中英文关键词判定', () => {
+    expect(
+      shouldEnableCodepilotWidgetMcp({
+        prompt: 'please render a dashboard widget for weekly conversion'
+      })
+    ).toBe(true)
+    expect(
+      shouldEnableCodepilotWidgetMcp({
+        prompt: '帮我做一个可视化时间线'
+      })
+    ).toBe(true)
+    expect(
+      shouldEnableCodepilotWidgetMcp({
+        prompt: 'just help me rename this variable'
+      })
+    ).toBe(false)
   })
 
   it('getWorkingDir throws explicit SPACE_NOT_FOUND_FOR_WORKDIR for missing normal space', () => {

@@ -25,6 +25,53 @@ describe('widget-sanitizer', () => {
     })
   })
 
+  it('parses uppercase SHOW-WIDGET fence and underscore show_widget fence', () => {
+    const inputUpper = [
+      '```SHOW-WIDGET',
+      '{"title":"Upper","widget_code":"<div>upper</div>"}',
+      '```'
+    ].join('\n')
+    const inputUnderscore = [
+      '```show_widget',
+      '{"title":"Under","widget_code":"<div>under</div>"}',
+      '```'
+    ].join('\n')
+
+    const upperSegments = parseAllShowWidgets(inputUpper)
+    const underSegments = parseAllShowWidgets(inputUnderscore)
+
+    expect(upperSegments.some((segment) => segment.type === 'widget')).toBe(true)
+    expect(underSegments.some((segment) => segment.type === 'widget')).toBe(true)
+  })
+
+  it('supports structured widget payload and converts table props to HTML widget', () => {
+    const input = [
+      '```show-widget',
+      JSON.stringify({
+        type: 'table',
+        title: '结构化表格',
+        description: '从 schema 转成 HTML widget',
+        props: {
+          columns: ['模块', '结论'],
+          rows: [
+            ['数据层', '通过'],
+            ['渲染层', '通过']
+          ]
+        }
+      }),
+      '```'
+    ].join('\n')
+
+    const segments = parseAllShowWidgets(input)
+    const widget = segments.find((segment) => segment.type === 'widget')
+    expect(widget?.type).toBe('widget')
+    if (widget?.type === 'widget') {
+      expect(widget.widgetCode).toContain('<table')
+      expect(widget.widgetCode).toContain('结构化表格')
+      expect(widget.widgetCode).toContain('渲染层')
+    }
+  })
+
   it('extracts partial widget during streaming and truncates script', () => {
     const input = [
       '```show-widget',
@@ -40,6 +87,21 @@ describe('widget-sanitizer', () => {
     })
     expect((segments[0] as { widgetCode: string }).widgetCode).toContain('<div>safe</div>')
     expect((segments[0] as { widgetCode: string }).widgetCode.toLowerCase()).not.toContain('<script')
+  })
+
+  it('extracts partial widget for uppercase SHOW-WIDGET fence in streaming', () => {
+    const input = [
+      '```SHOW-WIDGET',
+      '{"title":"Live","widget_code":"<div>partial</div>"}'
+    ].join('\n')
+
+    const segments = parseShowWidgetsForStreaming(input)
+    expect(segments).toHaveLength(1)
+    expect(segments[0]).toMatchObject({
+      type: 'widget',
+      isPartial: true,
+      title: 'Live'
+    })
   })
 
   it('keeps partial key stable after fence closes', () => {
