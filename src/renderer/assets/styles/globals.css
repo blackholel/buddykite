@@ -1028,62 +1028,62 @@ body {
 
 :root {
   /* Space 语义色：Baseline(minimal) 主盘 + 轻度 Cupertino 质感 */
-  --workspace-bg: 0 0% 96.9%;
-  --sidebar-bg: 0 0% 91.8%;
-  --canvas-bg: 0 0% 96.9%;
-  --chrome-bg: 0 0% 95%;
-  --line-soft: 0 0% 84.5%;
-  --line-strong: 0 0% 72%;
-  --space-split-line: 0 0% 82.6%;
+  --workspace-bg: 215 19% 95.8%;
+  --sidebar-bg: 215 17% 93.7%;
+  --canvas-bg: 0 0% 97.8%;
+  --chrome-bg: 215 16% 94.4%;
+  --line-soft: 214 14% 84%;
+  --line-strong: 214 12% 76%;
+  --space-split-line: 214 14% 84%;
 
   --space-paper: var(--workspace-bg);
   --space-panel: var(--chrome-bg);
   --space-stroke: var(--line-soft);
-  --space-ink: 218 18% 12%;
-  --space-accent: 205 24% 46%;
+  --space-ink: 220 20% 15%;
+  --space-accent: 213 72% 48%;
   --space-left-panel: var(--sidebar-bg);
   --space-left-panel-alt: 210 17% 92%;
-  --space-middle-panel: 0 0% 96.9%;
-  --space-right-panel: 0 0% 96.9%;
+  --space-middle-panel: var(--workspace-bg);
+  --space-right-panel: var(--canvas-bg);
   --space-right-panel-alt: 210 20% 97%;
   --space-chat-bg: var(--workspace-bg);
-  --space-panel-gap: 6px;
-  --space-panel-radius: 12px;
+  --space-panel-gap: 4px;
+  --space-panel-radius: 10px;
 
-  --shadow-subtle: 0 1px 2px rgba(18, 24, 38, 0.035);
-  --shadow-soft: 0 2px 10px rgba(18, 24, 38, 0.065);
-  --shadow-medium: 0 8px 24px rgba(18, 24, 38, 0.1);
-  --shadow-elevated: 0 14px 34px rgba(18, 24, 38, 0.14);
+  --shadow-subtle: 0 1px 2px rgba(25, 32, 46, 0.03);
+  --shadow-soft: 0 2px 6px rgba(25, 32, 46, 0.05);
+  --shadow-medium: 0 4px 12px rgba(25, 32, 46, 0.08);
+  --shadow-elevated: 0 6px 16px rgba(25, 32, 46, 0.1);
 
-  --glass-blur: blur(8px) saturate(1.08);
-  --glass-opacity: 0.78;
+  --glass-blur: blur(10px);
+  --glass-opacity: 0.75;
 }
 
 .dark {
-  --workspace-bg: 220 11% 14.4%;
-  --sidebar-bg: 220 10% 15.8%;
-  --canvas-bg: 220 12% 12.8%;
-  --chrome-bg: 220 10% 15.1%;
-  --line-soft: 220 8% 25%;
-  --line-strong: 220 8% 34%;
-  --space-split-line: 220 8% 27.5%;
+  --workspace-bg: 223 17% 12.2%;
+  --sidebar-bg: 223 15% 13.8%;
+  --canvas-bg: 223 16% 14.6%;
+  --chrome-bg: 223 16% 13.2%;
+  --line-soft: 223 10% 24%;
+  --line-strong: 223 9% 31%;
+  --space-split-line: 223 10% 24%;
 
   --space-paper: var(--workspace-bg);
   --space-panel: var(--chrome-bg);
   --space-stroke: var(--line-soft);
-  --space-ink: 215 14% 86%;
-  --space-accent: 205 36% 64%;
-  --space-left-panel: 220 10% 15.8%;
+  --space-ink: 210 20% 95%;
+  --space-accent: 212 90% 70%;
+  --space-left-panel: var(--sidebar-bg);
   --space-left-panel-alt: 223 17% 15%;
-  --space-middle-panel: 220 11% 14.4%;
-  --space-right-panel: 220 11% 14.4%;
+  --space-middle-panel: var(--workspace-bg);
+  --space-right-panel: var(--canvas-bg);
   --space-right-panel-alt: 223 18% 15%;
   --space-chat-bg: var(--workspace-bg);
 
-  --shadow-subtle: 0 1px 2px rgba(0, 0, 0, 0.24);
-  --shadow-soft: 0 3px 12px rgba(0, 0, 0, 0.38);
-  --shadow-medium: 0 10px 26px rgba(0, 0, 0, 0.46);
-  --shadow-elevated: 0 14px 38px rgba(0, 0, 0, 0.56);
+  --shadow-subtle: 0 1px 2px rgba(0,0,0,0.18);
+  --shadow-soft: 0 2px 6px rgba(0,0,0,0.3);
+  --shadow-medium: 0 4px 12px rgba(0,0,0,0.42);
+  --shadow-elevated: 0 6px 16px rgba(0,0,0,0.48);
 }
 
 .space-studio-root {
