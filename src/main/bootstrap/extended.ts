@@ -20,7 +20,10 @@
  *   - GitBash: Windows Git Bash setup (Windows optional)
  */
 
-import { BrowserWindow } from 'electron'
+import { spawn } from 'child_process'
+import { existsSync } from 'fs'
+import { join, resolve } from 'path'
+import { app, BrowserWindow } from 'electron'
 import { registerOnboardingHandlers } from '../ipc/onboarding'
 import { registerRemoteHandlers } from '../ipc/remote'
 import { registerBrowserHandlers } from '../ipc/browser'
@@ -31,6 +34,60 @@ import { registerPerfHandlers } from '../ipc/perf'
 import { registerGitBashHandlers, initializeGitBashOnStartup } from '../ipc/git-bash'
 import { registerWorkflowHandlers } from '../ipc/workflow'
 import { initSkillAgentWatchers, cleanupSkillAgentWatchers } from '../services/skills-agents-watch.service'
+
+function resolveSuperpowersPatchScriptPath(): string | null {
+  const candidatePaths = [
+    resolve(process.cwd(), 'scripts', 'apply-superpowers-trigger-patch.mjs'),
+    resolve(__dirname, '../../../scripts/apply-superpowers-trigger-patch.mjs'),
+    join(app.getAppPath(), 'scripts', 'apply-superpowers-trigger-patch.mjs')
+  ]
+
+  for (const candidate of candidatePaths) {
+    if (existsSync(candidate)) {
+      return candidate
+    }
+  }
+  return null
+}
+
+function applySuperpowersTriggerPatchInBackground(): void {
+  if (process.env.KITE_SUPERPOWERS_PATCH === '0') {
+    console.log('[Bootstrap] Superpowers patch disabled by KITE_SUPERPOWERS_PATCH=0')
+    return
+  }
+
+  const scriptPath = resolveSuperpowersPatchScriptPath()
+  if (!scriptPath) {
+    console.log('[Bootstrap] Superpowers patch script not found, skipping.')
+    return
+  }
+
+  const child = spawn(process.execPath, [scriptPath], {
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+    stdio: ['ignore', 'pipe', 'pipe']
+  })
+
+  child.stdout.on('data', (chunk) => {
+    const text = chunk.toString().trim()
+    if (text.length > 0) {
+      console.log(text)
+    }
+  })
+  child.stderr.on('data', (chunk) => {
+    const text = chunk.toString().trim()
+    if (text.length > 0) {
+      console.warn(text)
+    }
+  })
+  child.on('error', (error) => {
+    console.warn('[Bootstrap] Failed to start superpowers patch script:', error)
+  })
+  child.on('close', (code) => {
+    if (code !== 0) {
+      console.warn(`[Bootstrap] Superpowers patch script exited with code ${code}`)
+    }
+  })
+}
 
 /**
  * Initialize extended services after window is visible
@@ -80,6 +137,9 @@ export function initializeExtendedServices(mainWindow: BrowserWindow): void {
 
   // Skills/Agents: Watch for changes and notify renderer
   initSkillAgentWatchers(mainWindow)
+
+  // Non-blocking startup patch: keep superpowers trigger policy narrowed
+  applySuperpowersTriggerPatchInBackground()
 
   // Windows-specific: Initialize Git Bash in background
   if (process.platform === 'win32') {
