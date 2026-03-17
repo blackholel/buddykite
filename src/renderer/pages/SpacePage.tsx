@@ -14,7 +14,6 @@
  */
 
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { useAppStore } from '../stores/app.store'
 import { useSpaceStore } from '../stores/space.store'
 import { useChatStore } from '../stores/chat.store'
 import { useCanvasStore, useCanvasIsOpen, useCanvasIsMaximized } from '../stores/canvas.store'
@@ -23,16 +22,12 @@ import { useSearchStore, type SearchScope } from '../stores/search.store'
 import { ChatView } from '../components/chat/ChatView'
 import { ArtifactRail } from '../components/artifact/ArtifactRail'
 import { ConversationList } from '../components/chat/ConversationList'
-import { ChatHistoryPanel } from '../components/chat/ChatHistoryPanel'
-import { SpaceIcon } from '../components/icons/ToolIcons'
-import { Header } from '../components/layout/Header'
 import { ContentCanvas, CanvasToggleButton } from '../components/canvas'
-import { GitBashWarningBanner } from '../components/setup/GitBashWarningBanner'
 import { api } from '../api'
 import { useLayoutPreferences } from '../hooks/useLayoutPreferences'
 import { useWindowMaximize } from '../components/canvas/viewers/useWindowMaximize'
 import { useCanvasLifecycle } from '../hooks/useCanvasLifecycle'
-import { X, MessageSquare } from 'lucide-react'
+import { X, MessageSquare, PanelLeftOpen } from 'lucide-react'
 import { shallow } from 'zustand/shallow'
 import { useSearchShortcuts } from '../hooks/useSearchShortcuts'
 import { useTranslation } from '../i18n'
@@ -174,6 +169,7 @@ type PreloadResourceKind = 'skills' | 'agents' | 'commands'
 // Mobile breakpoint (matches Tailwind sm: 640px)
 const MOBILE_BREAKPOINT = 640
 const RAIL_VISIBLE_STORAGE_KEY = 'kite-right-rail-visible'
+const LEFT_RAIL_VISIBLE_STORAGE_KEY = 'kite-left-rail-visible'
 
 // Hook to detect mobile viewport
 function useIsMobile() {
@@ -196,12 +192,6 @@ function useIsMobile() {
 
 export function SpacePage() {
   const { t } = useTranslation()
-  const { setView, mockBashMode, gitBashInstallProgress, startGitBashInstall } = useAppStore((state) => ({
-    setView: state.setView,
-    mockBashMode: state.mockBashMode,
-    gitBashInstallProgress: state.gitBashInstallProgress,
-    startGitBashInstall: state.startGitBashInstall
-  }), shallow)
   const { currentSpace } = useSpaceStore((state) => ({
     currentSpace: state.currentSpace
   }), shallow)
@@ -231,8 +221,9 @@ export function SpacePage() {
     renameConversation: state.renameConversation
   }), shallow)
 
-  // Keep conversation list visible in classic space mode
-  const showConversationList = true
+  const [showConversationList, setShowConversationList] = useState(() => {
+    return localStorage.getItem(LEFT_RAIL_VISIBLE_STORAGE_KEY) !== '0'
+  })
   const [showArtifactRail, setShowArtifactRail] = useState(() => {
     return localStorage.getItem(RAIL_VISIBLE_STORAGE_KEY) === '1'
   })
@@ -691,6 +682,10 @@ export function SpacePage() {
     localStorage.setItem(RAIL_VISIBLE_STORAGE_KEY, showArtifactRail ? '1' : '0')
   }, [showArtifactRail])
 
+  useEffect(() => {
+    localStorage.setItem(LEFT_RAIL_VISIBLE_STORAGE_KEY, showConversationList ? '1' : '0')
+  }, [showConversationList])
+
   // BrowserView visibility: hide when leaving SpacePage, show when returning
   useEffect(() => {
     if (!currentSpace) return
@@ -771,11 +766,6 @@ export function SpacePage() {
       )
     }
   }, [layoutMode, currentSpace?.id, currentSpace?.path, conversations, currentConversationId, currentSpaceId, isLoading, openChat])
-
-  // Handle back
-  const handleBack = () => {
-    setView('home')
-  }
 
   // Handle new conversation
   const handleNewConversation = useCallback(async () => {
@@ -872,113 +862,36 @@ export function SpacePage() {
         Show/hide is controlled by api.showChatCapsuleOverlay() / api.hideChatCapsuleOverlay()
       */}
 
-      {/* Header - replaced with drag region spacer when maximized (for macOS traffic lights) */}
-      {isCanvasMaximized ? (
-        <div
-          className="h-11 flex-shrink-0 space-studio-header"
-          style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
-        />
-      ) : (
-      <Header
-        className="space-studio-header"
-        left={
-          <>
-            <button
-              onClick={handleBack}
-              className="space-studio-header-btn p-2 rounded-lg transition-all duration-200 group"
-              aria-label={t('Back to home')}
-            >
-              <svg className="w-[18px] h-[18px] text-muted-foreground group-hover:text-foreground transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-            </button>
-
-            <div className="flex items-center gap-2.5">
-              <SpaceIcon iconId={currentSpace.icon} size={20} />
-              <span className="font-medium text-sm tracking-tight">
-                {currentSpace.isTemp ? 'Kite' : currentSpace.name}
-              </span>
-            </div>
-
-            {/* Chat History Panel - integrated in header */}
-            {conversations.length > 0 && (
-              <div className="ml-0.5">
-                <ChatHistoryPanel
-                  conversations={conversations}
-                  currentConversationId={currentConversationId}
-                  spaceId={currentSpace.id}
-                  workDir={currentSpace.path}
-                  layoutMode={layoutMode}
-                  onSelect={handleSelectConversation}
-                  onNew={handleNewConversation}
-                  onDelete={handleDeleteConversation}
-                  onRename={handleRenameConversation}
-                  spaceName={currentSpace.isTemp ? t('Kite Space') : currentSpace.name}
-                />
-              </div>
-            )}
-          </>
-        }
-        right={
-          <>
-            <div className="flex items-center rounded-lg border border-border/80 bg-card/70 p-0.5">
-              <button
-                className="px-2.5 py-1 text-xs rounded-md bg-secondary text-foreground"
-                title={t('Current space')}
-                aria-label={t('Current space')}
-              >
-                {t('Current space')}
-              </button>
-              <button
-                onClick={() => {
-                  persistWorkspaceViewMode('unified')
-                  setView('unified')
-                }}
-                className="px-2.5 py-1 text-xs rounded-md text-muted-foreground hover:text-foreground transition-colors"
-                title={t('All spaces')}
-                aria-label={t('All spaces')}
-              >
-                {t('All spaces')}
-              </button>
-            </div>
-
-            {/* Settings */}
-            <button
-              onClick={() => setView('settings')}
-              className="space-studio-header-btn p-2 rounded-lg transition-all duration-200 group"
-              title={t('Settings')}
-              aria-label={t('Settings')}
-            >
-              <svg className="w-[18px] h-[18px] text-muted-foreground group-hover:text-foreground transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-            </button>
-          </>
-        }
-      />
-      )}
-
-      {/* Git Bash Warning Banner - Windows only, when in mock mode */}
-      {mockBashMode && !isCanvasMaximized && (
-        <GitBashWarningBanner
-          installProgress={gitBashInstallProgress}
-          onInstall={startGitBashInstall}
-        />
-      )}
-
       {/* Main content */}
       <div className="space-studio-main flex-1 flex overflow-hidden relative">
-        <div className={`${isMobile ? 'flex-1 flex overflow-hidden' : 'space-studio-shell flex-1 flex overflow-hidden'}`}>
+        <div className={`${isMobile ? 'flex-1 flex overflow-hidden relative' : 'space-studio-shell flex-1 flex overflow-hidden relative'}`}>
+          {!isMobile && !isCanvasMaximized && !showConversationList && (
+            <div className="space-studio-collapsed-rail">
+              <button
+                onClick={() => setShowConversationList(true)}
+                className="space-studio-collapsed-rail-btn"
+                title={t('Show conversations')}
+                aria-label={t('Show conversations')}
+              >
+                <PanelLeftOpen className="w-4 h-4" />
+              </button>
+              <div className="space-studio-collapsed-rail-count">
+                {conversations.length}
+              </div>
+            </div>
+          )}
+
           {/* Conversation list sidebar - hidden when maximized */}
           {showConversationList && !isCanvasMaximized && (
             <ConversationList
               conversations={conversations}
               currentConversationId={currentConversationId}
               spaceId={currentSpace.id}
+              spaceName={currentSpace.isTemp ? t('Kite Space') : currentSpace.name}
               layoutMode={layoutMode}
               onSelect={handleSelectConversation}
               onNew={handleNewConversation}
+              onToggleCollapse={() => setShowConversationList(false)}
               onDelete={handleDeleteConversation}
               onRename={handleRenameConversation}
               workDir={currentSpace.path}

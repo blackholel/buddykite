@@ -5,14 +5,15 @@
 
 /* Tab bar container */
 .canvas-tab-bar {
-  height: 38px;
-  background: hsl(var(--chrome-bg) / 0.8);
-  border-bottom: 1px solid hsl(var(--line-soft) / 0.6);
+  height: 40px;
+  background: linear-gradient(180deg, hsl(var(--chrome-bg) / 0.92) 0%, hsl(var(--chrome-bg) / 0.84) 100%);
+  border-bottom: 1px solid hsl(var(--line-soft) / 0.72);
   display: flex;
   align-items: stretch;
-  padding: 0;
+  padding: 0 6px;
   gap: 0;
   overflow: hidden;
+  box-shadow: inset 0 1px 0 hsl(var(--glass-highlight) / 0.28);
 }
 
 /* Tab list container - scrollable area for tabs + new button */
@@ -37,16 +38,18 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 0 4px 0 10px;
-  min-width: 36px;  /* Minimum: just icon visible */
+  padding: 0 6px 0 12px;
+  min-width: 42px;  /* Minimum: just icon visible */
   max-width: 200px;
   width: 160px;     /* Preferred width, will shrink */
-  height: 100%;
-  background: transparent;
-  color: hsl(var(--muted-foreground));
+  height: calc(100% - 8px);
+  margin: 4px 0;
+  border-radius: 10px;
+  border: 1px solid hsl(var(--line-soft) / 0);
+  background: hsl(var(--chrome-bg) / 0.42);
+  color: hsl(var(--space-ink) / 0.62);
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease, width 0.15s ease;
-  border: none;
+  transition: background 0.15s ease, color 0.15s ease, width 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
   outline: none;
   user-select: none;
   flex-shrink: 1;   /* Allow shrinking */
@@ -59,10 +62,10 @@
   content: '';
   position: absolute;
   right: 0;
-  top: 8px;
-  bottom: 8px;
+  top: 7px;
+  bottom: 7px;
   width: 1px;
-  background: hsl(var(--line-soft) / 0.28);
+  background: hsl(var(--line-soft) / 0.38);
   transition: opacity 0.15s ease;
 }
 
@@ -80,7 +83,9 @@
 
 /* Active tab style */
 .canvas-tab.active {
-  background: hsl(var(--canvas-bg) / 0.92);
+  background: hsl(var(--canvas-bg) / 0.96);
+  border-color: hsl(var(--line-soft) / 0.76);
+  box-shadow: 0 1px 2px hsl(0 0% 0% / 0.06), inset 0 1px 0 hsl(var(--glass-highlight) / 0.32);
   color: hsl(var(--foreground));
 }
 
@@ -89,9 +94,10 @@
   content: '';
   position: absolute;
   top: 0;
-  left: 0;
-  right: 0;
+  left: 10px;
+  right: 10px;
   height: 1.5px;
+  border-radius: 1px;
   background: hsl(var(--primary));
   z-index: 2;
 }
@@ -109,7 +115,8 @@
 
 /* Tab hover state */
 .canvas-tab:not(.active):hover {
-  background: hsl(var(--canvas-bg) / 0.54);
+  background: hsl(var(--canvas-bg) / 0.8);
+  border-color: hsl(var(--line-soft) / 0.62);
   color: hsl(var(--foreground) / 0.9);
 }
 
@@ -128,7 +135,7 @@
   flex: 1;
   min-width: 0;
   font-size: 13px;
-  font-weight: 400;
+  font-weight: 430;
   line-height: 1.3;  /* Enough space for descenders (g, y, p, q, j) */
   white-space: nowrap;
   overflow: hidden;
@@ -169,7 +176,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 4px;
+  border-radius: 6px;
   color: inherit;
   transition: background 0.15s ease, color 0.15s ease, transform 0.1s ease;
 }
@@ -191,13 +198,13 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 4px;
+  border-radius: 6px;
   color: inherit;
   transition: background 0.15s ease, color 0.15s ease;
 }
 
 .canvas-tab-refresh:hover {
-  background: hsl(var(--muted));
+  background: hsl(var(--canvas-bg) / 0.82);
   color: hsl(var(--foreground));
 }
 
@@ -234,8 +241,8 @@
 .canvas-tab-bar-actions {
   display: flex;
   align-items: center;
-  gap: 2px;
-  padding: 0 8px 0 4px;
+  gap: 4px;
+  padding: 0 6px 0 6px;
   flex-shrink: 0;
   border-left: none;
 }
@@ -246,13 +253,13 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 6px;
-  color: hsl(var(--muted-foreground) / 0.7);
+  border-radius: 8px;
+  color: hsl(var(--space-ink) / 0.62);
   transition: background 0.15s ease, color 0.15s ease;
 }
 
 .canvas-tab-bar-action:hover {
-  background: hsl(var(--canvas-bg) / 0.62);
+  background: hsl(var(--canvas-bg) / 0.86);
   color: hsl(var(--foreground));
 }
 
@@ -268,15 +275,15 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 6px;
-  color: hsl(var(--muted-foreground) / 0.6);
+  border-radius: 8px;
+  color: hsl(var(--space-ink) / 0.56);
   transition: background 0.15s ease, color 0.15s ease;
   flex-shrink: 0;
   margin-left: 4px;
 }
 
 .canvas-tab-new:hover {
-  background: hsl(var(--canvas-bg) / 0.62);
+  background: hsl(var(--canvas-bg) / 0.86);
   color: hsl(var(--foreground));
 }
 

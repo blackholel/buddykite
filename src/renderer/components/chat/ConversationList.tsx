@@ -12,7 +12,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import type { ConversationMeta } from '../../types'
 import { Plus } from '../icons/ToolIcons'
-import { ExternalLink, Pencil, Trash2, MessageCircle, MoreHorizontal } from 'lucide-react'
+import { ExternalLink, Pencil, Trash2, MessageCircle, MoreHorizontal, PanelLeftClose } from 'lucide-react'
 import { useCanvasLifecycle } from '../../hooks/useCanvasLifecycle'
 import { getCurrentLanguage, useTranslation } from '../../i18n'
 import { shallow } from 'zustand/shallow'
@@ -86,9 +86,11 @@ interface ConversationListProps {
   conversations: ConversationMeta[]
   currentConversationId?: string
   spaceId?: string
+  spaceName?: string
   layoutMode?: 'split' | 'tabs-only'
   onSelect: (id: string) => void
   onNew: () => void
+  onToggleCollapse?: () => void
   onDelete?: (id: string) => void
   onRename?: (id: string, newTitle: string) => void
   workDir?: string
@@ -106,9 +108,11 @@ export function ConversationList({
   conversations,
   currentConversationId,
   spaceId,
+  spaceName,
   layoutMode = 'split',
   onSelect,
   onNew,
+  onToggleCollapse,
   onDelete,
   onRename,
   workDir,
@@ -139,6 +143,11 @@ export function ConversationList({
     if (workDir && workDir.trim()) return workDir
     return currentSpace?.path
   }, [currentSpace?.path, workDir])
+  const resolvedSpaceName = useMemo(() => {
+    if (spaceName && spaceName.trim()) return spaceName.trim()
+    if (currentSpace?.name?.trim()) return currentSpace.name.trim()
+    return t('Current space')
+  }, [currentSpace?.name, spaceName, t])
 
   const { skills, loadedWorkDir: loadedSkillsWorkDir, loadSkills } = useSkillsStore((state) => ({
     skills: state.skills,
@@ -410,23 +419,38 @@ export function ConversationList({
       className="space-studio-sidebar space-studio-conversation-panel space-studio-reveal flex flex-col relative overflow-hidden"
       style={{ width, transition: isDragging ? 'none' : 'width 0.2s ease' }}
     >
-      <div className="px-3 pt-2.5 pb-2 border-b border-[hsl(var(--line-soft)/0.32)] flex items-center justify-between">
-        <div className="min-w-0">
-          <span className="text-[11px] font-semibold text-foreground/55 uppercase tracking-[0.2em]">
-            {t('Conversations')}
-          </span>
-          <p className="text-[11px] text-muted-foreground/70 mt-1 truncate">
-            {t('{{count}} conversations', { count: conversations.length })}
-          </p>
+      <div className="space-studio-conversation-head px-3 pt-8 pb-2.5 border-b border-[hsl(var(--line-soft)/0.36)]">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 pt-0.5">
+            <p className="text-[10px] font-medium text-muted-foreground/72 uppercase tracking-[0.14em]">
+              {t('Current space')}
+            </p>
+            <p className="mt-1 text-[15px] leading-5 font-semibold text-foreground/92 truncate">
+              {resolvedSpaceName}
+            </p>
+            <p className="text-[12px] text-muted-foreground/78 mt-1 truncate">
+              {t('{{count}} conversations', { count: conversations.length })}
+            </p>
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={onNew}
+              className="h-[32px] w-[32px] inline-flex items-center justify-center rounded-xl border border-[hsl(var(--line-soft)/0.5)] bg-[hsl(var(--space-right-panel)/0.56)] hover:bg-[hsl(var(--space-right-panel)/0.84)] hover:border-[hsl(var(--line-strong)/0.56)] transition-all duration-200 group"
+              title={t('New conversation')}
+              aria-label={t('New conversation')}
+            >
+              <Plus className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+            </button>
+            <button
+              onClick={() => onToggleCollapse?.()}
+              className="h-[32px] w-[32px] inline-flex items-center justify-center rounded-xl border border-[hsl(var(--line-soft)/0.46)] bg-[hsl(var(--space-right-panel)/0.38)] hover:bg-[hsl(var(--space-right-panel)/0.72)] hover:border-[hsl(var(--line-strong)/0.54)] transition-all duration-200"
+              title={t('Collapse conversations')}
+              aria-label={t('Collapse conversations')}
+            >
+              <PanelLeftClose className="w-4 h-4 text-muted-foreground/86" />
+            </button>
+          </div>
         </div>
-        <button
-          onClick={onNew}
-          className="h-[30px] w-[30px] inline-flex items-center justify-center rounded-xl border border-[hsl(var(--line-soft)/0.5)] bg-[hsl(var(--canvas-bg)/0.78)] hover:bg-[hsl(var(--canvas-bg)/0.94)] hover:border-[hsl(var(--line-strong)/0.56)] transition-all duration-200 group"
-          title={t('New conversation')}
-          aria-label={t('New conversation')}
-        >
-          <Plus className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
-        </button>
       </div>
 
       <div className="flex-1 overflow-auto px-2 py-2">
