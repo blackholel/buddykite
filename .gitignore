@@ -52,3 +52,7 @@ resources/python/
 # Git worktrees
 worktrees/
 worktrees/
+
+# Local external references (do not commit as gitlinks/subrepos)
+CodePilot/
+_external/agency-agents/
