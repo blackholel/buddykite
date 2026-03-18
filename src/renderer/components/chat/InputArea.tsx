@@ -1112,6 +1112,7 @@ export function InputArea({
           ref={inputContainerRef}
           className={`
             space-studio-input-shell relative flex flex-col transition-all duration-200
+            ${isTriggerPanelOpen ? 'space-studio-input-shell-trigger-open' : ''}
             ${isFocused
               ? 'focused'
               : 'hover:border-border/80'
