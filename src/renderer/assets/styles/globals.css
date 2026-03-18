@@ -1593,22 +1593,22 @@ body {
 .space-studio-input-dock {
   position: sticky;
   bottom: 0;
-  background: linear-gradient(180deg, hsl(var(--space-right-panel) / 0) 0%, hsl(var(--space-right-panel) / 0.95) 30%);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
+  background: linear-gradient(180deg, hsl(var(--space-right-panel) / 0) 0%, hsl(var(--space-right-panel) / 0.88) 30%);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
   padding-top: 8px;
 }
 
 .space-studio-input-shell {
-  background: hsl(var(--canvas-bg) / 0.94);
-  border: 1px solid hsl(var(--line-strong) / 0.62);
+  background: hsl(var(--canvas-bg) / 0.98);
+  border: 1px solid hsl(var(--line-strong) / 0.78);
   border-radius: 22px;
   box-shadow:
-    0 10px 28px hsl(var(--space-ink) / 0.12),
-    0 2px 8px hsl(var(--space-ink) / 0.08),
-    inset 0 1px 0 hsl(var(--glass-highlight) / 0.38);
-  backdrop-filter: blur(9px) saturate(1.05);
-  -webkit-backdrop-filter: blur(9px) saturate(1.05);
+    0 4px 12px hsl(var(--space-ink) / 0.08),
+    0 1px 3px hsl(var(--space-ink) / 0.06),
+    inset 0 1px 0 hsl(var(--glass-highlight) / 0.42);
+  backdrop-filter: blur(3px) saturate(1.02);
+  -webkit-backdrop-filter: blur(3px) saturate(1.02);
   overflow: hidden;
   transition: border-color 180ms ease, box-shadow 180ms ease, background-color 180ms ease, transform 180ms ease;
 }
@@ -1620,10 +1620,10 @@ body {
 .space-studio-input-shell.focused {
   border-color: hsl(var(--space-accent) / 0.45);
   box-shadow:
-    0 14px 34px hsl(var(--space-ink) / 0.16),
+    0 8px 20px hsl(var(--space-ink) / 0.12),
     0 0 0 2px hsl(var(--space-accent) / 0.18),
-    inset 0 1px 0 hsl(var(--glass-highlight) / 0.46);
-  transform: translateY(-1px) scale(1.001);
+    inset 0 1px 0 hsl(var(--glass-highlight) / 0.5);
+  transform: translateY(0);
 }
 
 .space-studio-toolbar {
@@ -1635,7 +1635,7 @@ body {
   font-size: 14px;
   line-height: 1.6;
   letter-spacing: 0.001em;
-  color: hsl(var(--space-ink) / 0.9);
+  color: hsl(var(--space-ink) / 0.95);
 }
 
 .space-studio-send-btn {
