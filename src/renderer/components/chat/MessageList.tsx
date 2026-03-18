@@ -20,6 +20,8 @@ import { MarkdownRenderer } from './MarkdownRenderer'
 import { WidgetRenderer } from './WidgetRenderer'
 import { WidgetErrorBoundary } from './WidgetErrorBoundary'
 import { BrowserTaskCard, isBrowserTool } from '../tool/BrowserTaskCard'
+import { TodoCard, parseTodoInput } from '../tool/TodoCard'
+import { getToolIcon } from '../icons/ToolIcons'
 import { SubAgentCard } from './SubAgentCard'
 import { SkillCard } from './SkillCard'
 import { useSkillsStore } from '../../stores/skills.store'
@@ -533,7 +535,8 @@ export function MessageList({
   workDir,
   onOpenPlanInCanvas,
   onExecutePlan,
-  toolStatusById = {}
+  toolStatusById = {},
+  availableToolsSnapshot
 }: MessageListProps) {
   const { t } = useTranslation()
   const skills = useSkillsStore(state => state.skills)
@@ -630,8 +633,8 @@ export function MessageList({
     for (const t of runtimeThoughts) {
       // Skip sub-agent thoughts
       if (t.parentToolUseId != null) continue
-      // Skip Task and Skill
-      if (t.toolName === 'Task' || t.toolName === 'Skill') continue
+      // Skip sub-agent/skill tools
+      if (t.toolName === 'Task' || t.toolName === 'Agent' || t.toolName === 'Skill') continue
       // Only process browser tool_use
       if (t.type !== 'tool_use' || !t.toolName || !isBrowserTool(t.toolName)) continue
 
@@ -644,6 +647,194 @@ export function MessageList({
     }
     return calls
   }, [runtimeThoughts, toolStatusById])
+
+  const hasStreamingOutput = useMemo(() => streamingContent.trim().length > 0, [streamingContent])
+
+  const latestRuntimeTodos = useMemo(() => {
+    for (let i = runtimeThoughts.length - 1; i >= 0; i--) {
+      const thought = runtimeThoughts[i]
+      if (thought.type !== 'tool_use' || thought.toolName !== 'TodoWrite' || !thought.toolInput) {
+        continue
+      }
+      return parseTodoInput(thought.toolInput)
+    }
+    return []
+  }, [runtimeThoughts])
+
+  const shouldShowOuterTodoCard = isGenerating && !hasStreamingOutput && latestRuntimeTodos.length > 0
+
+  const runSummary = useMemo(() => {
+    const statuses = Object.values(toolStatusById)
+    const toolsReady = availableToolsSnapshot?.phase === 'ready'
+    if (statuses.length === 0 && !availableToolsSnapshot) {
+      return null
+    }
+
+    let running = 0
+    let success = 0
+    let error = 0
+    let cancelled = 0
+    let unknown = 0
+    for (const status of statuses) {
+      switch (status) {
+        case 'pending':
+        case 'running':
+        case 'waiting_approval':
+          running += 1
+          break
+        case 'success':
+          success += 1
+          break
+        case 'error':
+          error += 1
+          break
+        case 'cancelled':
+          cancelled += 1
+          break
+        case 'unknown':
+          unknown += 1
+          break
+        default:
+          unknown += 1
+          break
+      }
+    }
+
+    return {
+      availableTools: toolsReady ? (availableToolsSnapshot?.toolCount ?? 0) : null,
+      totalCalls: statuses.length,
+      running,
+      success,
+      error,
+      cancelled,
+      unknown
+    }
+  }, [toolStatusById, availableToolsSnapshot])
+
+  const toolStatusItems = useMemo(() => {
+    const resultStatusById = new Map<string, ToolStatus>()
+    for (const thought of runtimeThoughts) {
+      if (thought.type !== 'tool_result') continue
+      resultStatusById.set(thought.id, thought.isError ? 'error' : 'success')
+    }
+
+    const seen = new Set<string>()
+    const items: Array<{ id: string; toolName: string; status: ToolStatus }> = []
+    for (const thought of runtimeThoughts) {
+      if (thought.type !== 'tool_use' || !thought.id) continue
+      if (
+        thought.toolName === 'Task'
+        || thought.toolName === 'Agent'
+        || thought.toolName === 'Skill'
+        || thought.toolName === 'TodoWrite'
+      ) {
+        continue
+      }
+      if (seen.has(thought.id)) continue
+      seen.add(thought.id)
+
+      const fallback = resultStatusById.get(thought.id) ?? 'running'
+      const resolvedStatus = toolStatusById[thought.id] || fallback
+      const shouldDisplay = isRunningLikeStatus(resolvedStatus) || resolvedStatus === 'unknown'
+      if (!shouldDisplay) {
+        continue
+      }
+      items.push({
+        id: thought.id,
+        toolName: thought.toolName || 'Tool',
+        status: resolvedStatus
+      })
+    }
+    return items
+  }, [runtimeThoughts, toolStatusById])
+  const toolStatusTickerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const ticker = toolStatusTickerRef.current
+    if (!ticker) return
+    ticker.scrollTo({ left: ticker.scrollWidth, behavior: 'smooth' })
+  }, [toolStatusItems.length])
+
+  const getStatusLabel = (status: ToolStatus): string => {
+    switch (status) {
+      case 'pending':
+      case 'running':
+      case 'waiting_approval':
+        return t('Running')
+      case 'success':
+        return t('Success')
+      case 'error':
+        return t('Error')
+      case 'cancelled':
+        return t('Cancelled')
+      default:
+        return t('Unknown')
+    }
+  }
+
+  const getStatusClassName = (status: ToolStatus): string => {
+    switch (status) {
+      case 'pending':
+      case 'running':
+      case 'waiting_approval':
+        return 'text-primary'
+      case 'success':
+        return 'text-kite-success'
+      case 'error':
+        return 'text-destructive'
+      case 'cancelled':
+        return 'text-muted-foreground'
+      default:
+        return 'text-muted-foreground'
+    }
+  }
+
+  const renderRunSummaryPanel = () => {
+    if (!runSummary) return null
+
+    return (
+      <div className="space-studio-thought-summary mb-2 rounded-xl border border-border/30 bg-secondary/10 px-3 py-2">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+          {runSummary.availableTools != null ? (
+            <span>{t('Available tools')}: {runSummary.availableTools}</span>
+          ) : (
+            <span>{t('Available tools')}: {t('Initializing...')}</span>
+          )}
+          <span>{t('Calls')}: {runSummary.totalCalls}</span>
+          <span>{t('Running')}: {runSummary.running}</span>
+          <span>{t('Success')}: {runSummary.success}</span>
+          <span>{t('Error')}: {runSummary.error}</span>
+          <span>{t('Cancelled')}: {runSummary.cancelled}</span>
+          {runSummary.unknown > 0 && (
+            <span>{t('Unknown')}: {runSummary.unknown}</span>
+          )}
+        </div>
+        {toolStatusItems.length > 0 && (
+          <div ref={toolStatusTickerRef} className="mt-2 overflow-x-auto">
+            <div className="inline-flex min-w-max items-center gap-1.5 whitespace-nowrap pr-1">
+            {toolStatusItems.map((item) => {
+              const Icon = getToolIcon(item.toolName)
+              return (
+                <div
+                  key={item.id}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-border/35 bg-background/30 px-2 py-1 text-[11px]"
+                >
+                  <span className="inline-flex min-w-0 items-center gap-1 text-foreground/75">
+                    <Icon size={12} className="text-muted-foreground/70" />
+                    <span className="truncate">{item.toolName}</span>
+                  </span>
+                  <span className={`shrink-0 font-medium ${getStatusClassName(item.status)} ml-1`}>
+                    {getStatusLabel(item.status)}
+                  </span>
+                </div>
+              )
+            })}
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div className={`
@@ -668,6 +859,7 @@ export function MessageList({
                   thoughts={messageProcessThoughts}
                   toolStatusById={messageToolStatusById}
                   isThinking={false}
+                  showTodoCard={true}
                   mode="completed"
                   defaultExpanded={false}
                 />
@@ -705,6 +897,8 @@ export function MessageList({
         <div className="flex animate-fade-in space-studio-message-lane">
           {/* Fixed width - same as completed messages */}
           <div className="relative space-studio-message-stack">
+            {renderRunSummaryPanel()}
+
             {/* Render timeline segments in order (thoughts, skills, sub-agents interleaved) */}
             {timelineSegments.map((segment, index) => {
               const isLastSegment = index === timelineSegments.length - 1
@@ -723,6 +917,7 @@ export function MessageList({
                       parallelGroups={parallelGroups}
                       toolStatusById={toolStatusById}
                       isThinking={showThinking}
+                      showTodoCard={hasStreamingOutput}
                       mode="realtime"
                     />
                   )
@@ -776,6 +971,7 @@ export function MessageList({
                 parallelGroups={parallelGroups}
                 toolStatusById={toolStatusById}
                 isThinking={true}
+                showTodoCard={hasStreamingOutput}
                 mode="realtime"
               />
             )}
@@ -787,6 +983,13 @@ export function MessageList({
                   browserToolCalls={streamingBrowserToolCalls}
                   isActive={isThinking}
                 />
+              </div>
+            )}
+
+            {/* TodoCard in outer layer while assistant text is still empty */}
+            {shouldShowOuterTodoCard && (
+              <div className="mb-2">
+                <TodoCard todos={latestRuntimeTodos} />
               </div>
             )}
 
@@ -823,6 +1026,14 @@ export function MessageList({
               />
             )}
 
+          </div>
+        </div>
+      )}
+
+      {!isGenerating && runSummary && (
+        <div className="flex animate-fade-in space-studio-message-lane">
+          <div className="space-studio-message-stack">
+            {renderRunSummaryPanel()}
           </div>
         </div>
       )}

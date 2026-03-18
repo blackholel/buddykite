@@ -46,6 +46,10 @@ export interface SubAgentSegment {
 
 export type TimelineSegment = ThoughtsSegment | SkillSegment | SubAgentSegment
 
+function isSubAgentTool(toolName?: string): boolean {
+  return toolName === 'Task' || toolName === 'Agent'
+}
+
 // ============================================
 // SkillCard Utility Functions
 // ============================================
@@ -226,7 +230,7 @@ export function buildParallelGroups(thoughts: Thought[]): Map<string, ParallelGr
  * 1. Iterate through thoughts in order
  * 2. Accumulate main agent thoughts into ThoughtsSegment
  * 3. When encountering Skill tool_use, create SkillSegment
- * 4. When encountering Task tool_use, create SubAgentSegment
+ * 4. When encountering Task/Agent tool_use, create SubAgentSegment
  * 5. Child thoughts (parentToolUseId) are associated with their parent SubAgent
  */
 export function buildTimelineSegments(thoughts: Thought[]): TimelineSegment[] {
@@ -301,8 +305,8 @@ export function buildTimelineSegments(thoughts: Thought[]): TimelineSegment[] {
       return
     }
 
-    // Handle Task (sub-agent) tool calls
-    if (thought.toolName === 'Task' && thought.type === 'tool_use') {
+    // Handle Task/Agent (sub-agent) tool calls
+    if (isSubAgentTool(thought.toolName) && thought.type === 'tool_use') {
       flushThoughts()
 
       // Find the corresponding result (O(1) lookup)
@@ -328,11 +332,11 @@ export function buildTimelineSegments(thoughts: Thought[]): TimelineSegment[] {
       return
     }
 
-    // Skip tool_result for Skill and Task (already handled above)
+    // Skip tool_result for Skill and Task/Agent (already handled above)
     if (thought.type === 'tool_result') {
       // O(1) lookup instead of Array.find
       const useThought = useMap.get(thought.id)
-      if (useThought?.toolName === 'Skill' || useThought?.toolName === 'Task') {
+      if (useThought?.toolName === 'Skill' || isSubAgentTool(useThought?.toolName)) {
         return
       }
     }

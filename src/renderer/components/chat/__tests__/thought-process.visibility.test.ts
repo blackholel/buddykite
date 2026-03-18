@@ -3,7 +3,7 @@ import type { Thought } from '../../../types'
 import { filterThoughtsForDisplay } from '../ThoughtProcess'
 
 describe('ThoughtProcess visibility filtering', () => {
-  it('hides debug thoughts and duplicate Task/TodoWrite/result nodes', () => {
+  it('hides debug thoughts and duplicate Task/Agent/TodoWrite/result nodes', () => {
     const thoughts: Thought[] = [
       {
         id: 't-debug',
@@ -18,6 +18,13 @@ describe('ThoughtProcess visibility filtering', () => {
         content: 'Task tool',
         timestamp: new Date().toISOString(),
         toolName: 'Task'
+      },
+      {
+        id: 't-agent',
+        type: 'tool_use',
+        content: 'Agent tool',
+        timestamp: new Date().toISOString(),
+        toolName: 'Agent'
       },
       {
         id: 't-todo',
@@ -45,7 +52,7 @@ describe('ThoughtProcess visibility filtering', () => {
     expect(filtered.map((t) => t.id)).toEqual(['t-user'])
   })
 
-  it('keeps Task thoughts when hideTask=false (completed mode)', () => {
+  it('keeps Task/Agent thoughts when hideTask=false (completed mode)', () => {
     const thoughts: Thought[] = [
       {
         id: 't-task',
@@ -53,6 +60,13 @@ describe('ThoughtProcess visibility filtering', () => {
         content: 'Task tool',
         timestamp: new Date().toISOString(),
         toolName: 'Task'
+      },
+      {
+        id: 't-agent',
+        type: 'tool_use',
+        content: 'Agent tool',
+        timestamp: new Date().toISOString(),
+        toolName: 'Agent'
       },
       {
         id: 't-user',
@@ -64,6 +78,6 @@ describe('ThoughtProcess visibility filtering', () => {
     ]
 
     const filtered = filterThoughtsForDisplay(thoughts, { hideTask: false })
-    expect(filtered.map((t) => t.id)).toEqual(['t-task', 't-user'])
+    expect(filtered.map((t) => t.id)).toEqual(['t-task', 't-agent', 't-user'])
   })
 })

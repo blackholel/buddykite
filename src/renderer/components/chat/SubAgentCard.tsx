@@ -33,6 +33,13 @@ interface SubAgentCardProps {
   hasError: boolean
 }
 
+function formatSubagentTypeLabel(subagentType?: string): string {
+  const raw = (subagentType || '').trim()
+  if (!raw) return 'Explore'
+  if (raw.toLowerCase() === 'explorer') return 'Explore'
+  return raw.charAt(0).toUpperCase() + raw.slice(1)
+}
+
 // Tool name to input field mapping for brief descriptions
 const TOOL_BRIEF_EXTRACTORS: Record<string, (input: Record<string, unknown> | undefined) => string> = {
   Read: (input) => extractFileName(input?.file_path),
@@ -198,119 +205,96 @@ export const SubAgentCard = memo(function SubAgentCard({
 
   // Get status color based on running/error state
   function getStatusColor(): string {
-    if (isRunning) return 'border-primary/20 bg-primary/[0.03]'
-    if (hasError) return 'border-destructive/20 bg-destructive/[0.03]'
-    return 'border-kite-success/20 bg-kite-success/[0.03]'
-  }
-
-  function getLeftBorderColor(): string {
-    if (isRunning) return 'bg-primary/70'
-    if (hasError) return 'bg-destructive/70'
-    return 'bg-kite-success/70'
+    if (isRunning) return 'border-primary/25 bg-secondary/10'
+    if (hasError) return 'border-destructive/25 bg-destructive/[0.02]'
+    return 'border-border/35 bg-secondary/10'
   }
 
   const statusColor = getStatusColor()
-  const leftBorderColor = getLeftBorderColor()
+  const displayAgentType = formatSubagentTypeLabel(subagentType)
 
   return (
     <div className={`
-      animate-fade-in mb-3 rounded-2xl border overflow-hidden transition-all duration-300
+      animate-fade-in mb-3 rounded-2xl border overflow-hidden transition-all duration-300 relative
       ${statusColor}
     `}>
-      {/* Left color indicator + content */}
-      <div className="flex">
-        {/* Left color bar */}
-        <div className={`w-0.5 ${leftBorderColor} flex-shrink-0`} />
+      <div className="absolute left-0 top-2 bottom-2 w-[2px] rounded-full bg-foreground/70" />
+      {/* Header */}
+      <button
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="w-full flex items-center gap-2 pl-4 pr-3.5 py-3 text-left hover:bg-secondary/20 transition-colors duration-200"
+      >
+        {isExpanded ? (
+          <ChevronDown size={14} className="text-muted-foreground flex-shrink-0" />
+        ) : (
+          <ChevronRight size={14} className="text-muted-foreground flex-shrink-0" />
+        )}
 
-        {/* Main content */}
-        <div className="flex-1 min-w-0">
-          {/* Header */}
-          <button
-            onClick={() => setIsExpanded(!isExpanded)}
-            className="w-full flex items-center gap-2 px-3.5 py-2.5 text-left hover:bg-secondary/15 transition-colors duration-200"
-          >
-            {/* Expand icon */}
-            {isExpanded ? (
-              <ChevronDown size={14} className="text-muted-foreground flex-shrink-0" />
-            ) : (
-              <ChevronRight size={14} className="text-muted-foreground flex-shrink-0" />
-            )}
+        <Bot
+          size={16}
+          className={`flex-shrink-0 ${isRunning ? 'text-primary animate-pulse' : 'text-muted-foreground'}`}
+        />
 
-            {/* Bot icon */}
-            <Bot
-              size={16}
-              className={`flex-shrink-0 ${isRunning ? 'text-primary animate-pulse' : 'text-muted-foreground'}`}
-            />
+        <span className="text-sm font-medium truncate flex-1">
+          {truncateText(description, 64)}
+        </span>
 
-            {/* Description */}
-            <span className="text-sm font-medium truncate flex-1">
-              {truncateText(description, 50)}
-            </span>
+        <span className="text-sm text-muted-foreground/45">{displayAgentType}</span>
 
-            {/* Sub-agent type badge */}
-            {subagentType && (
-              <span className="text-[11px] text-muted-foreground/40 px-2 py-0.5 bg-secondary/30 rounded-md flex-shrink-0">
-                {subagentType}
-              </span>
-            )}
+        {isRunning && (
+          <Loader2 size={15} className="animate-spin text-foreground/75 flex-shrink-0" />
+        )}
+        {!isRunning && !hasError && (
+          <CheckCircle2 size={15} className="text-kite-success flex-shrink-0" />
+        )}
+        {hasError && (
+          <XCircle size={15} className="text-destructive flex-shrink-0" />
+        )}
+      </button>
 
-            {/* Status indicator */}
-            {isRunning && (
-              <Loader2 size={14} className="animate-spin text-primary flex-shrink-0" />
-            )}
-            {!isRunning && !hasError && (
-              <CheckCircle2 size={14} className="text-green-500 flex-shrink-0" />
-            )}
-            {hasError && (
-              <XCircle size={14} className="text-destructive flex-shrink-0" />
-            )}
-          </button>
+      {/* Collapsed summary - single line text */}
+      {!isExpanded && toolUseThoughts.length > 0 && (
+        <CollapsedSummary
+          toolUseThoughts={toolUseThoughts}
+          allThoughts={thoughts}
+          toolStatusById={toolStatusById}
+          hasError={hasError}
+          t={t}
+        />
+      )}
 
-          {/* Collapsed summary - single line text */}
-          {!isExpanded && toolUseThoughts.length > 0 && (
-            <CollapsedSummary
-              toolUseThoughts={toolUseThoughts}
-              allThoughts={thoughts}
-              toolStatusById={toolStatusById}
-              hasError={hasError}
-              t={t}
-            />
-          )}
-
-          {/* Expanded content */}
-          {isExpanded && (
-            <div className="px-3.5 pb-3 border-t border-border/10">
-              {/* Tool operations list */}
-              {toolUseThoughts.length > 0 ? (
-                <div className="mt-2 space-y-0.5">
-                  {toolUseThoughts.slice(-10).map(thought => (
-                    <CompactThoughtItem
-                      key={thought.id}
-                      thought={thought}
-                      allThoughts={thoughts}
-                      toolStatusById={toolStatusById}
-                    />
-                  ))}
-                  {toolUseThoughts.length > 10 && (
-                    <div className="text-xs text-muted-foreground/50 pt-1">
-                      {t('...and {{count}} more operations', { count: toolUseThoughts.length - 10 })}
-                    </div>
-                  )}
-                </div>
-              ) : isRunning ? (
-                <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground/60">
-                  <Loader2 size={12} className="animate-spin" />
-                  {t('Starting sub-agent...')}
-                </div>
-              ) : (
-                <div className="mt-2 text-xs text-muted-foreground/50">
-                  {t('No operations recorded')}
+      {/* Expanded content */}
+      {isExpanded && (
+        <div className="px-3.5 pb-3 border-t border-border/10">
+          {/* Tool operations list */}
+          {toolUseThoughts.length > 0 ? (
+            <div className="mt-2 space-y-0.5">
+              {toolUseThoughts.slice(-10).map(thought => (
+                <CompactThoughtItem
+                  key={thought.id}
+                  thought={thought}
+                  allThoughts={thoughts}
+                  toolStatusById={toolStatusById}
+                />
+              ))}
+              {toolUseThoughts.length > 10 && (
+                <div className="text-xs text-muted-foreground/50 pt-1">
+                  {t('...and {{count}} more operations', { count: toolUseThoughts.length - 10 })}
                 </div>
               )}
             </div>
+          ) : isRunning ? (
+            <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground/60">
+              <Loader2 size={12} className="animate-spin" />
+              {t('Starting sub-agent...')}
+            </div>
+          ) : (
+            <div className="mt-2 text-xs text-muted-foreground/50">
+              {t('No operations recorded')}
+            </div>
           )}
         </div>
-      </div>
+      )}
     </div>
   )
 })

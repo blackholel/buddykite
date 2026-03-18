@@ -3940,10 +3940,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
       // Rebuild parallel groups
       const parallelGroups = buildParallelGroups(newThoughts)
 
-      // Track active sub-agents (Task tools without corresponding tool_result)
+      // Track active sub-agents (Task/Agent tools without corresponding tool_result)
       const taskToolIds = new Set(
         newThoughts
-          .filter(t => t.type === 'tool_use' && t.toolName === 'Task')
+          .filter(t => t.type === 'tool_use' && (t.toolName === 'Task' || t.toolName === 'Agent'))
           .map(t => t.id)
       )
       const completedTaskIds = new Set(

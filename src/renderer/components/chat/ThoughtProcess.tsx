@@ -38,6 +38,7 @@ interface ThoughtProcessProps {
   parallelGroups?: Map<string, ParallelGroup>
   toolStatusById?: Record<string, ToolStatus>
   isThinking: boolean
+  showTodoCard?: boolean
   /**
    * Display mode:
    * - 'realtime': Real-time mode during generation, default expanded, supports streaming updates
@@ -57,7 +58,7 @@ export function filterThoughtsForDisplay(
     (t) =>
       t.type !== 'result' &&
       t.toolName !== 'TodoWrite' &&
-      (!hideTask || t.toolName !== 'Task') &&
+      (!hideTask || (t.toolName !== 'Task' && t.toolName !== 'Agent')) &&
       t.visibility !== 'debug'
   )
 }
@@ -382,6 +383,7 @@ export function ThoughtProcess({
   parallelGroups,
   toolStatusById = {},
   isThinking,
+  showTodoCard = true,
   mode = 'realtime',
   defaultExpanded
 }: ThoughtProcessProps) {
@@ -450,6 +452,7 @@ export function ThoughtProcess({
 
   const errorCount = thoughts.filter(t => t.type === 'error').length
   const hasDisplayContent = nonParallelThoughts.length > 0 || displayParallelGroups.length > 0
+  const shouldRenderTodoCard = Boolean(showTodoCard && latestTodos && latestTodos.length > 0)
 
   // Calculate duration for completed mode
   const duration = useMemo(() => {
@@ -462,7 +465,7 @@ export function ThoughtProcess({
   // Completed mode: compact collapsed style (similar to CollapsedThoughtProcess)
   if (mode === 'completed') {
     // Check if there's anything to show
-    const hasContent = displayThoughts.length > 0 || (latestTodos && latestTodos.length > 0)
+    const hasContent = displayThoughts.length > 0 || shouldRenderTodoCard
     if (!hasContent) return null
 
     return (
@@ -518,7 +521,7 @@ export function ThoughtProcess({
                   <ThoughtItem
                     key={getThoughtKey(thought)}
                     thought={thought}
-                    isLast={index === nonParallelThoughts.length - 1 && !latestTodos}
+                    isLast={index === nonParallelThoughts.length - 1 && !shouldRenderTodoCard}
                     toolStatusById={toolStatusById}
                   />
                 ))}
@@ -526,7 +529,7 @@ export function ThoughtProcess({
             )}
 
             {/* TodoCard at bottom */}
-            {latestTodos && latestTodos.length > 0 && (
+            {shouldRenderTodoCard && latestTodos && (
               <div className={hasDisplayContent ? 'mt-2 pt-2 border-t border-border/20' : ''}>
                 <TodoCard todos={latestTodos} />
               </div>
@@ -605,7 +608,7 @@ export function ThoughtProcess({
                   <ThoughtItem
                     key={getThoughtKey(thought)}
                     thought={thought}
-                    isLast={index === nonParallelThoughts.length - 1 && !latestTodos && !isThinking}
+                    isLast={index === nonParallelThoughts.length - 1 && !shouldRenderTodoCard && !isThinking}
                     toolStatusById={toolStatusById}
                   />
                 ))}
@@ -613,7 +616,7 @@ export function ThoughtProcess({
             )}
 
             {/* TodoCard at bottom */}
-            {latestTodos && latestTodos.length > 0 && (
+            {shouldRenderTodoCard && latestTodos && (
               <div className={`px-4 ${hasDisplayContent ? 'pt-2' : 'pt-3'} pb-3`}>
                 <TodoCard todos={latestTodos} />
               </div>
