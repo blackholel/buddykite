@@ -325,6 +325,7 @@ export function ChatTabViewer({ tab }: ChatTabViewerProps) {
       {activeChangeSet && (
         <ChangeReviewBar
           changeSet={activeChangeSet}
+          isCompact={true}
           onAcceptAll={() => acceptChangeSet({
             spaceId: activeChangeSet.spaceId,
             conversationId: activeChangeSet.conversationId,

@@ -623,6 +623,7 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
       {activeChangeSet && (
         <ChangeReviewBar
           changeSet={activeChangeSet}
+          isCompact={isCompact}
           onAcceptAll={() => acceptChangeSet({
             spaceId: activeChangeSet.spaceId,
             conversationId: activeChangeSet.conversationId,
