@@ -82,6 +82,14 @@ function parseLoadedSkillsFromSystemThought(thought: Thought): string[] {
   return []
 }
 
+function isSyntheticSlashSkillSegment(segment: SkillSegment): boolean {
+  return segment.skillId.startsWith('slash-skill-loaded-')
+}
+
+function toSkillSemanticKey(raw: string): string {
+  return normalizeSkillName(raw).toLowerCase()
+}
+
 // ============================================
 // SkillCard Utility Functions
 // ============================================
@@ -413,5 +421,22 @@ export function buildTimelineSegments(thoughts: Thought[]): TimelineSegment[] {
   // Flush any remaining thoughts
   flushThoughts()
 
-  return segments
+  const realSkillNames = new Set<string>()
+  for (const segment of segments) {
+    if (segment.type !== 'skill') continue
+    if (isSyntheticSlashSkillSegment(segment)) continue
+    const key = toSkillSemanticKey(segment.skillName)
+    if (!key) continue
+    realSkillNames.add(key)
+  }
+
+  if (realSkillNames.size === 0) {
+    return segments
+  }
+
+  return segments.filter((segment) => {
+    if (segment.type !== 'skill') return true
+    if (!isSyntheticSlashSkillSegment(segment)) return true
+    return !realSkillNames.has(toSkillSemanticKey(segment.skillName))
+  })
 }

@@ -96,7 +96,8 @@ import type {
   SessionAcquireResult
 } from './types'
 import type {
-  ClaudeCodeSkillMissingPolicy
+  ClaudeCodeSkillMissingPolicy,
+  ClaudeCodeSlashRuntimeMode
 } from '../../../shared/types/claude-code'
 import {
   ASK_USER_QUESTION_ERROR_CODES,
@@ -241,6 +242,13 @@ export function extractLoadedSkillNameFromToolInput(input: unknown): string | nu
 
 export function buildLoadedSkillMessage(skills: string[]): string {
   return `已加载技能：${skills.join('、')}`
+}
+
+export function shouldEmitSlashSkillLoadedEvent(
+  slashRuntimeMode: ClaudeCodeSlashRuntimeMode,
+  source: 'native' | 'legacy'
+): boolean {
+  return slashRuntimeMode === 'legacy-inject' && source === 'legacy'
 }
 
 function createAgentRoutingError(errorCode: string, message: string): Error & { errorCode: string } {
@@ -2156,6 +2164,9 @@ export async function sendMessage(
     let loadedSkillEventSeq = 0
     const emittedLoadedSkillKeys = new Set<string>()
     const emitLoadedSkills = (skills: string[], source: 'native' | 'legacy'): void => {
+      if (!shouldEmitSlashSkillLoadedEvent(slashRuntimeMode, source)) {
+        return
+      }
       const normalizedSkills = Array.from(
         new Set(
           skills
@@ -2843,12 +2854,6 @@ If the user asks about this project/codebase, inspect files in current workspace
               requiresApproval: existingToolCall?.requiresApproval,
               description: existingToolCall?.description
             })
-            if (!isError && existingToolCall?.name === 'Skill') {
-              const loadedSkillName = extractLoadedSkillNameFromToolInput(existingToolCall.input)
-              if (loadedSkillName) {
-                emitLoadedSkills([loadedSkillName], 'native')
-              }
-            }
             if (isAskUserQuestionResult) {
               sessionState.askUserQuestionModeByToolCallId.delete(toolCallId)
               const pendingId = sessionState.pendingAskUserQuestionIdByToolCallId.get(toolCallId)

@@ -93,4 +93,72 @@ describe('thought-utils timeline segments', () => {
       sourceThoughtId: 'legacy-system-1'
     })
   })
+
+  it('dedupes synthetic slash_skill_loaded segment when real Skill segment exists', () => {
+    const thoughts: Thought[] = [
+      {
+        id: 'tool-call-1',
+        type: 'tool_use',
+        content: '/前端幻灯片 把内容转成 HTML',
+        timestamp: now(),
+        toolName: 'Skill',
+        toolInput: {
+          skill: 'frontend-slides',
+          args: '把内容转成 HTML'
+        }
+      },
+      {
+        id: 'tool-call-1',
+        type: 'tool_result',
+        content: 'Tool execution succeeded',
+        timestamp: now(),
+        toolOutput: 'Launching skill: frontend-slides'
+      },
+      {
+        id: 'slash-skill-loaded-run-1-1',
+        type: 'tool_use',
+        content: '已加载技能：frontend-slides',
+        timestamp: now(),
+        toolName: 'Skill',
+        toolInput: {
+          skill: 'frontend-slides'
+        },
+        status: 'success'
+      }
+    ]
+
+    const segments = buildTimelineSegments(thoughts)
+    expect(segments).toHaveLength(1)
+    expect(segments[0]).toMatchObject({
+      type: 'skill',
+      skillId: 'tool-call-1',
+      skillName: 'frontend-slides',
+      result: 'Launching skill: frontend-slides'
+    })
+  })
+
+  it('keeps synthetic slash_skill_loaded segment when no real Skill segment exists', () => {
+    const thoughts: Thought[] = [
+      {
+        id: 'slash-skill-loaded-run-2-1',
+        type: 'tool_use',
+        content: '已加载技能：knowledge-site-creator',
+        timestamp: now(),
+        toolName: 'Skill',
+        toolInput: {
+          skill: 'knowledge-site-creator'
+        },
+        status: 'success'
+      }
+    ]
+
+    const segments = buildTimelineSegments(thoughts)
+    expect(segments).toHaveLength(1)
+    expect(segments[0]).toMatchObject({
+      type: 'skill',
+      skillId: 'slash-skill-loaded-run-2-1',
+      skillName: 'knowledge-site-creator',
+      hasError: false
+    })
+  })
 })

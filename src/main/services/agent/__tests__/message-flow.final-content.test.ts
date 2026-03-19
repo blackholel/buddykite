@@ -5,6 +5,7 @@ import {
   buildForcedAssumptionResponse,
   extractLoadedSkillNameFromToolInput,
   normalizeSlashCommands,
+  shouldEmitSlashSkillLoadedEvent,
   resolveFinalContent
 } from '../message-flow.service'
 
@@ -120,5 +121,16 @@ describe('buildLoadedSkillMessage', () => {
   it('生成用户可见的技能加载提示', () => {
     expect(buildLoadedSkillMessage(['gstack:plan-ceo-review'])).toBe('已加载技能：gstack:plan-ceo-review')
     expect(buildLoadedSkillMessage(['a', 'b'])).toBe('已加载技能：a、b')
+  })
+})
+
+describe('shouldEmitSlashSkillLoadedEvent', () => {
+  it('native 模式下不发 slash_skill_loaded（即使 source 是 native）', () => {
+    expect(shouldEmitSlashSkillLoadedEvent('native', 'native')).toBe(false)
+  })
+
+  it('legacy-inject 模式仅允许 legacy source 发 slash_skill_loaded', () => {
+    expect(shouldEmitSlashSkillLoadedEvent('legacy-inject', 'legacy')).toBe(true)
+    expect(shouldEmitSlashSkillLoadedEvent('legacy-inject', 'native')).toBe(false)
   })
 })
