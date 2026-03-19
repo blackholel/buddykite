@@ -20,6 +20,10 @@ import { getLockedUserConfigRootDir } from '../config-source-mode.service'
 import { listEnabledPlugins } from '../plugins.service'
 import { resolveResourceRuntimePolicy as resolveNormalizedRuntimePolicy } from '../resource-runtime-policy.service'
 import {
+  resolveSlashRuntimeMode,
+  SLASH_RUNTIME_MODE_ENV_KEY
+} from './slash-runtime-mode.service'
+import {
   getExecutionLayerAllowedSources,
   getSpaceResourcePolicy,
   isStrictSpaceOnlyPolicy
@@ -31,7 +35,11 @@ import {
   type WorkspaceBoundaryValidationResult
 } from '../../utils/path-validation'
 import type { ResourceSource } from '../resource-ref.service'
-import type { ClaudeCodeResourceRuntimePolicy, ClaudeCodeSkillMissingPolicy } from '../../../shared/types/claude-code'
+import type {
+  ClaudeCodeResourceRuntimePolicy,
+  ClaudeCodeSkillMissingPolicy,
+  ClaudeCodeSlashRuntimeMode
+} from '../../../shared/types/claude-code'
 import type {
   ToolCall,
   SessionState,
@@ -796,6 +804,7 @@ export function createCanUseTool(
     onToolUse?: (toolName: string, input: Record<string, unknown>) => void
     skillMissingPolicy?: ClaudeCodeSkillMissingPolicy
     resourceRuntimePolicy?: ClaudeCodeResourceRuntimePolicy
+    slashRuntimeMode?: ClaudeCodeSlashRuntimeMode
   }
 ): (
   toolName: string,
@@ -818,6 +827,15 @@ export function createCanUseTool(
     },
     'agent.renderer-comm'
   )
+  const resolvedSlashRuntimeMode = resolveSlashRuntimeMode(
+    {
+      envValue: process.env[SLASH_RUNTIME_MODE_ENV_KEY],
+      spaceMode: spaceConfig?.claudeCode?.slashRuntimeMode,
+      globalMode: config.claudeCode?.slashRuntimeMode
+    },
+    'agent.renderer-comm'
+  ).mode
+  const slashRuntimeMode = options?.slashRuntimeMode || resolvedSlashRuntimeMode
   const resourcePolicy = getSpaceResourcePolicy(workDir)
   const strictSpaceOnly = isStrictSpaceOnlyPolicy(resourcePolicy)
   const executionBoundaryRoots = buildExecutionBoundaryRoots(
@@ -902,7 +920,7 @@ export function createCanUseTool(
       })
     }
 
-    if (toolName === 'Skill') {
+    if (toolName === 'Skill' && slashRuntimeMode === 'legacy-inject') {
       return deny(
         'ModePolicy',
         `Skill tool is disabled by runtime policy (skillMissingPolicy=${skillMissingPolicy}). Use injected directives instead.`,

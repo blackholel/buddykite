@@ -38,6 +38,7 @@ import { ComposerTriggerPanel } from './ComposerTriggerPanel'
 import { SkillsDropdown } from '../skills'
 import { processImage, isValidImageType, formatFileSize } from '../../utils/imageProcessor'
 import type { ChatMode, ConversationAiConfig, FileContextAttachment, ImageAttachment, KiteConfig } from '../../types'
+import type { ClaudeCodeSlashRuntimeMode } from '../../../shared/types/claude-code'
 import { useTranslation } from '../../i18n'
 import { useComposerStore } from '../../stores/composer.store'
 import { getTriggerContext, type TriggerContext } from '../../utils/composer-trigger'
@@ -98,6 +99,14 @@ interface InputAreaProps {
   conversation: { id: string; ai?: ConversationAiConfig } | null
   config: KiteConfig | null
   hasConversationStarted?: boolean
+  slashRuntimeMode?: ClaudeCodeSlashRuntimeMode
+  slashCommandsSnapshot?: {
+    runId: string | null
+    snapshotVersion: number
+    emittedAt: string | null
+    commands: string[]
+    source: 'sdk_init' | null
+  }
 }
 
 // Image constraints
@@ -178,6 +187,21 @@ export function shouldShowStarterActions({
   return true
 }
 
+export function resolveSlashSuggestionSource(params: {
+  slashRuntimeMode: ClaudeCodeSlashRuntimeMode
+  triggerType: TriggerContext['type'] | null | undefined
+  snapshotCommandsCount: number
+}): 'sdk_snapshot' | 'local' {
+  if (
+    params.triggerType === 'slash' &&
+    params.slashRuntimeMode === 'native' &&
+    params.snapshotCommandsCount > 0
+  ) {
+    return 'sdk_snapshot'
+  }
+  return 'local'
+}
+
 export function InputArea({
   onSend,
   onStop,
@@ -199,6 +223,14 @@ export function InputArea({
   conversation,
   config,
   hasConversationStarted = false,
+  slashRuntimeMode = 'native',
+  slashCommandsSnapshot = {
+    runId: null,
+    snapshotVersion: 0,
+    emittedAt: null,
+    commands: [],
+    source: null
+  }
 }: InputAreaProps) {
   const { t } = useTranslation()
   const [content, setContent] = useState('')
@@ -223,6 +255,7 @@ export function InputArea({
   const inputContainerRef = useRef<HTMLDivElement>(null)
   const lastTriggerTypeRef = useRef<TriggerContext['type'] | null>(null)
   const lastExpandContextRef = useRef<{ stateKey: string | null; query: string } | null>(null)
+  const loggedSlashFallbackQueryRef = useRef<string | null>(null)
   const insertQueue = useComposerStore(state => state.insertQueue)
   const dequeueInsert = useComposerStore(state => state.dequeueInsert)
 
@@ -401,6 +434,7 @@ export function InputArea({
   )
   const isAiConfigured = aiSetupState.configured
   const effectiveMode = mode
+  const isNativeSlashRuntime = slashRuntimeMode === 'native'
   const effectiveSuggestionTab: ComposerSuggestionTab = triggerContext?.type === 'mention'
     ? 'agents'
     : activeSuggestionTab
@@ -413,7 +447,45 @@ export function InputArea({
     : null
   const isGlobalExpanded = expandStateKey ? globalExpandState[expandStateKey] === true : false
 
+  const sdkSlashCommandCandidates = useMemo<ComposerResourceSuggestionItem[]>(() => {
+    if (!isNativeSlashRuntime) return []
+    const raw = Array.isArray(slashCommandsSnapshot.commands) ? slashCommandsSnapshot.commands : []
+    const dedup = new Set<string>()
+    const suggestions: ComposerResourceSuggestionItem[] = []
+    for (const entry of raw) {
+      if (typeof entry !== 'string') continue
+      const trimmed = entry.trim()
+      if (!trimmed) continue
+      const command = trimmed.startsWith('/') ? trimmed : `/${trimmed}`
+      const key = command.toLowerCase()
+      if (dedup.has(key)) continue
+      dedup.add(key)
+      const displayName = command.replace(/^\//, '')
+      suggestions.push({
+        kind: 'resource',
+        id: `sdk-slash:${displayName}`,
+        type: 'command',
+        source: 'global',
+        scope: 'space',
+        stableId: `sdk-slash|${displayName}`,
+        displayName,
+        insertText: command,
+        description: t('Native slash command from SDK'),
+        keywords: [displayName, command, displayName.toLowerCase(), command.toLowerCase()]
+      })
+    }
+    return suggestions
+  }, [isNativeSlashRuntime, slashCommandsSnapshot.commands, t])
+
+  const slashSuggestionSource = resolveSlashSuggestionSource({
+    slashRuntimeMode,
+    triggerType: triggerContext?.type,
+    snapshotCommandsCount: sdkSlashCommandCandidates.length
+  })
+  const shouldUseSdkSlashCommands = slashSuggestionSource === 'sdk_snapshot'
+
   const skillCandidates = useMemo<ComposerResourceSuggestionItem[]>(() => {
+    if (shouldUseSdkSlashCommands) return []
     const suggestions: ComposerResourceSuggestionItem[] = []
     for (const skill of skills) {
       const suggestion = buildComposerResourceSuggestion('skill', skill)
@@ -423,17 +495,19 @@ export function InputArea({
       suggestions.push(suggestion)
     }
     return suggestions
-  }, [enabledSkills, skills])
+  }, [enabledSkills, shouldUseSdkSlashCommands, skills])
 
   const commandCandidates = useMemo<ComposerResourceSuggestionItem[]>(() => {
+    if (shouldUseSdkSlashCommands) return sdkSlashCommandCandidates
     const suggestions: ComposerResourceSuggestionItem[] = []
     for (const command of commands) {
       suggestions.push(buildComposerResourceSuggestion('command', command))
     }
     return suggestions
-  }, [commands])
+  }, [commands, sdkSlashCommandCandidates, shouldUseSdkSlashCommands])
 
   const agentCandidates = useMemo<ComposerResourceSuggestionItem[]>(() => {
+    if (shouldUseSdkSlashCommands) return []
     const suggestions: ComposerResourceSuggestionItem[] = []
     for (const agent of agents) {
       const suggestion = buildComposerResourceSuggestion('agent', agent)
@@ -443,7 +517,7 @@ export function InputArea({
       suggestions.push(suggestion)
     }
     return suggestions
-  }, [agents, enabledAgents])
+  }, [agents, enabledAgents, shouldUseSdkSlashCommands])
 
   const rankedSkillSuggestions = useMemo(
     () => rankSuggestions(skillCandidates, {
@@ -752,13 +826,38 @@ export function InputArea({
       setActiveSuggestionIndex(0)
       lastTriggerTypeRef.current = null
       lastExpandContextRef.current = null
+      loggedSlashFallbackQueryRef.current = null
       return
     }
     if (lastTriggerTypeRef.current !== triggerContext.type) {
-      setActiveSuggestionTab(triggerContext.type === 'mention' ? 'agents' : 'skills')
+      if (triggerContext.type === 'mention') {
+        setActiveSuggestionTab('agents')
+      } else {
+        setActiveSuggestionTab(shouldUseSdkSlashCommands ? 'commands' : 'skills')
+      }
     }
     lastTriggerTypeRef.current = triggerContext.type
-  }, [triggerContext])
+  }, [shouldUseSdkSlashCommands, triggerContext])
+
+  useEffect(() => {
+    if (!triggerContext || triggerContext.type !== 'slash' || !isNativeSlashRuntime) {
+      return
+    }
+    if (sdkSlashCommandCandidates.length > 0) {
+      loggedSlashFallbackQueryRef.current = null
+      return
+    }
+    const key = `${slashRuntimeMode}:${triggerContext.query.trim().toLowerCase()}`
+    if (loggedSlashFallbackQueryRef.current === key) {
+      return
+    }
+    loggedSlashFallbackQueryRef.current = key
+    console.warn('[telemetry] slash_snapshot_fallback_local_count', {
+      mode: slashRuntimeMode,
+      reason: 'renderer_local_fallback',
+      query: triggerContext.query
+    })
+  }, [isNativeSlashRuntime, sdkSlashCommandCandidates.length, slashRuntimeMode, triggerContext])
 
   useEffect(() => {
     setActiveSuggestionIndex(0)
@@ -1539,7 +1638,6 @@ function InputToolbar({
               <Atom size={15} />
               <span className="text-xs">{t('Deep Thinking')}</span>
             </button> */}
-
           </>
         )}
         {!isOnboarding && !isGenerating && (

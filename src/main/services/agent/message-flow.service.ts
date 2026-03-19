@@ -37,6 +37,10 @@ import {
   getEnabledMcpServers,
   shouldEnableCodepilotWidgetMcp
 } from './sdk-config.builder'
+import {
+  resolveSlashRuntimeMode,
+  SLASH_RUNTIME_MODE_ENV_KEY
+} from './slash-runtime-mode.service'
 import { parseSDKMessages, formatCanvasContext, buildMessageContent } from './message-parser'
 import { broadcastMcpStatus } from './mcp-status.service'
 import { expandLazyDirectives } from './skill-expander'
@@ -91,7 +95,9 @@ import type {
   ChatMode,
   SessionAcquireResult
 } from './types'
-import type { ClaudeCodeSkillMissingPolicy } from '../../../shared/types/claude-code'
+import type {
+  ClaudeCodeSkillMissingPolicy
+} from '../../../shared/types/claude-code'
 import {
   ASK_USER_QUESTION_ERROR_CODES,
   AskUserQuestionError,
@@ -118,6 +124,15 @@ interface McpDirectiveResult {
   text: string
   enabled: string[]
   missing: string[]
+}
+
+interface SlashCommandsSnapshot {
+  type: 'slash_commands'
+  runId: string
+  snapshotVersion: number
+  emittedAt: string
+  commands: string[]
+  source: 'sdk_init'
 }
 
 type TerminalReason = Exclude<SessionTerminalReason, null>
@@ -158,6 +173,74 @@ const isAbortLikeError = (error: unknown): boolean => {
   if (error instanceof Error && error.name === 'AbortError') return true
   const message = getErrorMessage(error)
   return /abort/i.test(message)
+}
+
+export function normalizeSlashCommands(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return []
+  const dedup = new Set<string>()
+  const normalized: string[] = []
+
+  for (const item of raw) {
+    let command = ''
+    if (typeof item === 'string') {
+      command = item.trim()
+    } else if (item && typeof item === 'object') {
+      const candidate = item as Record<string, unknown>
+      command = (
+        (typeof candidate.command === 'string' && candidate.command) ||
+        (typeof candidate.name === 'string' && candidate.name) ||
+        (typeof candidate.id === 'string' && candidate.id) ||
+        ''
+      ).trim()
+    }
+    if (!command) continue
+    const normalizedCommand = command.startsWith('/') ? command : `/${command}`
+    const key = normalizedCommand.toLowerCase()
+    if (dedup.has(key)) continue
+    dedup.add(key)
+    normalized.push(normalizedCommand)
+  }
+
+  return normalized
+}
+
+function normalizeLoadedSkillName(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null
+  const normalized = raw.trim()
+  if (!normalized) return null
+  return normalized.startsWith('/') ? normalized.slice(1) : normalized
+}
+
+export function extractLoadedSkillNameFromToolInput(input: unknown): string | null {
+  if (!input || typeof input !== 'object') return null
+  const payload = input as Record<string, unknown>
+  const directCandidates: unknown[] = [
+    payload.skill,
+    payload.skillName,
+    payload.command,
+    payload.name,
+    payload.id
+  ]
+
+  for (const candidate of directCandidates) {
+    const normalized = normalizeLoadedSkillName(candidate)
+    if (normalized) return normalized
+  }
+
+  if (payload.skill && typeof payload.skill === 'object') {
+    const nested = payload.skill as Record<string, unknown>
+    const nestedCandidates: unknown[] = [nested.name, nested.id, nested.command]
+    for (const candidate of nestedCandidates) {
+      const normalized = normalizeLoadedSkillName(candidate)
+      if (normalized) return normalized
+    }
+  }
+
+  return null
+}
+
+export function buildLoadedSkillMessage(skills: string[]): string {
+  return `已加载技能：${skills.join('、')}`
 }
 
 function createAgentRoutingError(errorCode: string, message: string): Error & { errorCode: string } {
@@ -1492,27 +1575,52 @@ export async function sendMessage(
   const { effectiveLazyLoad: skillsLazyLoad, toolkit } = getEffectiveSkillsLazyLoad(workDir, config)
   const exposureFlags = getResourceExposureRuntimeFlags()
   const allowedDirectiveSources = getExecutionLayerAllowedSources()
+  const slashRuntimeMode = resolveSlashRuntimeMode(
+    {
+      envValue: process.env[SLASH_RUNTIME_MODE_ENV_KEY],
+      spaceMode: spaceConfig?.claudeCode?.slashRuntimeMode,
+      globalMode: config.claudeCode?.slashRuntimeMode
+    },
+    'agent.message-flow.sendMessage'
+  ).mode
+  console.log('[telemetry] slash_parse_path', {
+    runId,
+    spaceId,
+    conversationId,
+    mode: slashRuntimeMode
+  })
 
   const mcpDirectiveResult = skillsLazyLoad
     ? extractMcpDirectives(message, sessionKey)
     : { text: message, enabled: [], missing: [] }
   const messageForSend = mcpDirectiveResult.text
-  const explicitSkillDirectiveResolution = resolveExplicitSkillDirectives({
-    message: messageForSend,
-    workDir,
-    locale: effectiveResponseLanguage,
-    allowedSources: allowedDirectiveSources
-  })
+  const explicitSkillDirectiveResolution: ExplicitSkillDirectiveResolution =
+    slashRuntimeMode === 'legacy-inject'
+      ? resolveExplicitSkillDirectives({
+        message: messageForSend,
+        workDir,
+        locale: effectiveResponseLanguage,
+        allowedSources: allowedDirectiveSources
+      })
+      : {
+        explicitDirectives: [],
+        resolved: [],
+        missing: [],
+        ambiguities: [],
+        sourceCandidates: allowedDirectiveSources
+      }
 
-  sendToRenderer('agent:directive-resolution', spaceId, conversationId, {
-    type: 'directive_resolution',
-    runId,
-    explicitDirectives: explicitSkillDirectiveResolution.explicitDirectives,
-    resolved: explicitSkillDirectiveResolution.resolved,
-    missing: explicitSkillDirectiveResolution.missing,
-    ambiguities: explicitSkillDirectiveResolution.ambiguities,
-    sourceCandidates: explicitSkillDirectiveResolution.sourceCandidates
-  })
+  if (slashRuntimeMode === 'legacy-inject') {
+    sendToRenderer('agent:directive-resolution', spaceId, conversationId, {
+      type: 'directive_resolution',
+      runId,
+      explicitDirectives: explicitSkillDirectiveResolution.explicitDirectives,
+      resolved: explicitSkillDirectiveResolution.resolved,
+      missing: explicitSkillDirectiveResolution.missing,
+      ambiguities: explicitSkillDirectiveResolution.ambiguities,
+      sourceCandidates: explicitSkillDirectiveResolution.sourceCandidates
+    })
+  }
 
   const sopAutoEnable = shouldAutoEnableAiBrowserForSopSkill({
     message: messageForSend,
@@ -1611,6 +1719,7 @@ export async function sendMessage(
     askUserQuestionUsedInRun: false,
     textClarificationFallbackUsedInConversation,
     textClarificationDetectedInRun: false,
+    slashRuntimeMode,
     thoughts: [], // Initialize thoughts array for this session
     processTrace: []
   }
@@ -1633,7 +1742,8 @@ export async function sendMessage(
     runId,
     runEpoch,
     startedAt: startedAtIso,
-    mode: effectiveMode
+    mode: effectiveMode,
+    slashRuntimeMode
   })
 
   let toolsSnapshotVersion = 0
@@ -1652,6 +1762,21 @@ export async function sendMessage(
 
   // Each run must emit at least one tools snapshot
   emitToolsSnapshot([], 'initializing')
+  let slashCommandsSnapshotVersion = 0
+  const emitSlashCommandsSnapshot = (commands: string[]): void => {
+    slashCommandsSnapshotVersion += 1
+    const payload: SlashCommandsSnapshot = {
+      type: 'slash_commands',
+      runId,
+      snapshotVersion: slashCommandsSnapshotVersion,
+      emittedAt: new Date().toISOString(),
+      commands,
+      source: 'sdk_init'
+    }
+    sendToRenderer('agent:slash-commands', spaceId, conversationId, payload)
+  }
+  let slashSnapshotReceived = false
+  let slashSnapshotFallbackLogged = false
 
   // Build file context block for AI (if file contexts provided)
   let fileContextBlock = ''
@@ -1741,9 +1866,10 @@ export async function sendMessage(
   let sessionAcquireResult: SessionAcquireResult | null = null
   let bootstrapTokenEstimate = 0
   let resourceRuntimeMismatchLogged = false
-  const directiveResolutionHasError =
+  const directiveResolutionHasError = slashRuntimeMode === 'legacy-inject' && (
     explicitSkillDirectiveResolution.missing.length > 0 ||
     explicitSkillDirectiveResolution.ambiguities.length > 0
+  )
   const shouldFastPathGreeting =
     runtimeInvocationContext === 'interactive' &&
     effectiveMode === 'code' &&
@@ -1826,10 +1952,12 @@ export async function sendMessage(
       responseLanguage: effectiveResponseLanguage,
       disableToolsForCompat: effectiveAi.disableToolsForCompat,
       resourceRuntimePolicy,
+      slashRuntimeMode,
       canUseTool: createCanUseTool(workDir, spaceId, conversationId, getActiveSession, {
         mode: effectiveMode,
         resourceRuntimePolicy,
         skillMissingPolicy,
+        slashRuntimeMode,
         onToolUse: (toolName, input) => {
           trackChangeFileFromToolUse(
             spaceId,
@@ -1923,6 +2051,7 @@ export async function sendMessage(
       enabledMcpServersHash: getEnabledMcpServersHashFromSdkOptions(sdkOptions),
       resourceIndexHash: getResourceIndexHash(workDir),
       resourceRuntimePolicy,
+      slashRuntimeMode,
       hasCanUseTool: true // Session has canUseTool callback
     }
 
@@ -2024,6 +2153,50 @@ export async function sendMessage(
       sessionState.processTrace.push(processEvent)
       sendToRenderer('agent:process', spaceId, conversationId, processEvent)
     }
+    let loadedSkillEventSeq = 0
+    const emittedLoadedSkillKeys = new Set<string>()
+    const emitLoadedSkills = (skills: string[], source: 'native' | 'legacy'): void => {
+      const normalizedSkills = Array.from(
+        new Set(
+          skills
+            .map((skill) => normalizeLoadedSkillName(skill))
+            .filter((skill): skill is string => Boolean(skill))
+        )
+      )
+      if (normalizedSkills.length === 0) return
+
+      const newlyLoaded = normalizedSkills.filter((skill) => {
+        const key = skill.toLowerCase()
+        if (emittedLoadedSkillKeys.has(key)) return false
+        emittedLoadedSkillKeys.add(key)
+        return true
+      })
+      if (newlyLoaded.length === 0) return
+
+      for (const skillName of newlyLoaded) {
+        loadedSkillEventSeq += 1
+        const timestamp = new Date().toISOString()
+        emitProcessEvent('slash_skill_loaded', {
+          source,
+          skills: [skillName],
+          thought: {
+            id: `slash-skill-loaded-${runId}-${loadedSkillEventSeq}`,
+            type: 'tool_use',
+            content: buildLoadedSkillMessage([skillName]),
+            timestamp,
+            toolName: 'Skill',
+            toolInput: {
+              skill: skillName
+            },
+            status: 'success',
+            visibility: 'user'
+          }
+        }, {
+          ts: timestamp,
+          visibility: 'user'
+        })
+      }
+    }
 
     console.log(`[Agent][${conversationId}] Sending message to V2 session...`)
     const t1 = Date.now()
@@ -2037,25 +2210,26 @@ export async function sendMessage(
 
     // Directive parsing state machine:
     // Pass-1: /mcp processing already completed above (extractMcpDirectives).
-    // Pass-2: lazy directives expansion for /skill /command @agent.
-    // "mcp" token is explicitly skipped here to avoid cross-pass re-entry.
-    //
-    // Runtime policy:
-    // - Expand directives in all chat modes.
-    // - Exposure remains a display-layer concern; runtime expansion should be
-    //   able to resolve hidden/global resources as long as source rules allow it.
+    // Pass-2 (legacy-inject only): lazy directives expansion for /skill /command @agent.
+    // "mcp" token is explicitly skipped in pass-2 to avoid cross-pass re-entry.
     const expandStartedAt = Date.now()
     startAgentRunObservationPhase(observabilityHandle, 'expand_directives', expandStartedAt)
-    const expandedMessage = expandLazyDirectives(messageForSend, workDir, toolkit, {
-      skip: new Set(['mcp']),
-      allowSources: allowedDirectiveSources,
-      bypassToolkitAllowlist: true,
-      invocationContext: runtimeInvocationContext,
-      locale: effectiveResponseLanguage,
-      resourceExposureEnabled: false,
-      allowLegacyWorkflowInternalDirect: exposureFlags.allowLegacyInternalDirect,
-      legacyDependencyRegexEnabled: exposureFlags.legacyDependencyRegexEnabled
-    })
+    const expandedMessage = slashRuntimeMode === 'legacy-inject'
+      ? expandLazyDirectives(messageForSend, workDir, toolkit, {
+        skip: new Set(['mcp']),
+        allowSources: allowedDirectiveSources,
+        bypassToolkitAllowlist: true,
+        invocationContext: runtimeInvocationContext,
+        locale: effectiveResponseLanguage,
+        resourceExposureEnabled: false,
+        allowLegacyWorkflowInternalDirect: exposureFlags.allowLegacyInternalDirect,
+        legacyDependencyRegexEnabled: exposureFlags.legacyDependencyRegexEnabled
+      })
+      : {
+        text: messageForSend,
+        expanded: { skills: [], commands: [], agents: [] },
+        missing: { skills: [], commands: [], agents: [] }
+      }
     const expandDurationMs = Date.now() - expandStartedAt
     endAgentRunObservationPhase(observabilityHandle, 'expand_directives', {
       endAtMs: expandStartedAt + expandDurationMs,
@@ -2066,10 +2240,13 @@ export async function sendMessage(
         expandedAgentCount: expandedMessage.expanded.agents.length,
         missingSkillCount: expandedMessage.missing.skills.length,
         missingCommandCount: expandedMessage.missing.commands.length,
-        missingAgentCount: expandedMessage.missing.agents.length
+        missingAgentCount: expandedMessage.missing.agents.length,
+        slashRuntimeMode
       }
     })
-    console.log(`[Agent][${conversationId}] ⏱️ expandLazyDirectives: ${expandDurationMs}ms`)
+    if (slashRuntimeMode === 'legacy-inject') {
+      console.log(`[Agent][${conversationId}] ⏱️ expandLazyDirectives: ${expandDurationMs}ms`)
+    }
 
     if (expandedMessage.expanded.skills.length > 0) {
       console.log(
@@ -2128,7 +2305,9 @@ export async function sendMessage(
         })
       }
     }
-    const directiveLockPrefix = buildDirectiveLockPrefix(explicitSkillDirectiveResolution)
+    const directiveLockPrefix = slashRuntimeMode === 'legacy-inject'
+      ? buildDirectiveLockPrefix(explicitSkillDirectiveResolution)
+      : ''
     if (directiveLockPrefix) {
       console.log(
         `[Agent][${conversationId}] Directive lock enabled for explicit slash skills: ${explicitSkillDirectiveResolution.resolved.map((item) => item.canonical).join(', ')}`
@@ -2144,6 +2323,10 @@ export async function sendMessage(
         ts: new Date().toISOString(),
         visibility: 'debug'
       })
+      emitLoadedSkills(
+        explicitSkillDirectiveResolution.resolved.map((item) => item.canonical),
+        'legacy'
+      )
     }
 
     // NOTE: Mode prefixes are injected as user-message guards, not system prompts.
@@ -2660,6 +2843,12 @@ If the user asks about this project/codebase, inspect files in current workspace
               requiresApproval: existingToolCall?.requiresApproval,
               description: existingToolCall?.description
             })
+            if (!isError && existingToolCall?.name === 'Skill') {
+              const loadedSkillName = extractLoadedSkillNameFromToolInput(existingToolCall.input)
+              if (loadedSkillName) {
+                emitLoadedSkills([loadedSkillName], 'native')
+              }
+            }
             if (isAskUserQuestionResult) {
               sessionState.askUserQuestionModeByToolCallId.delete(toolCallId)
               const pendingId = sessionState.pendingAskUserQuestionIdByToolCallId.get(toolCallId)
@@ -2741,6 +2930,31 @@ If the user asks about this project/codebase, inspect files in current workspace
         }
         if (plugins) {
           console.log(`[Agent][${conversationId}] Loaded plugins:`, JSON.stringify(plugins))
+        }
+        const slashCommands = normalizeSlashCommands(msg.slash_commands)
+        if (slashCommands.length > 0) {
+          slashSnapshotReceived = true
+          emitSlashCommandsSnapshot(slashCommands)
+          console.log('[telemetry] slash_snapshot_received_count', {
+            runId,
+            spaceId,
+            conversationId,
+            mode: slashRuntimeMode,
+            count: slashCommands.length
+          })
+        } else if (
+          slashRuntimeMode === 'native' &&
+          subtype === 'init' &&
+          !slashSnapshotFallbackLogged
+        ) {
+          slashSnapshotFallbackLogged = true
+          console.warn('[telemetry] slash_snapshot_fallback_local_count', {
+            runId,
+            spaceId,
+            conversationId,
+            mode: slashRuntimeMode,
+            reason: 'sdk_init_missing_slash_commands'
+          })
         }
         if (
           !resourceRuntimeMismatchLogged &&
@@ -2873,6 +3087,16 @@ If the user asks about this project/codebase, inspect files in current workspace
       console.warn(
         `[Agent][${conversationId}] No stream_event received (sendCall=${sendResolvedAt - sendStartedAt}ms)`
       )
+    }
+    if (slashRuntimeMode === 'native' && !slashSnapshotReceived && !slashSnapshotFallbackLogged) {
+      slashSnapshotFallbackLogged = true
+      console.warn('[telemetry] slash_snapshot_fallback_local_count', {
+        runId,
+        spaceId,
+        conversationId,
+        mode: slashRuntimeMode,
+        reason: 'run_completed_without_slash_commands'
+      })
     }
 
     // Save session ID for future resumption

@@ -54,6 +54,7 @@ import i18n, { getCurrentLanguage } from '../i18n'
 import type { InvocationContext } from '../../shared/resource-access'
 import { getAiSetupState } from '../../shared/types/ai-profile'
 import { buildSessionKey } from '../../shared/session-key'
+import type { ClaudeCodeSlashRuntimeMode } from '../../shared/types/claude-code'
 
 // LRU cache size limit
 const CONVERSATION_CACHE_SIZE = 10
@@ -72,6 +73,7 @@ type PendingRunEventKind =
   | 'complete'
   | 'compact'
   | 'tools_available'
+  | 'slash_commands'
 
 interface PendingRunEvent {
   kind: PendingRunEventKind
@@ -87,6 +89,14 @@ interface AvailableToolsSnapshot {
   phase: 'initializing' | 'ready'
   tools: string[]
   toolCount: number
+}
+
+interface SlashCommandsSnapshot {
+  runId: string | null
+  snapshotVersion: number
+  emittedAt: string | null
+  commands: string[]
+  source: 'sdk_init' | null
 }
 
 interface OrphanToolResult {
@@ -235,7 +245,9 @@ interface SessionState {
   toolStatusById: Record<string, ToolStatus>
   toolCallsById: Record<string, ToolCall>
   orphanToolResults: Record<string, OrphanToolResult>
+  slashRuntimeMode: ClaudeCodeSlashRuntimeMode
   availableToolsSnapshot: AvailableToolsSnapshot
+  slashCommandsSnapshot: SlashCommandsSnapshot
   pendingRunEvents: PendingRunEvent[]
 
   // === Tree and parallel group support ===
@@ -271,6 +283,7 @@ function createEmptySessionState(): SessionState {
     toolStatusById: {},
     toolCallsById: {},
     orphanToolResults: {},
+    slashRuntimeMode: 'native',
     availableToolsSnapshot: {
       runId: null,
       snapshotVersion: 0,
@@ -278,6 +291,13 @@ function createEmptySessionState(): SessionState {
       phase: 'initializing',
       tools: [],
       toolCount: 0
+    },
+    slashCommandsSnapshot: {
+      runId: null,
+      snapshotVersion: 0,
+      emittedAt: null,
+      commands: [],
+      source: null
     },
     pendingRunEvents: [],
     // New fields
@@ -624,7 +644,7 @@ interface ChatState {
   setActiveAskUserQuestion: (conversationId: string, toolCallId: string) => void
 
   // Event handlers (called from App component) - with session IDs
-  handleAgentRunStart: (data: AgentEventBase & { runId: string; startedAt: string }) => void
+  handleAgentRunStart: (data: AgentEventBase & { runId: string; startedAt: string; slashRuntimeMode?: ClaudeCodeSlashRuntimeMode }) => void
   handleAgentMessage: (data: AgentEventBase & { content: string; isComplete: boolean }) => void
   handleAgentProcess: (data: AgentProcessEvent) => void
   handleAgentToolCall: (data: AgentEventBase & ToolCall) => void
@@ -635,6 +655,7 @@ interface ChatState {
   handleAgentThought: (data: AgentEventBase & { thought: Thought }) => void
   handleAgentCompact: (data: AgentEventBase & { trigger: 'manual' | 'auto'; preTokens: number }) => void
   handleAgentToolsAvailable: (data: AgentEventBase & { runId: string; snapshotVersion: number; emittedAt: string; phase: 'initializing' | 'ready'; tools: string[]; toolCount: number }) => void
+  handleAgentSlashCommands: (data: AgentEventBase & { runId: string; snapshotVersion: number; emittedAt: string; commands: string[]; source: 'sdk_init' }) => void
 
   // Change set actions
   loadChangeSets: (spaceId: string, conversationId: string) => Promise<void>
@@ -974,6 +995,7 @@ async function ensureConversationLoadedImpl(
         processTrace?: ProcessTraceNode[]
         spaceId?: string
         mode?: ChatMode
+        slashRuntimeMode?: ClaudeCodeSlashRuntimeMode
       }
       const recoveredProcessTrace = Array.isArray(sessionState.processTrace)
         ? sessionState.processTrace
@@ -1008,6 +1030,7 @@ async function ensureConversationLoadedImpl(
               undefined,
               resolveConversationMode(state, spaceId, conversationId)
             ),
+            slashRuntimeMode: sessionState.slashRuntimeMode || existingSession.slashRuntimeMode || 'native',
             isGenerating: true,
             isThinking: true,
             thoughts: recoveredThoughts,
@@ -2940,6 +2963,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
         ...createEmptySessionState(),
         spaceId: data.spaceId,
         mode: incomingMode,
+        slashRuntimeMode:
+          (data as AgentEventBase & { slashRuntimeMode?: ClaudeCodeSlashRuntimeMode }).slashRuntimeMode || 'native',
         activeRunId: runId,
         lifecycle: 'running',
         terminalReason: null,
@@ -2953,6 +2978,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
           phase: 'initializing',
           tools: [],
           toolCount: 0
+        },
+        slashCommandsSnapshot: {
+          runId,
+          snapshotVersion: 0,
+          emittedAt: startedAt,
+          commands: [],
+          source: null
         }
       })
       return { sessions: newSessions }
@@ -2984,6 +3016,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
           break
         case 'tools_available':
           get().handleAgentToolsAvailable(event.payload as AgentEventBase & { runId: string; snapshotVersion: number; emittedAt: string; phase: 'initializing' | 'ready'; tools: string[]; toolCount: number })
+          break
+        case 'slash_commands':
+          get().handleAgentSlashCommands(event.payload as AgentEventBase & { runId: string; snapshotVersion: number; emittedAt: string; commands: string[]; source: 'sdk_init' })
           break
         case 'complete':
           void get().handleAgentComplete(event.payload as AgentCompleteEvent)
@@ -4054,6 +4089,56 @@ export const useChatStore = create<ChatState>((set, get) => ({
           phase,
           tools,
           toolCount
+        }
+      })
+      return { sessions: newSessions }
+    })
+  },
+
+  // Handle slash commands snapshot for current run
+  handleAgentSlashCommands: (data) => {
+    if (!isEventScopeAccepted(get(), data)) {
+      return
+    }
+    const { conversationId, runId, snapshotVersion, emittedAt, commands, source } = data
+
+    set((state) => {
+      const newSessions = new Map(state.sessions)
+      const session = newSessions.get(conversationId) || createEmptySessionState()
+
+      if (runId && !session.activeRunId) {
+        newSessions.set(conversationId, {
+          ...session,
+          pendingRunEvents: enqueuePendingRunEvent(session, {
+            kind: 'slash_commands',
+            runId,
+            payload: data,
+            receivedAt: Date.now()
+          })
+        })
+        return { sessions: newSessions }
+      }
+
+      if (runId && session.activeRunId && session.activeRunId !== runId) {
+        return state
+      }
+
+      const currentSnapshot = session.slashCommandsSnapshot
+      if (
+        currentSnapshot.runId === runId &&
+        currentSnapshot.snapshotVersion > snapshotVersion
+      ) {
+        return state
+      }
+
+      newSessions.set(conversationId, {
+        ...session,
+        slashCommandsSnapshot: {
+          runId,
+          snapshotVersion,
+          emittedAt,
+          commands,
+          source
         }
       })
       return { sessions: newSessions }

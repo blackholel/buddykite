@@ -296,6 +296,7 @@ export interface SessionState {
   askUserQuestionUsedInRun: boolean
   textClarificationFallbackUsedInConversation: boolean
   textClarificationDetectedInRun: boolean
+  slashRuntimeMode?: import('../../../shared/types/claude-code').ClaudeCodeSlashRuntimeMode
   observabilityContext?: {
     traceId: string
     rootObservationId: string
@@ -352,6 +353,7 @@ export interface SessionConfig {
   enabledPluginMcpsHash?: string
   enabledMcpServersHash?: string
   resourceRuntimePolicy?: import('../../../shared/types/claude-code').ClaudeCodeResourceRuntimePolicy
+  slashRuntimeMode?: import('../../../shared/types/claude-code').ClaudeCodeSlashRuntimeMode
   resourceIndexHash?: string
   hasCanUseTool?: boolean // Track if session has canUseTool callback
 }

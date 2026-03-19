@@ -153,7 +153,15 @@ export function ChatTabViewer({ tab }: ChatTabViewerProps) {
     askUserQuestionOrder = [],
     activeAskUserQuestionId = null,
     mode = 'code',
-    modeSwitching = false
+    modeSwitching = false,
+    slashRuntimeMode = 'native',
+    slashCommandsSnapshot = {
+      runId: null,
+      snapshotVersion: 0,
+      emittedAt: null,
+      commands: [],
+      source: null
+    }
   } = session || {}
 
   const askUserQuestionItems = askUserQuestionOrder
@@ -414,6 +422,8 @@ export function ChatTabViewer({ tab }: ChatTabViewerProps) {
         workDir={resolvedWorkDir}
         mode={mode}
         onModeChange={handleModeChange}
+        slashRuntimeMode={slashRuntimeMode}
+        slashCommandsSnapshot={slashCommandsSnapshot}
         conversation={modelSwitcherConversation}
         config={appConfig}
       />

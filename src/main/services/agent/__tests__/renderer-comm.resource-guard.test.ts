@@ -72,6 +72,16 @@ function createHandlerWithRuntimePolicy(resourceRuntimePolicy: 'app-single-sourc
   )
 }
 
+function createHandlerWithSlashRuntimeMode(slashRuntimeMode: 'native' | 'legacy-inject') {
+  return createCanUseTool(
+    '/workspace/project',
+    'space-1',
+    'conversation-1',
+    () => undefined,
+    { slashRuntimeMode }
+  )
+}
+
 function createHandlerWithToolObserver(onToolUse: (toolName: string, input: Record<string, unknown>) => void) {
   return createCanUseTool(
     '/workspace/project',
@@ -261,26 +271,37 @@ describe('renderer-comm resource-dir guard', () => {
     expect(result.behavior).toBe('allow')
   })
 
-  it('非 full-mesh 策略下 Skill 工具保持禁用', async () => {
+  it('native 模式下 Skill 工具允许', async () => {
     const appSingleSourceHandler = createHandlerWithRuntimePolicy('app-single-source')
-    const legacyHandler = createHandlerWithRuntimePolicy('legacy')
+    const legacyRuntimePolicyHandler = createHandlerWithRuntimePolicy('legacy')
 
     const appSingleSourceResult = await appSingleSourceHandler(
       'Skill',
       { skill: 'demo' },
       { signal: new AbortController().signal }
     )
-    const legacyResult = await legacyHandler(
+    const legacyRuntimePolicyResult = await legacyRuntimePolicyHandler(
       'Skill',
       { skill: 'demo' },
       { signal: new AbortController().signal }
     )
 
-    expect(appSingleSourceResult.behavior).toBe('deny')
-    expect(legacyResult.behavior).toBe('deny')
+    expect(appSingleSourceResult.behavior).toBe('allow')
+    expect(legacyRuntimePolicyResult.behavior).toBe('allow')
   })
 
-  it('full-mesh 策略在运行时降级后仍禁用 Skill 且不放宽跨 space 资源根', async () => {
+  it('legacy-inject 模式下 Skill 工具禁用', async () => {
+    const canUseTool = createHandlerWithSlashRuntimeMode('legacy-inject')
+    const result = await canUseTool(
+      'Skill',
+      { skill: 'demo' },
+      { signal: new AbortController().signal }
+    )
+
+    expect(result.behavior).toBe('deny')
+  })
+
+  it('full-mesh 策略在运行时降级后 native 仍允许 Skill 且不放宽跨 space 资源根', async () => {
     const canUseTool = createHandlerWithRuntimePolicy('full-mesh')
     const skillResult = await canUseTool(
       'Skill',
@@ -293,7 +314,7 @@ describe('renderer-comm resource-dir guard', () => {
       { signal: new AbortController().signal }
     )
 
-    expect(skillResult.behavior).toBe('deny')
+    expect(skillResult.behavior).toBe('allow')
     expect(crossSpaceReadResult.behavior).toBe('deny')
   })
 

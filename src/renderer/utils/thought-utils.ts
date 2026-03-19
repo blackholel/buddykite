@@ -25,6 +25,7 @@ export interface SkillSegment {
   type: 'skill'
   startIndex: number
   skillId: string
+  sourceThoughtId?: string
   skillName: string
   skillArgs?: string
   isRunning: boolean
@@ -48,6 +49,37 @@ export type TimelineSegment = ThoughtsSegment | SkillSegment | SubAgentSegment
 
 function isSubAgentTool(toolName?: string): boolean {
   return toolName === 'Task' || toolName === 'Agent'
+}
+
+function normalizeSkillName(raw: string): string {
+  const value = raw.trim()
+  if (!value) return ''
+  return value.startsWith('/') ? value.slice(1) : value
+}
+
+function parseLoadedSkillsFromSystemThought(thought: Thought): string[] {
+  if (thought.type !== 'system') return []
+  const content = (thought.content || '').trim()
+  if (!content) return []
+
+  const patterns = [
+    /^已加载技能[:：]\s*(.+)$/u,
+    /^Loaded skills?[:：]\s*(.+)$/iu
+  ]
+
+  for (const pattern of patterns) {
+    const matched = content.match(pattern)
+    if (!matched) continue
+    const names = matched[1]
+      .split(/[、,，]/u)
+      .map((name) => normalizeSkillName(name))
+      .filter(Boolean)
+    if (names.length > 0) {
+      return names
+    }
+  }
+
+  return []
 }
 
 // ============================================
@@ -237,6 +269,9 @@ export function buildTimelineSegments(thoughts: Thought[]): TimelineSegment[] {
   const segments: TimelineSegment[] = []
   let currentThoughts: Thought[] = []
   let segmentIndex = 0
+  const isRunningStatus = (status?: Thought['status']): boolean => {
+    return status === 'pending' || status === 'running' || status === 'waiting_approval'
+  }
 
   // Map to track sub-agent child thoughts
   const subAgentChildMap = new Map<string, Thought[]>()
@@ -281,12 +316,41 @@ export function buildTimelineSegments(thoughts: Thought[]): TimelineSegment[] {
       return
     }
 
+    // Backward compatibility: convert "系统：已加载技能" text events to outer SkillCard segments.
+    const inferredLoadedSkills = parseLoadedSkillsFromSystemThought(thought)
+    if (inferredLoadedSkills.length > 0) {
+      flushThoughts()
+      inferredLoadedSkills.forEach((skillName, inferredIndex) => {
+        segments.push({
+          id: `skill-inferred-${thought.id}-${inferredIndex}`,
+          type: 'skill',
+          startIndex: segmentIndex + inferredIndex,
+          skillId: `${thought.id}-${inferredIndex}`,
+          sourceThoughtId: thought.id,
+          skillName,
+          isRunning: false,
+          hasError: false,
+          result: `已加载技能：${skillName}`
+        })
+      })
+      segmentIndex += inferredLoadedSkills.length
+      return
+    }
+
     // Handle Skill tool calls
     if (thought.toolName === 'Skill' && thought.type === 'tool_use') {
       flushThoughts()
 
       // Find the corresponding result (O(1) lookup)
       const resultThought = resultMap.get(thought.id)
+      const hasResult = Boolean(resultThought)
+      const resolvedStatus = thought.status
+      const isRunning = hasResult
+        ? false
+        : (resolvedStatus ? isRunningStatus(resolvedStatus) : true)
+      const hasError = hasResult
+        ? (resultThought?.isError || false)
+        : resolvedStatus === 'error'
 
       const skillInput = thought.toolInput || {}
       segments.push({
@@ -294,12 +358,13 @@ export function buildTimelineSegments(thoughts: Thought[]): TimelineSegment[] {
         type: 'skill',
         startIndex: segmentIndex,
         skillId: thought.id,
+        sourceThoughtId: thought.id,
         skillName: (skillInput.skill as string) || 'unknown',
         skillArgs: skillInput.args as string | undefined,
-        isRunning: !resultThought,
-        hasError: resultThought?.isError || false,
+        isRunning,
+        hasError,
         // Use toolOutput for actual result content, fallback to content
-        result: resultThought?.toolOutput || resultThought?.content
+        result: resultThought?.toolOutput || resultThought?.content || (!isRunning ? thought.content : undefined)
       })
       segmentIndex++
       return

@@ -7,7 +7,7 @@ import {
   type AiConfig,
   type LegacyApiConfig
 } from '../../shared/types/ai-profile';
-import type { ClaudeCodeConfig } from '../../shared/types/claude-code';
+import type { ClaudeCodeConfig, ClaudeCodeSlashRuntimeMode } from '../../shared/types/claude-code';
 import type { ObservabilityConfig } from '../../shared/types/observability';
 
 export type {
@@ -734,6 +734,7 @@ export interface AgentRunStartEvent extends AgentEventBase {
   type: 'run_start';
   runId: string;
   startedAt: string;
+  slashRuntimeMode?: ClaudeCodeSlashRuntimeMode;
 }
 
 export interface AgentToolsAvailableEvent extends AgentEventBase {
@@ -754,6 +755,15 @@ export interface AgentDirectiveResolutionEvent extends AgentEventBase {
   missing: Array<{ token: string; candidates: string[] }>;
   ambiguities: Array<{ token: string; candidates: string[] }>;
   sourceCandidates: string[];
+}
+
+export interface AgentSlashCommandsEvent extends AgentEventBase {
+  type: 'slash_commands';
+  runId: string;
+  snapshotVersion: number;
+  emittedAt: string;
+  commands: string[];
+  source: 'sdk_init';
 }
 
 export interface AgentThoughtEvent extends AgentEventBase {
@@ -783,7 +793,8 @@ export type AgentEvent =
   | AgentModeEvent
   | AgentCompactEvent
   | AgentToolsAvailableEvent
-  | AgentDirectiveResolutionEvent;
+  | AgentDirectiveResolutionEvent
+  | AgentSlashCommandsEvent;
 
 // ============================================
 // App State Types

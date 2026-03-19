@@ -142,6 +142,7 @@ export default function App() {
     handleAgentThought,
     handleAgentCompact,
     handleAgentToolsAvailable,
+    handleAgentSlashCommands,
     currentSpaceId,
     setCurrentSpace: setChatCurrentSpace,
     loadConversations,
@@ -158,6 +159,7 @@ export default function App() {
     handleAgentThought: state.handleAgentThought,
     handleAgentCompact: state.handleAgentCompact,
     handleAgentToolsAvailable: state.handleAgentToolsAvailable,
+    handleAgentSlashCommands: state.handleAgentSlashCommands,
     currentSpaceId: state.currentSpaceId,
     setCurrentSpace: state.setCurrentSpace,
     loadConversations: state.loadConversations,
@@ -309,6 +311,16 @@ export default function App() {
         toolCount: number
       })
     })
+    const unsubSlashCommands = api.onAgentSlashCommands((data) => {
+      console.log('[App] Received agent:slash-commands event:', data)
+      handleAgentSlashCommands(data as AgentEventBase & {
+        runId: string
+        snapshotVersion: number
+        emittedAt: string
+        commands: string[]
+        source: 'sdk_init'
+      })
+    })
 
     const unsubDirectiveResolution = api.onAgentDirectiveResolution((data) => {
       console.log('[App] Received agent:directive-resolution event:', data)
@@ -357,6 +369,7 @@ export default function App() {
       unsubMode()
       unsubCompact()
       unsubToolsAvailable()
+      unsubSlashCommands()
       unsubDirectiveResolution()
       unsubMcpStatus()
     }
@@ -373,6 +386,7 @@ export default function App() {
     handleAgentThought,
     handleAgentCompact,
     handleAgentToolsAvailable,
+    handleAgentSlashCommands,
     setMcpStatus
   ])
 

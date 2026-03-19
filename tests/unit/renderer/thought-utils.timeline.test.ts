@@ -46,5 +46,51 @@ describe('thought-utils timeline segments', () => {
       isRunning: false
     })
   })
-})
 
+  it('treats successful Skill tool_use without tool_result as completed skill segment', () => {
+    const thoughts: Thought[] = [
+      {
+        id: 'skill-loaded-1',
+        type: 'tool_use',
+        content: '已加载技能：gstack:plan-ceo-review',
+        timestamp: now(),
+        toolName: 'Skill',
+        toolInput: {
+          skill: 'gstack:plan-ceo-review'
+        },
+        status: 'success'
+      }
+    ]
+
+    const segments = buildTimelineSegments(thoughts)
+    expect(segments).toHaveLength(1)
+    expect(segments[0]).toMatchObject({
+      type: 'skill',
+      skillId: 'skill-loaded-1',
+      skillName: 'gstack:plan-ceo-review',
+      isRunning: false,
+      hasError: false
+    })
+  })
+
+  it('converts legacy system text "已加载技能" into skill segment', () => {
+    const thoughts: Thought[] = [
+      {
+        id: 'legacy-system-1',
+        type: 'system',
+        content: '已加载技能：gstack:plan-ceo-review',
+        timestamp: now()
+      }
+    ]
+
+    const segments = buildTimelineSegments(thoughts)
+    expect(segments).toHaveLength(1)
+    expect(segments[0]).toMatchObject({
+      type: 'skill',
+      skillName: 'gstack:plan-ceo-review',
+      isRunning: false,
+      hasError: false,
+      sourceThoughtId: 'legacy-system-1'
+    })
+  })
+})

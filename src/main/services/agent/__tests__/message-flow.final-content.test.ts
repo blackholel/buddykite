@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
+  buildLoadedSkillMessage,
   buildConversationHistoryBootstrap,
   buildForcedAssumptionResponse,
+  extractLoadedSkillNameFromToolInput,
+  normalizeSlashCommands,
   resolveFinalContent
 } from '../message-flow.service'
 
@@ -70,5 +73,52 @@ describe('buildConversationHistoryBootstrap', () => {
     expect(result.block).toBe('')
     expect(result.tokenEstimate).toBe(0)
     expect(result.appliedTurnCount).toBe(0)
+  })
+})
+
+describe('normalizeSlashCommands', () => {
+  it('兼容 string[] 并补全斜杠、去重', () => {
+    const normalized = normalizeSlashCommands(['test', '/TEST', '  status  ', '', 'status'])
+    expect(normalized).toEqual(['/test', '/status'])
+  })
+
+  it('兼容对象数组并优先读取 command/name/id 字段', () => {
+    const normalized = normalizeSlashCommands([
+      { command: 'alpha' },
+      { name: '/beta' },
+      { id: 'gamma' },
+      { command: 'ALPHA' },
+      {}
+    ])
+    expect(normalized).toEqual(['/alpha', '/beta', '/gamma'])
+  })
+
+  it('非数组输入返回空列表', () => {
+    expect(normalizeSlashCommands(null)).toEqual([])
+    expect(normalizeSlashCommands({})).toEqual([])
+    expect(normalizeSlashCommands('not-array')).toEqual([])
+  })
+})
+
+describe('extractLoadedSkillNameFromToolInput', () => {
+  it('优先读取直传字段并去掉开头斜杠', () => {
+    expect(extractLoadedSkillNameFromToolInput({ command: '/gstack:plan-ceo-review' })).toBe('gstack:plan-ceo-review')
+    expect(extractLoadedSkillNameFromToolInput({ skillName: 'superpowers:writing-plans' })).toBe('superpowers:writing-plans')
+  })
+
+  it('兼容 nested skill 对象', () => {
+    expect(extractLoadedSkillNameFromToolInput({ skill: { name: '/gstack:qa' } })).toBe('gstack:qa')
+  })
+
+  it('无可用字段返回 null', () => {
+    expect(extractLoadedSkillNameFromToolInput({})).toBeNull()
+    expect(extractLoadedSkillNameFromToolInput(null)).toBeNull()
+  })
+})
+
+describe('buildLoadedSkillMessage', () => {
+  it('生成用户可见的技能加载提示', () => {
+    expect(buildLoadedSkillMessage(['gstack:plan-ceo-review'])).toBe('已加载技能：gstack:plan-ceo-review')
+    expect(buildLoadedSkillMessage(['a', 'b'])).toBe('已加载技能：a、b')
   })
 })

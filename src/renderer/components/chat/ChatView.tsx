@@ -369,6 +369,8 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
     modeSwitching,
     toolStatusById,
     availableToolsSnapshot,
+    slashRuntimeMode,
+    slashCommandsSnapshot,
     askUserQuestionsById,
     askUserQuestionOrder,
     activeAskUserQuestionId
@@ -718,6 +720,8 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
         workDir={resolvedConversationWorkDir}
         mode={mode}
         onModeChange={handleModeChange}
+        slashRuntimeMode={slashRuntimeMode}
+        slashCommandsSnapshot={slashCommandsSnapshot}
         conversation={modelSwitcherConversation}
         config={appConfig}
       />

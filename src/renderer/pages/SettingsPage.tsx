@@ -12,6 +12,7 @@ import type {
   ApiProfile,
   ProviderProtocol
 } from '../types'
+import type { ClaudeCodeSlashRuntimeMode } from '../../shared/types/claude-code'
 import type { LucideIcon } from 'lucide-react'
 import { AlertCircle, ArrowLeft, Bot, CheckCircle2, ChevronDown, Download, Eye, EyeOff, Info, Network, Palette, RefreshCw, ServerCog, Shield, SlidersHorizontal, X } from 'lucide-react'
 import { McpServerList } from '../components/settings/McpServerList'
@@ -242,6 +243,7 @@ export function SettingsPage() {
   // System settings state
   const [autoLaunch, setAutoLaunch] = useState(config?.system?.autoLaunch || false)
   const [minimizeToTray, setMinimizeToTray] = useState(config?.system?.minimizeToTray || false)
+  const [isSavingSlashRuntimeMode, setIsSavingSlashRuntimeMode] = useState(false)
 
   // Updater state (About section)
   const [updaterState, setUpdaterState] = useState<UpdaterState | null>(null)
@@ -521,6 +523,33 @@ export function SettingsPage() {
       }
     } catch (error) {
       console.error('[Settings] Failed to set starter experience visibility:', error)
+    }
+  }
+
+  const slashRuntimeMode: ClaudeCodeSlashRuntimeMode =
+    config?.claudeCode?.slashRuntimeMode === 'legacy-inject' ? 'legacy-inject' : 'native'
+
+  const handleSlashRuntimeModeChange = async (nextMode: ClaudeCodeSlashRuntimeMode) => {
+    if (nextMode === slashRuntimeMode) return
+    setIsSavingSlashRuntimeMode(true)
+    try {
+      const nextClaudeCode = {
+        ...(config?.claudeCode || {}),
+        slashRuntimeMode: nextMode
+      }
+      await api.setConfig({
+        claudeCode: nextClaudeCode
+      })
+      if (config) {
+        setConfig({
+          ...config,
+          claudeCode: nextClaudeCode
+        } as KiteConfig)
+      }
+    } catch (error) {
+      console.error('[Settings] Failed to save slash runtime mode:', error)
+    } finally {
+      setIsSavingSlashRuntimeMode(false)
     }
   }
 
@@ -1313,6 +1342,23 @@ export function SettingsPage() {
               </p>
             </div>
             <AppleToggle checked={minimizeToTray} onChange={handleMinimizeToTrayChange} />
+          </div>
+          <div className="settings-setting-row">
+            <div className="flex-1 pr-4">
+              <p className="font-medium">{t('Slash 运行模式')}</p>
+              <p className="text-sm text-muted-foreground">
+                {t('默认使用原生模式；切换后从新一轮对话开始生效')}
+              </p>
+            </div>
+            <select
+              value={slashRuntimeMode}
+              onChange={(event) => handleSlashRuntimeModeChange(event.target.value as ClaudeCodeSlashRuntimeMode)}
+              disabled={isSavingSlashRuntimeMode}
+              className="input-apple min-w-[190px] px-3 py-2 text-sm"
+            >
+              <option value="native">{t('原生（推荐）')}</option>
+              <option value="legacy-inject">{t('回退（legacy-inject）')}</option>
+            </select>
           </div>
         </div>
       )}

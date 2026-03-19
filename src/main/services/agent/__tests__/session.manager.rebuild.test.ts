@@ -261,6 +261,37 @@ describe('session.manager rebuild', () => {
     expect(closeB).not.toHaveBeenCalled()
   })
 
+  it('slashRuntimeMode 变化时会触发 session 重建', async () => {
+    const closeA = vi.fn()
+    const closeB = vi.fn()
+    vi.mocked(query)
+      .mockReset()
+      .mockReturnValueOnce(createQueryMock({ close: closeA }))
+      .mockReturnValueOnce(createQueryMock({ close: closeB }))
+
+    const base: SessionConfig = {
+      aiBrowserEnabled: false,
+      skillsLazyLoad: false,
+      responseLanguage: 'en',
+      profileId: 'profile-a',
+      providerSignature: 'sig-a',
+      effectiveModel: 'model-a',
+      enabledPluginMcpsHash: 'mcp-1',
+      slashRuntimeMode: 'native',
+      hasCanUseTool: true
+    }
+
+    await getOrCreateV2Session('space-1', 'conv-slash-mode', {}, undefined, base)
+    await getOrCreateV2Session('space-1', 'conv-slash-mode', {}, undefined, {
+      ...base,
+      slashRuntimeMode: 'legacy-inject'
+    })
+
+    expect(query).toHaveBeenCalledTimes(2)
+    expect(closeA).toHaveBeenCalledTimes(1)
+    expect(closeB).not.toHaveBeenCalled()
+  })
+
   it('API 配置变化时仅回收非运行会话，运行中会话延后切换', async () => {
     const closeA = vi.fn()
     const closeB = vi.fn()

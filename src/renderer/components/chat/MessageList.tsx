@@ -847,6 +847,28 @@ export function MessageList({
         const messageProcessThoughts = getMessageThoughtsForDisplay(message)
         // Show collapsed thoughts ABOVE assistant messages, in same container for consistent width
         if (message.role === 'assistant' && messageProcessThoughts.length > 0) {
+          const messageTimelineSegments = buildTimelineSegments(messageProcessThoughts)
+          const messageSkillSegments = messageTimelineSegments.filter(
+            (segment): segment is Extract<TimelineSegment, { type: 'skill' }> => segment.type === 'skill'
+          )
+          const messageSkillIds = new Set(messageSkillSegments.map((segment) => segment.skillId))
+          const messageSkillSourceThoughtIds = new Set(
+            messageSkillSegments
+              .map((segment) => segment.sourceThoughtId)
+              .filter((value): value is string => typeof value === 'string' && value.length > 0)
+          )
+          const messageThoughtsForDisplay = messageProcessThoughts.filter((thought) => {
+            if (messageSkillSourceThoughtIds.has(thought.id)) {
+              return false
+            }
+            if (thought.type === 'tool_use' && thought.toolName === 'Skill') {
+              return false
+            }
+            if (thought.type === 'tool_result' && messageSkillIds.has(thought.id)) {
+              return false
+            }
+            return true
+          })
           const messageToolStatusById = Object.fromEntries(
             (message.toolCalls || []).map((toolCall) => [toolCall.id, toolCall.status])
           ) as Record<string, ToolStatus>
@@ -854,15 +876,28 @@ export function MessageList({
             <div key={message.id} className="flex space-studio-message-lane">
               {/* Fixed width container - prevents width jumping when content changes */}
               <div className="space-studio-message-stack">
+                {messageSkillSegments.map((segment) => (
+                  <SkillCard
+                    key={`completed-${segment.id}`}
+                    skillId={segment.skillId}
+                    skillName={segment.skillName}
+                    skillArgs={segment.skillArgs}
+                    isRunning={segment.isRunning}
+                    hasError={segment.hasError}
+                    result={segment.result}
+                  />
+                ))}
                 {/* Thought process above the message (completed mode = collapsed by default) */}
-                <ThoughtProcess
-                  thoughts={messageProcessThoughts}
-                  toolStatusById={messageToolStatusById}
-                  isThinking={false}
-                  showTodoCard={true}
-                  mode="completed"
-                  defaultExpanded={false}
-                />
+                {messageThoughtsForDisplay.length > 0 && (
+                  <ThoughtProcess
+                    thoughts={messageThoughtsForDisplay}
+                    toolStatusById={messageToolStatusById}
+                    isThinking={false}
+                    showTodoCard={true}
+                    mode="completed"
+                    defaultExpanded={false}
+                  />
+                )}
                 {/* Then the message itself (without embedded thoughts) */}
                 <MessageItem
                   message={message}

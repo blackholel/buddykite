@@ -65,6 +65,7 @@ export interface AgentsConfig {
  */
 export type ClaudeCodeResourceRuntimePolicy = 'app-single-source' | 'legacy' | 'full-mesh'
 export type ClaudeCodeSkillMissingPolicy = 'skip' | 'deny'
+export type ClaudeCodeSlashRuntimeMode = 'native' | 'legacy-inject'
 
 // ============================================
 // Claude Code Configuration
@@ -81,6 +82,8 @@ export interface ClaudeCodeConfig {
   resourceRuntimePolicy?: ClaudeCodeResourceRuntimePolicy
   /** Missing skill handling policy (default: skip) */
   skillMissingPolicy?: ClaudeCodeSkillMissingPolicy
+  /** Slash runtime mode (default: native) */
+  slashRuntimeMode?: ClaudeCodeSlashRuntimeMode
   /** Global kill switch for Claude Code hooks (default: true) */
   hooksEnabled?: boolean
   /** Global kill switch for MCP servers (default: true) */

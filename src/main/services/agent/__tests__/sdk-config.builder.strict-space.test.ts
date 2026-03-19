@@ -261,7 +261,7 @@ describe('sdk-config.builder strict space-only', () => {
     expect(sdkOptions.env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe('kimi-k2-0905-preview')
   })
 
-  it('full-mesh 降级后仍注入 disable-slash-commands', () => {
+  it('默认 native 模式下不注入 disable-slash-commands', () => {
     const sdkOptionsDefault = buildSdkOptions({
       ...createBuildSdkOptionsParams(),
       resourceRuntimePolicy: 'app-single-source'
@@ -271,11 +271,11 @@ describe('sdk-config.builder strict space-only', () => {
       resourceRuntimePolicy: 'full-mesh'
     })
 
-    expect(sdkOptionsDefault.extraArgs['disable-slash-commands']).toBeNull()
-    expect(sdkOptionsFullMesh.extraArgs['disable-slash-commands']).toBeNull()
+    expect(sdkOptionsDefault.extraArgs['disable-slash-commands']).toBeUndefined()
+    expect(sdkOptionsFullMesh.extraArgs['disable-slash-commands']).toBeUndefined()
   })
 
-  it('full-mesh 降级后 allowedTools 不再包含 Skill', () => {
+  it('默认 native 模式下 allowedTools 包含 Skill（含 full-mesh 运行时降级）', () => {
     const sdkOptionsDefault = buildSdkOptions({
       ...createBuildSdkOptionsParams(),
       resourceRuntimePolicy: 'app-single-source'
@@ -285,8 +285,18 @@ describe('sdk-config.builder strict space-only', () => {
       resourceRuntimePolicy: 'full-mesh'
     })
 
-    expect(sdkOptionsDefault.allowedTools).not.toContain('Skill')
-    expect(sdkOptionsFullMesh.allowedTools).not.toContain('Skill')
+    expect(sdkOptionsDefault.allowedTools).toContain('Skill')
+    expect(sdkOptionsFullMesh.allowedTools).toContain('Skill')
+  })
+
+  it('legacy-inject 模式下注入 disable-slash-commands 且不允许 Skill', () => {
+    const sdkOptions = buildSdkOptions({
+      ...createBuildSdkOptionsParams(),
+      slashRuntimeMode: 'legacy-inject'
+    })
+
+    expect(sdkOptions.extraArgs['disable-slash-commands']).toBeNull()
+    expect(sdkOptions.allowedTools).not.toContain('Skill')
   })
 
   it('会过滤不符合 schema 的 MCP 配置，仅保留有效项', () => {

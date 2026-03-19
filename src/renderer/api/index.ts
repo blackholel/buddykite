@@ -1341,6 +1341,8 @@ export const api = {
     onEvent('agent:thought', callback),
   onAgentToolsAvailable: (callback: (data: unknown) => void) =>
     onEvent('agent:tools-available', callback),
+  onAgentSlashCommands: (callback: (data: unknown) => void) =>
+    onEvent('agent:slash-commands', callback),
   onAgentDirectiveResolution: (callback: (data: unknown) => void) =>
     onEvent('agent:directive-resolution', callback),
   onAgentMcpStatus: (callback: (data: unknown) => void) =>

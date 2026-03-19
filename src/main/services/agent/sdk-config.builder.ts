@@ -22,6 +22,10 @@ import { buildPluginMcpServers } from '../plugin-mcp.service'
 import { getLockedUserConfigRootDir } from '../config-source-mode.service'
 import { resolveResourceRuntimePolicy as resolveNormalizedRuntimePolicy } from '../resource-runtime-policy.service'
 import { createWidgetMcpServer, WIDGET_SYSTEM_PROMPT } from './widget-guidelines'
+import {
+  resolveSlashRuntimeMode,
+  SLASH_RUNTIME_MODE_ENV_KEY
+} from './slash-runtime-mode.service'
 import { resolveEffectiveConversationAi } from './ai-config-resolver'
 import {
   buildAnthropicCompatEnvDefaults,
@@ -30,6 +34,7 @@ import {
 import { normalizeLocale, SUPPORTED_LOCALES, type LocaleCode } from '../../../shared/i18n/locale'
 import type { PluginConfig, SettingSource, ToolCall } from './types'
 import type { ClaudeCodeResourceRuntimePolicy } from '../../../shared/types/claude-code'
+import type { ClaudeCodeSlashRuntimeMode } from '../../../shared/types/claude-code'
 
 // Re-export types for convenience
 export type { PluginConfig, SettingSource }
@@ -576,6 +581,7 @@ export interface BuildSdkOptionsParams {
   responseLanguage?: LocaleCode
   disableToolsForCompat?: boolean
   resourceRuntimePolicy?: ClaudeCodeResourceRuntimePolicy
+  slashRuntimeMode?: ClaudeCodeSlashRuntimeMode
   stderrSuffix?: string // Optional suffix for stderr logs (e.g., "(warm)")
   canUseTool?: CanUseToolHandler
   enabledPluginMcps?: string[]
@@ -605,6 +611,7 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): Record<string, a
     responseLanguage = 'en',
     disableToolsForCompat,
     resourceRuntimePolicy,
+    slashRuntimeMode,
     stderrSuffix = '',
     canUseTool,
     enabledPluginMcps,
@@ -618,6 +625,15 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): Record<string, a
     config,
     resourceRuntimePolicy
   )
+  const effectiveSlashRuntimeMode = resolveSlashRuntimeMode(
+    {
+      envValue: process.env[SLASH_RUNTIME_MODE_ENV_KEY],
+      spaceMode: spaceConfig?.claudeCode?.slashRuntimeMode,
+      globalMode: config.claudeCode?.slashRuntimeMode
+    },
+    'agent.sdk-config.builder'
+  ).mode
+  const runtimeSlashMode = slashRuntimeMode || effectiveSlashRuntimeMode
   const { effectiveLazyLoad } = getEffectiveSkillsLazyLoad(workDir, config)
   const shouldInjectAnthropicCompatEnvDefaults = (() => {
     try {
@@ -666,7 +682,9 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): Record<string, a
     },
     extraArgs: {
       'dangerously-skip-permissions': null,
-      'disable-slash-commands': null
+      ...(runtimeSlashMode === 'legacy-inject'
+        ? { 'disable-slash-commands': null }
+        : {})
     },
     stderr: (data: string) => {
       console.error(`[Agent][${conversationId}] CLI stderr${stderrSuffix}:`, data)
@@ -689,6 +707,7 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): Record<string, a
       'Grep',
       'Glob',
       'Bash',
+      ...(runtimeSlashMode === 'native' ? ['Skill'] : []),
     ],
     permissionMode: 'acceptEdits' as const,
     includePartialMessages: true,

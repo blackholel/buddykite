@@ -226,6 +226,7 @@ export interface KiteAPI {
   onAgentThinking: (callback: (data: unknown) => void) => () => void
   onAgentThought: (callback: (data: unknown) => void) => () => void
   onAgentToolsAvailable: (callback: (data: unknown) => void) => () => void
+  onAgentSlashCommands: (callback: (data: unknown) => void) => () => void
   onAgentDirectiveResolution: (callback: (data: unknown) => void) => () => void
   onAgentMcpStatus: (callback: (data: unknown) => void) => () => void
   onAgentCompact: (callback: (data: unknown) => void) => () => void
@@ -590,6 +591,7 @@ const api: KiteAPI = {
   onAgentThinking: (callback) => createEventListener('agent:thinking', callback),
   onAgentThought: (callback) => createEventListener('agent:thought', callback),
   onAgentToolsAvailable: (callback) => createEventListener('agent:tools-available', callback),
+  onAgentSlashCommands: (callback) => createEventListener('agent:slash-commands', callback),
   onAgentDirectiveResolution: (callback) => createEventListener('agent:directive-resolution', callback),
   onAgentMcpStatus: (callback) => createEventListener('agent:mcp-status', callback),
   onAgentCompact: (callback) => createEventListener('agent:compact', callback),

@@ -20,6 +20,10 @@ import { getHeadlessElectronPath } from './electron-path'
 import { resolveProvider } from './provider-resolver'
 import { resolveEffectiveConversationAi } from './ai-config-resolver'
 import { buildSdkOptions, getWorkingDir, getEffectiveSkillsLazyLoad } from './sdk-config.builder'
+import {
+  resolveSlashRuntimeMode,
+  SLASH_RUNTIME_MODE_ENV_KEY
+} from './slash-runtime-mode.service'
 import { createCanUseTool } from './renderer-comm'
 import type {
   V2SDKSession,
@@ -37,7 +41,10 @@ import { getResourceIndexHash } from '../resource-index.service'
 import { normalizeLocale, type LocaleCode } from '../../../shared/i18n/locale'
 import { buildSessionKey } from '../../../shared/session-key'
 import { flushRuntimeJournalSnapshot } from './runtime-journal.service'
-import type { ClaudeCodeSkillMissingPolicy } from '../../../shared/types/claude-code'
+import type {
+  ClaudeCodeSkillMissingPolicy,
+  ClaudeCodeSlashRuntimeMode
+} from '../../../shared/types/claude-code'
 
 // V2 Session management: Map of sessionKey -> persistent V2 session
 const v2Sessions = new Map<string, V2SessionInfo>()
@@ -511,6 +518,7 @@ function getSessionRebuildReasons(existing: SessionConfig, next: SessionConfig):
   if ((existing.enabledPluginMcpsHash || '') !== (next.enabledPluginMcpsHash || '')) reasons.push('enabledPluginMcpsHash')
   if ((existing.enabledMcpServersHash || '') !== (next.enabledMcpServersHash || '')) reasons.push('enabledMcpServersHash')
   if ((existing.resourceRuntimePolicy || '') !== (next.resourceRuntimePolicy || '')) reasons.push('resourceRuntimePolicy')
+  if ((existing.slashRuntimeMode || 'native') !== (next.slashRuntimeMode || 'native')) reasons.push('slashRuntimeMode')
   if ((existing.resourceIndexHash || '') !== (next.resourceIndexHash || '')) reasons.push('resourceIndexHash')
   if ((existing.hasCanUseTool || false) !== (next.hasCanUseTool || false)) reasons.push('hasCanUseTool')
   return reasons
@@ -529,6 +537,7 @@ function buildSessionConfigSignature(config: SessionConfig): string {
     enabledPluginMcpsHash: config.enabledPluginMcpsHash || '',
     enabledMcpServersHash: config.enabledMcpServersHash || '',
     resourceRuntimePolicy: config.resourceRuntimePolicy || '',
+    slashRuntimeMode: config.slashRuntimeMode || 'native',
     resourceIndexHash: config.resourceIndexHash || '',
     hasCanUseTool: config.hasCanUseTool || false
   })
@@ -674,12 +683,13 @@ export async function getOrCreateV2Session(
     conversationId,
     createdAt: Date.now(),
     lastUsedAt: Date.now(),
-    config: config || {
+      config: config || {
       spaceId,
       workDir: typeof sdkOptions?.cwd === 'string' ? sdkOptions.cwd : undefined,
       aiBrowserEnabled: false,
       skillsLazyLoad: false,
       resourceRuntimePolicy: 'app-single-source',
+      slashRuntimeMode: 'native',
       enabledPluginMcpsHash: ''
     }
   })
@@ -926,6 +936,14 @@ export async function ensureSessionWarm(
     spaceConfig?.claudeCode?.skillMissingPolicy ||
     config.claudeCode?.skillMissingPolicy ||
     'skip'
+  const slashRuntimeMode: ClaudeCodeSlashRuntimeMode = resolveSlashRuntimeMode(
+    {
+      envValue: process.env[SLASH_RUNTIME_MODE_ENV_KEY],
+      spaceMode: spaceConfig?.claudeCode?.slashRuntimeMode,
+      globalMode: config.claudeCode?.slashRuntimeMode
+    },
+    'agent.session-manager.ensure-session-warm'
+  ).mode
   const effectiveAi = resolveEffectiveConversationAi(spaceId, conversationId)
   const configuredConversationProfileId = toNonEmptyString(conversation?.ai?.profileId)
   const defaultProfileId = toNonEmptyString(config.ai?.defaultProfileId)
@@ -960,6 +978,7 @@ export async function ensureSessionWarm(
     responseLanguage: normalizedResponseLanguage,
     disableToolsForCompat: effectiveAi.disableToolsForCompat,
     resourceRuntimePolicy,
+    slashRuntimeMode,
     stderrSuffix: ' (warm)',
     canUseTool: createCanUseTool(
       workDir,
@@ -968,7 +987,8 @@ export async function ensureSessionWarm(
       getActiveSession,
       {
         resourceRuntimePolicy,
-        skillMissingPolicy
+        skillMissingPolicy,
+        slashRuntimeMode
       }
     ),
     enabledPluginMcps: getEnabledPluginMcpList(sessionKey),
@@ -1001,6 +1021,7 @@ export async function ensureSessionWarm(
         enabledPluginMcpsHash: getEnabledPluginMcpHash(sessionKey),
         enabledMcpServersHash: getEnabledMcpServersHashFromSdkOptions(sdkOptions),
         resourceRuntimePolicy,
+        slashRuntimeMode,
         resourceIndexHash: getResourceIndexHash(workDir),
         hasCanUseTool: true // Session has canUseTool callback
       }
@@ -1233,6 +1254,7 @@ export function getSessionState(spaceId: string, conversationId: string): {
   spaceId?: string
   runId?: string | null
   mode?: ChatMode
+  slashRuntimeMode?: ClaudeCodeSlashRuntimeMode
   lifecycle?: import('./types').SessionLifecycle | 'idle'
   terminalReason?: import('./types').SessionTerminalReason
 } {
@@ -1244,6 +1266,7 @@ export function getSessionState(spaceId: string, conversationId: string): {
       processTrace: [],
       runId: null,
       mode: 'code',
+      slashRuntimeMode: 'native',
       lifecycle: 'idle',
       terminalReason: null
     }
@@ -1255,6 +1278,7 @@ export function getSessionState(spaceId: string, conversationId: string): {
     spaceId: session.spaceId,
     runId: session.runId,
     mode: session.mode,
+    slashRuntimeMode: session.slashRuntimeMode || 'native',
     lifecycle: session.lifecycle,
     terminalReason: session.terminalReason
   }

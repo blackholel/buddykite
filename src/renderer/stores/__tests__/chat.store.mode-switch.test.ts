@@ -103,6 +103,14 @@ function seedRunningConversation(): void {
           tools: [],
           toolCount: 0
         },
+        slashRuntimeMode: 'native',
+        slashCommandsSnapshot: {
+          runId: null,
+          snapshotVersion: 0,
+          emittedAt: null,
+          commands: [],
+          source: null
+        },
         pendingRunEvents: [],
         parallelGroups: new Map(),
         activeAgentIds: [],
@@ -135,7 +143,7 @@ describe('chat.store setConversationMode', () => {
 
     const ok = await useChatStore.getState().setConversationMode('space-1', 'conv-1', 'plan')
     expect(ok).toBe(true)
-    expect(api.setAgentMode).toHaveBeenNthCalledWith(1, 'conv-1', 'plan', 'run-1')
+    expect(api.setAgentMode).toHaveBeenNthCalledWith(1, 'space-1', 'conv-1', 'plan', 'run-1')
     expect(api.updateConversation).toHaveBeenCalledWith('space-1', 'conv-1', { mode: 'plan' })
     expect(useChatStore.getState().getSession('conv-1').mode).toBe('plan')
     expect(useChatStore.getState().getSession('conv-1').modeSwitching).toBe(false)
@@ -144,17 +152,17 @@ describe('chat.store setConversationMode', () => {
   it('running conversation: no_active_session does not rollback and still persists', async () => {
     ;(api.setAgentMode as Mock).mockResolvedValueOnce({
       success: true,
-      data: { applied: false, mode: 'ask', reason: 'no_active_session' }
+      data: { applied: false, mode: 'plan', reason: 'no_active_session' }
     })
     ;(api.updateConversation as Mock).mockResolvedValueOnce({
       success: true,
-      data: { mode: 'ask' }
+      data: { mode: 'plan' }
     })
 
-    const ok = await useChatStore.getState().setConversationMode('space-1', 'conv-1', 'ask')
+    const ok = await useChatStore.getState().setConversationMode('space-1', 'conv-1', 'plan')
     expect(ok).toBe(true)
     expect(api.setAgentMode).toHaveBeenCalledTimes(1)
-    expect(useChatStore.getState().getSession('conv-1').mode).toBe('ask')
+    expect(useChatStore.getState().getSession('conv-1').mode).toBe('plan')
   })
 
   it('running conversation: persist failure triggers runtime compensation rollback', async () => {
@@ -173,7 +181,7 @@ describe('chat.store setConversationMode', () => {
 
     const ok = await useChatStore.getState().setConversationMode('space-1', 'conv-1', 'plan')
     expect(ok).toBe(false)
-    expect(api.setAgentMode).toHaveBeenNthCalledWith(2, 'conv-1', 'code', 'run-1')
+    expect(api.setAgentMode).toHaveBeenNthCalledWith(2, 'space-1', 'conv-1', 'code', 'run-1')
     expect(useChatStore.getState().getSession('conv-1').mode).toBe('code')
     expect(useChatStore.getState().getSession('conv-1').modeSwitching).toBe(false)
   })
@@ -215,5 +223,71 @@ describe('chat.store tools snapshot phase', () => {
     expect(snapshot.phase).toBe('ready')
     expect(snapshot.toolCount).toBe(2)
     expect(snapshot.tools).toEqual(['Read', 'Bash'])
+  })
+})
+
+describe('chat.store slash runtime snapshot', () => {
+  beforeEach(() => {
+    useChatStore.getState().reset()
+    seedRunningConversation()
+    vi.clearAllMocks()
+  })
+
+  it('run_start 会同步 slashRuntimeMode 并重置 slash snapshot', () => {
+    useChatStore.getState().handleAgentRunStart({
+      type: 'run_start',
+      spaceId: 'space-1',
+      conversationId: 'conv-1',
+      runId: 'run-2',
+      startedAt: '2026-01-01T00:00:02.000Z',
+      slashRuntimeMode: 'legacy-inject'
+    })
+
+    const session = useChatStore.getState().getSession('conv-1')
+    expect(session.slashRuntimeMode).toBe('legacy-inject')
+    expect(session.slashCommandsSnapshot).toEqual({
+      runId: 'run-2',
+      snapshotVersion: 0,
+      emittedAt: '2026-01-01T00:00:02.000Z',
+      commands: [],
+      source: null
+    })
+  })
+
+  it('slash_commands 只保留当前 run 的最新 snapshotVersion', () => {
+    useChatStore.getState().handleAgentRunStart({
+      type: 'run_start',
+      spaceId: 'space-1',
+      conversationId: 'conv-1',
+      runId: 'run-1',
+      startedAt: '2026-01-01T00:00:01.000Z',
+      slashRuntimeMode: 'native'
+    })
+
+    useChatStore.getState().handleAgentSlashCommands({
+      type: 'slash_commands',
+      spaceId: 'space-1',
+      conversationId: 'conv-1',
+      runId: 'run-1',
+      snapshotVersion: 2,
+      emittedAt: '2026-01-01T00:00:03.000Z',
+      commands: ['/deploy', '/status'],
+      source: 'sdk_init'
+    })
+
+    useChatStore.getState().handleAgentSlashCommands({
+      type: 'slash_commands',
+      spaceId: 'space-1',
+      conversationId: 'conv-1',
+      runId: 'run-1',
+      snapshotVersion: 1,
+      emittedAt: '2026-01-01T00:00:02.000Z',
+      commands: ['/old'],
+      source: 'sdk_init'
+    })
+
+    const snapshot = useChatStore.getState().getSession('conv-1').slashCommandsSnapshot
+    expect(snapshot.snapshotVersion).toBe(2)
+    expect(snapshot.commands).toEqual(['/deploy', '/status'])
   })
 })

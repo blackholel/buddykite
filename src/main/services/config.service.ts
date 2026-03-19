@@ -352,7 +352,8 @@ const DEFAULT_CONFIG: KiteConfig = {
   },
   claudeCode: {
     resourceRuntimePolicy: 'app-single-source',
-    skillMissingPolicy: 'skip'
+    skillMissingPolicy: 'skip',
+    slashRuntimeMode: 'native'
   }
 }
 
