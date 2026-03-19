@@ -251,6 +251,7 @@ export function InputArea({
   const [queueHint, setQueueHint] = useState<string | null>(null)
   const [guidingQueueItemIds, setGuidingQueueItemIds] = useState<Set<string>>(new Set())
   const [isComposing, setIsComposing] = useState(false)
+  const [isModelSwitcherOpen, setIsModelSwitcherOpen] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const inputContainerRef = useRef<HTMLDivElement>(null)
   const lastTriggerTypeRef = useRef<TriggerContext['type'] | null>(null)
@@ -1211,6 +1212,7 @@ export function InputArea({
           ref={inputContainerRef}
           className={`
             space-studio-input-shell relative flex flex-col transition-all duration-200
+            ${isModelSwitcherOpen ? 'space-studio-input-shell-overlay-open' : ''}
             ${isTriggerPanelOpen ? 'space-studio-input-shell-trigger-open' : ''}
             ${isFocused
               ? 'focused'
@@ -1489,6 +1491,7 @@ export function InputArea({
             onInsertSkill={onInsertSkill}
             thinkingEnabled={thinkingEnabled}
             onThinkingToggle={onThinkingToggle}
+            onModelSwitcherOpenChange={setIsModelSwitcherOpen}
             canSend={canSend}
             onSend={handleSend}
             onStop={onStop}
@@ -1538,6 +1541,7 @@ interface InputToolbarProps {
   onInsertSkill: (skillName: string) => void
   thinkingEnabled: boolean
   onThinkingToggle: () => void
+  onModelSwitcherOpenChange: (isOpen: boolean) => void
   canSend: boolean
   onSend: () => void
   onStop: () => void
@@ -1560,6 +1564,7 @@ function InputToolbar({
   onInsertSkill,
   thinkingEnabled,
   onThinkingToggle,
+  onModelSwitcherOpenChange,
   canSend,
   onSend,
   onStop
@@ -1576,6 +1581,7 @@ function InputToolbar({
           config={config}
           spaceId={spaceId}
           isGenerating={isGenerating}
+          onOpenChange={onModelSwitcherOpenChange}
         />
         {!isOnboarding && (
           <>

@@ -1617,6 +1617,10 @@ body {
   overflow: visible;
 }
 
+.space-studio-input-shell.space-studio-input-shell-overlay-open {
+  overflow: visible;
+}
+
 .space-studio-input-shell.focused {
   border-color: hsl(var(--space-accent) / 0.45);
   box-shadow:

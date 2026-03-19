@@ -14,6 +14,7 @@ interface ModelSwitcherProps {
   config: KiteConfig | null
   spaceId: string | null
   isGenerating: boolean
+  onOpenChange?: (isOpen: boolean) => void
 }
 
 interface ModelOption {
@@ -27,7 +28,8 @@ export function ModelSwitcher({
   conversation,
   config,
   spaceId,
-  isGenerating
+  isGenerating,
+  onOpenChange
 }: ModelSwitcherProps) {
   const { t } = useTranslation()
   const updateConversationAi = useChatStore(state => state.updateConversationAi)
@@ -95,6 +97,16 @@ export function ModelSwitcher({
       setIsOpen(false)
     }
   }, [isGenerating, isOpen])
+
+  useEffect(() => {
+    onOpenChange?.(isOpen)
+  }, [isOpen, onOpenChange])
+
+  useEffect(() => {
+    return () => {
+      onOpenChange?.(false)
+    }
+  }, [onOpenChange])
 
   const handleModelSelect = useCallback(async (option: ModelOption) => {
     if (isDisabled || !spaceId || !conversation?.id) return
