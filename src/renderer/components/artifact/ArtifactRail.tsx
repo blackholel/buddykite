@@ -15,9 +15,8 @@ import { api } from '../../api'
 import type { Artifact, ArtifactViewMode } from '../../types'
 import { useIsGenerating } from '../../stores/chat.store'
 import { useOnboardingStore } from '../../stores/onboarding.store'
-import { useCanvasLifecycle } from '../../hooks/useCanvasLifecycle'
 import { useCanvasStore } from '../../stores/canvas.store'
-import { ChevronRight, FolderOpen, Monitor, LayoutGrid, FolderTree, X, Globe, Bell } from 'lucide-react'
+import { ChevronRight, FolderOpen, Monitor, LayoutGrid, FolderTree, X, Bell } from 'lucide-react'
 import { ONBOARDING_ARTIFACT_NAME } from '../onboarding/onboardingData'
 import { useTranslation } from '../../i18n'
 
@@ -71,9 +70,6 @@ function getInitialViewMode(): ArtifactViewMode {
   return (stored === 'tree' || stored === 'card') ? stored : 'tree'
 }
 
-// Default browser home URL
-const DEFAULT_BROWSER_URL = 'https://www.bing.com'
-
 export function ArtifactRail({
   spaceId,
   isTemp,
@@ -94,24 +90,16 @@ export function ArtifactRail({
   const [railHint, setRailHint] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<ArtifactViewMode>(getInitialViewMode)
   const [mobileOverlayOpen, setMobileOverlayOpen] = useState(false)
-  const railRef = useRef<HTMLDivElement>(null)
   const previousArtifactCountRef = useRef<number | null>(null)
   const previousActiveArtifactPathRef = useRef<string | null>(null)
   const isGenerating = useIsGenerating()
   const { isActive: isOnboarding, currentStep, completeOnboarding } = useOnboardingStore()
   const isMobile = useIsMobile()
 
-  // Canvas lifecycle for opening browser
-  const { openUrl } = useCanvasLifecycle()
-
-  // Check if any browser tab is open (native BrowserView)
-  // When browser tabs exist, disable CSS transition to sync with native view resize
-  // Use precise selector to avoid subscribing to full tabs array
-  const hasBrowserTab = useCanvasStore(state => state.tabs.some(tab => tab.type === 'browser'))
   const activeArtifactPath = useCanvasStore((state) => {
     const activeTab = state.tabs.find(tab => tab.id === state.activeTabId)
     if (!activeTab?.path) return null
-    if (activeTab.type === 'chat' || activeTab.type === 'browser' || activeTab.type === 'template-library') {
+    if (activeTab.type === 'chat' || activeTab.type === 'template-library') {
       return null
     }
     return activeTab.path
@@ -123,21 +111,13 @@ export function ArtifactRail({
     console.log('[ArtifactRail] 🔴 Click! isExpanded:', isExpanded, 'time:', Date.now())
     const newExpanded = !isExpanded
 
-    // UI-first optimization: When browser tab exists, directly update DOM
-    // before React state update to ensure BrowserView resizes immediately
-    if (hasBrowserTab && railRef.current) {
-      const targetWidth = newExpanded ? PANEL_WIDTH : COLLAPSED_WIDTH
-      railRef.current.style.width = `${targetWidth}px`
-      console.log('[ArtifactRail] 🚀 Direct DOM update:', targetWidth, 'time:', Date.now())
-    }
-
     // Then update React state (will re-render but width is already correct)
     if (isControlled) {
       onExpandedChange?.(newExpanded)
     } else {
       setInternalExpanded(newExpanded)
     }
-  }, [isExpanded, isControlled, isOverlayMode, onExpandedChange, hasBrowserTab])
+  }, [isExpanded, isControlled, isOverlayMode, onExpandedChange])
 
   // Debug: log when isExpanded changes
   useEffect(() => {
@@ -249,22 +229,6 @@ export function ArtifactRail({
     }
   }, [isOnboardingViewStep, loadArtifacts])
 
-  // Handle opening browser - also collapse the rail to maximize browser area
-  const handleOpenBrowser = useCallback(() => {
-    openUrl(DEFAULT_BROWSER_URL, 'Bing')
-    setRailHint(null)
-    if (isOverlayMode) {
-      onClose?.()
-      return
-    }
-    // Auto-collapse rail when opening browser to maximize viewing area
-    if (isControlled) {
-      onExpandedChange?.(false)
-    } else {
-      setInternalExpanded(false)
-    }
-  }, [openUrl, isControlled, isOverlayMode, onClose, onExpandedChange])
-
   const handleShowCurrentSpaceFiles = useCallback(() => {
     setRailHint(null)
     setViewMode('tree')
@@ -341,7 +305,7 @@ export function ArtifactRail({
     </div>
   )
 
-  // Shared footer renderer with folder and browser buttons
+  // Shared footer renderer
   // flex-shrink-0 ensures footer doesn't compress, allowing content to take remaining space
   const renderFooter = () => (
     <div className="flex-shrink-0 p-2 border-t border-border">
@@ -362,26 +326,14 @@ export function ArtifactRail({
           <span>{t('Please open folder in client')}</span>
         </div>
       ) : (
-        <div className="flex items-center gap-2">
-          {/* Open folder button */}
-          <button
-            onClick={handleShowCurrentSpaceFiles}
-            className="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 text-xs text-muted-foreground hover:bg-secondary hover:text-foreground rounded-lg transition-colors"
-            title={t('Show current space files')}
-          >
-            <FolderOpen className="w-4 h-4 text-amber-500" />
-            <span>{t('Current space files')}</span>
-          </button>
-          {/* Open browser button */}
-          <button
-            onClick={handleOpenBrowser}
-            className="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 text-xs text-muted-foreground hover:bg-secondary hover:text-foreground rounded-lg transition-colors"
-            title={t('Open browser (⌘⇧B)')}
-          >
-            <Globe className="w-4 h-4 text-blue-500" />
-            <span>{t('Browser')}</span>
-          </button>
-        </div>
+        <button
+          onClick={handleShowCurrentSpaceFiles}
+          className="w-full flex items-center justify-center gap-1.5 px-2 py-2 text-xs text-muted-foreground hover:bg-secondary hover:text-foreground rounded-lg transition-colors"
+          title={t('Show current space files')}
+        >
+          <FolderOpen className="w-4 h-4 text-amber-500" />
+          <span>{t('Current space files')}</span>
+        </button>
       )}
     </div>
   )
@@ -521,12 +473,10 @@ export function ArtifactRail({
 
   return (
     <div
-      ref={railRef}
       className="space-studio-rail h-full bg-card/30 flex flex-col relative"
       style={{
         width: displayWidth,
-        // Disable transition when browser tab exists (to sync with native BrowserView)
-        transition: hasBrowserTab ? 'none' : 'width 0.2s ease'
+        transition: 'width 0.2s ease'
       }}
     >
       {/* Header - height matches CanvasTabs (py-1.5 + h-7 content = ~40px) */}
@@ -569,7 +519,7 @@ export function ArtifactRail({
       {/* Footer */}
       {isExpanded && renderFooter()}
 
-      {/* Collapsed state - show both folder and browser icons */}
+      {/* Collapsed state - show folder icon */}
       {!isExpanded && (
         <div className="flex-1 flex flex-col items-center py-4 gap-2">
           <div className="px-1.5 py-0.5 text-[10px] rounded-md bg-secondary text-muted-foreground">
@@ -583,24 +533,14 @@ export function ArtifactRail({
               <Monitor className="w-5 h-5 text-muted-foreground" />
             </div>
           ) : (
-            <>
-              <button
-                onClick={handleShowCurrentSpaceFiles}
-                className="p-2 hover:bg-secondary rounded-lg transition-colors"
-                title={t('Show current space files')}
-                aria-label={t('Show current space files')}
-              >
-                <FolderOpen className="w-5 h-5 text-amber-500" />
-              </button>
-              <button
-                onClick={handleOpenBrowser}
-                className="p-2 hover:bg-secondary rounded-lg transition-colors"
-                title={t('Open browser')}
-                aria-label={t('Open browser')}
-              >
-                <Globe className="w-5 h-5 text-blue-500" />
-              </button>
-            </>
+            <button
+              onClick={handleShowCurrentSpaceFiles}
+              className="p-2 hover:bg-secondary rounded-lg transition-colors"
+              title={t('Show current space files')}
+              aria-label={t('Show current space files')}
+            >
+              <FolderOpen className="w-5 h-5 text-amber-500" />
+            </button>
           )}
         </div>
       )}

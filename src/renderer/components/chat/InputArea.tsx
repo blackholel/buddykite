@@ -19,10 +19,9 @@
  */
 
 import { useState, useRef, useEffect, useCallback, useMemo, KeyboardEvent, ClipboardEvent, DragEvent } from 'react'
-import { Plus, ImagePlus, Loader2, AlertCircle, Atom, Globe, ClipboardList, X, Bot, Zap, Terminal, Trash2, Pencil, FileText } from 'lucide-react'
+import { Plus, ImagePlus, Loader2, AlertCircle, Atom, ClipboardList, X, Bot, Zap, Terminal, Trash2, Pencil, FileText } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 import { useOnboardingStore } from '../../stores/onboarding.store'
-import { useAIBrowserStore } from '../../stores/ai-browser.store'
 import { api } from '../../api'
 import { getComposerMruMap, touchComposerMru } from '../../stores/composer-mru.store'
 import { useAppStore } from '../../stores/app.store'
@@ -260,13 +259,6 @@ export function InputArea({
   const insertQueue = useComposerStore(state => state.insertQueue)
   const dequeueInsert = useComposerStore(state => state.dequeueInsert)
 
-  // AI Browser state
-  const { enabled: aiBrowserEnabled, setEnabled: setAIBrowserEnabled } = useAIBrowserStore(
-    useShallow((state) => ({
-      enabled: state.enabled,
-      setEnabled: state.setEnabled
-    }))
-  )
   const { currentSpace, spaces, haloSpace, getSpacePreferences } = useSpaceStore(
     useShallow((state) => ({
       currentSpace: state.currentSpace,
@@ -1484,8 +1476,6 @@ export function InputArea({
             isProcessingImages={isProcessingImages}
             mode={mode}
             onModeChange={onModeChange}
-            aiBrowserEnabled={aiBrowserEnabled}
-            onAIBrowserToggle={() => setAIBrowserEnabled(!aiBrowserEnabled)}
             onSystemFileClick={handleSystemFileButtonClick}
             workDir={workDir}
             onInsertSkill={onInsertSkill}
@@ -1534,8 +1524,6 @@ interface InputToolbarProps {
   isProcessingImages: boolean
   mode: ChatMode
   onModeChange: (mode: ChatMode) => void
-  aiBrowserEnabled: boolean
-  onAIBrowserToggle: () => void
   onSystemFileClick: () => void
   workDir?: string
   onInsertSkill: (skillName: string) => void
@@ -1557,8 +1545,6 @@ function InputToolbar({
   isProcessingImages,
   mode,
   onModeChange,
-  aiBrowserEnabled,
-  onAIBrowserToggle,
   onSystemFileClick,
   workDir,
   onInsertSkill,
@@ -1599,26 +1585,6 @@ function InputToolbar({
               aria-label={t('System files')}
             >
               <Plus size={18} />
-            </button>
-
-            {/* AI Browser toggle */}
-            <button
-              onClick={onAIBrowserToggle}
-              className={`h-8 flex items-center gap-1.5 px-2.5 rounded-lg
-                transition-colors duration-200 relative border
-                ${aiBrowserEnabled
-                  ? 'bg-foreground/10 border-foreground/20 text-foreground'
-                  : 'border-border/60 text-muted-foreground/70 hover:text-foreground hover:bg-foreground/5'
-                }
-              `}
-              title={aiBrowserEnabled ? t('AI Browser enabled (click to disable)') : t('Enable AI Browser')}
-              aria-label={aiBrowserEnabled ? t('AI Browser enabled (click to disable)') : t('Enable AI Browser')}
-            >
-              <Globe size={15} />
-              <span className="text-xs">{t('Browser')}</span>
-              {aiBrowserEnabled && (
-                <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-foreground rounded-full" />
-              )}
             </button>
 
             {/* Skills dropdown */}

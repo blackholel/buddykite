@@ -7,15 +7,15 @@
  * - Syntax highlighted source code
  * - Copy to clipboard
  * - Window maximize for fullscreen viewing
- * - "Open in Browser" mode for full rendering capabilities
+ * - Open externally for full browser rendering capabilities
  */
 
 import { useState, useRef, useMemo } from 'react'
-import { Copy, Check, Code, Eye, ExternalLink, Globe } from 'lucide-react'
+import { Copy, Check, Code, Eye, ExternalLink } from 'lucide-react'
 import { highlightCodeSync } from '../../../lib/highlight-loader'
 import { useTranslation } from '../../../i18n'
 import { api } from '../../../api'
-import { useCanvasStore, type CanvasTab } from '../../../stores/canvas.store'
+import type { CanvasTab } from '../../../stores/canvas.store'
 
 interface HtmlViewerProps {
   tab: CanvasTab
@@ -70,24 +70,6 @@ export function HtmlViewer({ tab }: HtmlViewerProps) {
   // Count lines for source view
   const lines = content.split('\n')
 
-  // Open in embedded browser (BrowserViewer)
-  const openUrl = useCanvasStore(state => state.openUrl)
-  const closeTab = useCanvasStore(state => state.closeTab)
-
-  const handleOpenInBrowser = async () => {
-    if (!tab.path) return
-
-    // For local files, use file:// protocol
-    const fileUrl = `file://${tab.path}`
-    openUrl(fileUrl, tab.title)
-
-    // Close the current HtmlViewer tab
-    closeTab(tab.id)
-  }
-
-  // Check if browser mode is available (desktop only)
-  const canOpenInBrowser = !api.isRemoteMode() && tab.path
-
   return (
     <div className="relative flex flex-col h-full bg-background">
       {/* Toolbar */}
@@ -131,18 +113,6 @@ export function HtmlViewer({ tab }: HtmlViewerProps) {
         </div>
 
         <div className="flex items-center gap-1">
-          {/* Open in Browser - full rendering with BrowserView */}
-          {canOpenInBrowser && (
-            <button
-              onClick={handleOpenInBrowser}
-              className="flex items-center gap-1.5 px-2 py-1 rounded text-xs bg-primary/10 hover:bg-primary/20 text-primary transition-colors"
-              title={t('Open in browser mode (full render)')}
-            >
-              <Globe className="w-3.5 h-3.5" />
-              {t('Browser mode')}
-            </button>
-          )}
-
           {/* Open external */}
           <button
             onClick={handleOpenExternal}

@@ -1,10 +1,10 @@
 /**
- * BrowserTaskCard - AI Browser Operation Visualization Component
+ * BrowserTaskCard - Browser MCP Operation Visualization Component
  *
  * When AI uses browser tools, displays below the message bubble:
  * - Sci-fi style operation animations
  * - Real-time operation steps
- * - [View Live] button → Opens browser view in Canvas
+ * - [View Live] button → Opens target URL externally
  *
  * Design Philosophy:
  * - Browser is a "heavy" tool, needs independent display form
@@ -12,7 +12,7 @@
  * - Supports user observation and intervention in AI operations
  */
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useMemo } from 'react'
 import {
   Globe,
   Eye,
@@ -25,8 +25,7 @@ import {
   XCircle,
   Maximize2,
 } from 'lucide-react'
-import { useCanvasStore } from '../../stores/canvas.store'
-import { useAIBrowserStore, useAIBrowserActiveViewId } from '../../stores/ai-browser.store'
+import { api } from '../../api'
 import type { ToolCall } from '../../types'
 import { useTranslation } from '../../i18n'
 
@@ -55,7 +54,7 @@ interface BrowserStep {
 // ============================================
 
 /** Browser tool name prefix */
-const BROWSER_TOOL_PREFIX = 'mcp__ai-browser__browser_'
+const CHROME_DEVTOOLS_PREFIX = 'mcp__chrome-devtools__'
 
 // ============================================
 // Helper Functions
@@ -65,8 +64,8 @@ const BROWSER_TOOL_PREFIX = 'mcp__ai-browser__browser_'
  * Extract pure tool name (remove MCP prefix)
  */
 function extractToolName(fullName: string): string {
-  if (fullName.startsWith(BROWSER_TOOL_PREFIX)) {
-    return fullName.replace('mcp__ai-browser__', '')
+  if (fullName.startsWith(CHROME_DEVTOOLS_PREFIX)) {
+    return fullName.replace(CHROME_DEVTOOLS_PREFIX, '')
   }
   return fullName
 }
@@ -75,7 +74,8 @@ function extractToolName(fullName: string): string {
  * Check if tool is a browser tool
  */
 export function isBrowserTool(toolName: string): boolean {
-  return toolName.startsWith(BROWSER_TOOL_PREFIX) || toolName.startsWith('browser_')
+  return toolName.startsWith(CHROME_DEVTOOLS_PREFIX) ||
+    toolName.startsWith('browser_')
 }
 
 /**
@@ -180,15 +180,17 @@ function StepItem({ step, isLatest }: { step: BrowserStep; isLatest: boolean }) 
 
 export function BrowserTaskCard({ browserToolCalls, isActive }: BrowserTaskCardProps) {
   const [isExpanded, setIsExpanded] = useState(true)
-  const attachAIBrowserView = useCanvasStore(state => state.attachAIBrowserView)
-  const openUrl = useCanvasStore(state => state.openUrl)
-  const activeViewId = useAIBrowserActiveViewId()
-  const activeUrl = useAIBrowserStore(state => state.activeUrl)
-  const setActiveUrl = useAIBrowserStore(state => state.setActiveUrl)
-  const setOperating = useAIBrowserStore(state => state.setOperating)
-
   const { t } = useTranslation()
   const actionMap = useMemo(() => ({
+    'new_page': {
+      action: t('Open page'),
+      getDescription: (input: Record<string, unknown>) => `${input.url || t('New page')}`
+    },
+    'navigate_page': {
+      action: t('Navigate'),
+      getDescription: (input: Record<string, unknown>) =>
+        input.action === 'back' ? t('Back') : input.action === 'forward' ? t('Forward') : `${input.url || ''}`
+    },
     'browser_new_page': {
       action: t('Open page'),
       getDescription: (input: Record<string, unknown>) => `${input.url || t('New page')}`
@@ -213,13 +215,60 @@ export function BrowserTaskCard({ browserToolCalls, isActive }: BrowserTaskCardP
       action: t('Select'),
       getDescription: (input: Record<string, unknown>) => `"${input.value || ''}"`
     },
+    'select_option': {
+      action: t('Select'),
+      getDescription: (input: Record<string, unknown>) => `"${input.value || ''}"`
+    },
     'browser_snapshot': {
+      action: t('Analyze page'),
+      getDescription: () => t('Get page structure')
+    },
+    'take_snapshot': {
       action: t('Analyze page'),
       getDescription: () => t('Get page structure')
     },
     'browser_screenshot': {
       action: t('Screenshot'),
       getDescription: (input: Record<string, unknown>) => (input.fullPage ? t('Full page') : t('Visible area'))
+    },
+    'take_screenshot': {
+      action: t('Screenshot'),
+      getDescription: (input: Record<string, unknown>) => (input.fullPage ? t('Full page') : t('Visible area'))
+    },
+    'click': {
+      action: t('Click'),
+      getDescription: (input: Record<string, unknown>) => `${t('Element')} ${input.uid || ''}`
+    },
+    'hover': {
+      action: t('Hover'),
+      getDescription: (input: Record<string, unknown>) => `${t('Element')} ${input.uid || ''}`
+    },
+    'fill': {
+      action: t('Fill'),
+      getDescription: (input: Record<string, unknown>) => {
+        const val = String(input.value || '')
+        return `"${val.slice(0, 20)}${val.length > 20 ? '...' : ''}"`
+      }
+    },
+    'fill_form': {
+      action: t('Fill'),
+      getDescription: () => t('Batch form filling')
+    },
+    'press_key': {
+      action: t('Press key'),
+      getDescription: (input: Record<string, unknown>) => `${input.key || ''}`
+    },
+    'wait_for': {
+      action: t('Wait'),
+      getDescription: (input: Record<string, unknown>) => input.text ? `"${input.text}"` : `${input.timeout || 1000}ms`
+    },
+    'list_network_requests': {
+      action: t('Inspect network'),
+      getDescription: () => t('Capture requests')
+    },
+    'list_console_messages': {
+      action: t('Inspect console'),
+      getDescription: () => t('Read console output')
     },
     'browser_scroll': {
       action: t('Scroll'),
@@ -248,6 +297,14 @@ export function BrowserTaskCard({ browserToolCalls, isActive }: BrowserTaskCardP
       action: t('Execute script'),
       getDescription: () => 'JavaScript'
     },
+    'run_script': {
+      action: t('Execute script'),
+      getDescription: () => 'JavaScript'
+    },
+    'evaluate_script': {
+      action: t('Execute script'),
+      getDescription: () => 'JavaScript'
+    },
   }), [t])
 
   // Convert tool calls to steps
@@ -273,35 +330,13 @@ export function BrowserTaskCard({ browserToolCalls, isActive }: BrowserTaskCardP
   // Has running steps
   const hasRunningStep = steps.some(s => s.status === 'running')
 
-  // Update AI Browser store operating state
-  useEffect(() => {
-    if (isActive && hasRunningStep) {
-      setOperating(true)
-      if (currentUrl) {
-        setActiveUrl(currentUrl)
-      }
-    } else if (!hasRunningStep) {
-      setOperating(false)
-    }
-  }, [isActive, hasRunningStep, currentUrl, setOperating, setActiveUrl])
-
   // Show recent steps
   const visibleSteps = isExpanded ? steps : steps.slice(-3)
 
   // Handle view live button click
-  // If AI has an active BrowserView, attach it to Canvas (reuse existing view)
-  // Otherwise fall back to opening a new browser tab with the URL
   const handleViewLive = () => {
-    // Prefer activeUrl from store (synced from main process)
-    // Fall back to currentUrl extracted from tool calls
-    const urlToOpen = activeUrl || currentUrl
-
-    if (activeViewId && urlToOpen) {
-      // Attach existing AI BrowserView to Canvas - this reuses the view AI is operating
-      attachAIBrowserView(activeViewId, urlToOpen, t('🤖 AI Browser'))
-    } else if (urlToOpen) {
-      // Fallback: open new browser tab if no activeViewId available
-      openUrl(urlToOpen, t('🤖 AI Browser'))
+    if (currentUrl) {
+      void api.openExternal(currentUrl)
     }
   }
 
@@ -320,7 +355,7 @@ export function BrowserTaskCard({ browserToolCalls, isActive }: BrowserTaskCardP
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
           <div className="flex items-center gap-2">
-            {/* AI Browser icon */}
+            {/* Browser icon */}
             <div className="relative">
               <Globe
                 size={18}
@@ -331,7 +366,7 @@ export function BrowserTaskCard({ browserToolCalls, isActive }: BrowserTaskCardP
               )}
             </div>
             <span className="font-medium text-sm">
-              {isActive && hasRunningStep ? t('AI is operating the browser') : t('AI browser actions')}
+              {isActive && hasRunningStep ? t('Browser is running actions') : t('Browser actions')}
             </span>
           </div>
 

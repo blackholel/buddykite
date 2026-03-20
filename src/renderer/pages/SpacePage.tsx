@@ -24,7 +24,6 @@ import { ChatView } from '../components/chat/ChatView'
 import { ArtifactRail } from '../components/artifact/ArtifactRail'
 import { ConversationList } from '../components/chat/ConversationList'
 import { ContentCanvas, CanvasToggleButton } from '../components/canvas'
-import { api } from '../api'
 import { useLayoutPreferences } from '../hooks/useLayoutPreferences'
 import { useWindowMaximize } from '../components/canvas/viewers/useWindowMaximize'
 import { useCanvasLifecycle } from '../hooks/useCanvasLifecycle'
@@ -520,10 +519,6 @@ export function SpacePage() {
   const isCanvasTransitioning = useCanvasStore(state => state.isTransitioning)
   const setCanvasOpen = useCanvasStore(state => state.setOpen)
   const setCanvasMaximized = useCanvasStore(state => state.setMaximized)
-  // Detect if any browser tab is open (native BrowserView)
-  // When browser tabs exist, disable CSS transitions to sync with native view resize
-  // Use selector to compute this inside store subscription (avoids subscribing to full tabs array)
-  const hasBrowserTab = useCanvasStore(state => state.tabs.some(tab => tab.type === 'browser'))
 
   // Canvas lifecycle for opening chat tabs
   const { openChat } = useCanvasLifecycle()
@@ -692,19 +687,6 @@ export function SpacePage() {
     localStorage.setItem(LEFT_RAIL_VISIBLE_STORAGE_KEY, showConversationList ? '1' : '0')
   }, [showConversationList])
 
-  // BrowserView visibility: hide when leaving SpacePage, show when returning
-  useEffect(() => {
-    if (!currentSpace) return
-
-    if (isCanvasOpen) {
-      canvasLifecycle.showActiveBrowserView()
-    }
-
-    return () => {
-      canvasLifecycle.hideAllBrowserViews()
-    }
-  }, [currentSpace?.id, isCanvasOpen])
-
   // Initialize space when entering:
   // - Never auto-open historical conversation by default
   // - Prefer reusable empty draft conversation
@@ -829,31 +811,6 @@ export function SpacePage() {
     }
   }, [isCanvasOpen, isCanvasMaximized, setCanvasMaximized])
 
-  const prevMaximizedRef = useRef(isCanvasMaximized)
-
-  useEffect(() => {
-    if (isCanvasMaximized && !prevMaximizedRef.current) {
-      // Show overlay chat capsule (renders above BrowserView)
-      if (!isMobile) {
-        api.showChatCapsuleOverlay()
-      }
-    } else if (!isCanvasMaximized && prevMaximizedRef.current) {
-      // Hide overlay chat capsule
-      if (!isMobile) {
-        api.hideChatCapsuleOverlay()
-      }
-    }
-    prevMaximizedRef.current = isCanvasMaximized
-  }, [isCanvasMaximized, isMobile])
-
-  // Listen for exit-maximized event from overlay
-  useEffect(() => {
-    const cleanup = api.onCanvasExitMaximized(() => {
-      setCanvasMaximized(false)
-    })
-    return cleanup
-  }, [setCanvasMaximized])
-
   // Setup search shortcuts
   useSearchShortcuts({
     enabled: true,
@@ -862,12 +819,6 @@ export function SpacePage() {
 
   return (
     <div className="h-full w-full flex flex-col space-studio-root">
-      {/*
-        ChatCapsule overlay is now managed via IPC to render above BrowserView.
-        The overlay SPA is a separate WebContentsView that appears above all views.
-        Show/hide is controlled by api.showChatCapsuleOverlay() / api.hideChatCapsuleOverlay()
-      */}
-
       {/* Main content */}
       <div className="space-studio-main flex-1 flex overflow-hidden relative">
         <div className={`${isMobile ? 'flex-1 flex overflow-hidden relative' : 'space-studio-shell flex-1 flex overflow-hidden relative'}`}>
@@ -922,7 +873,7 @@ export function SpacePage() {
                   ref={chatContainerRef}
                   className={`
                     space-studio-pane space-studio-chat-pane flex flex-col min-w-0 relative overflow-hidden
-                    ${hasBrowserTab ? '' : 'transition-[border-color] duration-300 ease-out'}
+                    transition-[border-color] duration-300 ease-out
                     ${isCanvasOpen ? '' : 'flex-1'}
                     ${isCanvasTransitioning ? 'pointer-events-none' : ''}
                   `}
@@ -931,8 +882,7 @@ export function SpacePage() {
                     flex: isCanvasOpen ? 'none' : '1',
                     minWidth: isCanvasOpen ? chatWidthMin : undefined,
                     maxWidth: isCanvasOpen ? chatWidthMax : undefined,
-                    // Disable transition when browser tab exists (sync with native BrowserView)
-                    transition: (isDraggingChat || hasBrowserTab)
+                    transition: isDraggingChat
                       ? 'none'
                       : 'width 0.3s, flex 0.3s, border-color 0.3s',
                     willChange: isCanvasTransitioning ? 'width, flex' : 'auto',
@@ -961,7 +911,7 @@ export function SpacePage() {
               <div
                 className={`
                   space-studio-pane space-studio-canvas-pane min-w-0 overflow-hidden
-                  ${hasBrowserTab ? '' : 'transition-all duration-300 ease-out'}
+                  transition-all duration-300 ease-out
                   ${layoutMode === 'tabs-only' || isCanvasOpen || isCanvasMaximized
                     ? 'flex-1 opacity-100'
                     : 'w-0 flex-none opacity-0'}
@@ -970,8 +920,6 @@ export function SpacePage() {
                 style={{
                   willChange: isCanvasTransitioning ? 'width, opacity, transform' : 'auto',
                   transform: layoutMode === 'tabs-only' || isCanvasOpen || isCanvasMaximized ? 'translateX(0) scale(1)' : 'translateX(20px) scale(0.98)',
-                  // Disable transition when browser tab exists (sync with native BrowserView)
-                  transition: hasBrowserTab ? 'none' : undefined,
                 }}
               >
                 {(layoutMode === 'tabs-only' || isCanvasOpen || isCanvasMaximized || isCanvasTransitioning) && <ContentCanvas />}

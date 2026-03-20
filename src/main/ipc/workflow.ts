@@ -24,7 +24,6 @@ interface WorkflowStepSendRequest {
   modelOverride?: string
   model?: string
   thinkingEnabled?: boolean
-  aiBrowserEnabled?: boolean
   planEnabled?: boolean
   images?: Array<{
     id: string

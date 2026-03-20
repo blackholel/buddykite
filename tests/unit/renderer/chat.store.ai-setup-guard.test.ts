@@ -101,7 +101,6 @@ describe('chat.store AI setup guard', () => {
       spaceId,
       conversationId,
       content: 'hello',
-      aiBrowserEnabled: false,
       mode: 'code'
     })
 
@@ -163,7 +162,6 @@ describe('chat.store AI setup guard', () => {
       spaceId,
       conversationId,
       content: 'hello',
-      aiBrowserEnabled: false,
       mode: 'code'
     })
 

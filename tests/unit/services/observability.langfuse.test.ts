@@ -61,7 +61,6 @@ describe('Langfuse observability service', () => {
         responseLanguage: 'zh-CN',
         imageCount: 0,
         fileContextCount: 0,
-        aiBrowserEnabled: false,
         thinkingEnabled: false
       })
 
@@ -112,7 +111,6 @@ describe('Langfuse observability service', () => {
       responseLanguage: 'zh-CN',
       imageCount: 0,
       fileContextCount: 0,
-      aiBrowserEnabled: false,
       thinkingEnabled: false
     })
 

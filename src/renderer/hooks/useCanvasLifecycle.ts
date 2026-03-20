@@ -3,7 +3,7 @@
  *
  * This hook bridges the imperative CanvasLifecycle manager with React's
  * declarative rendering model. It subscribes to state changes and triggers
- * re-renders when tabs, active tab, or browser state change.
+ * re-renders when tabs, active tab, or open state changes.
  *
  * Usage:
  * ```tsx
@@ -15,7 +15,6 @@ import { useState, useEffect, useCallback } from 'react'
 import {
   canvasLifecycle,
   type TabState,
-  type BrowserState,
   type ContentType,
 } from '../services/canvas-lifecycle'
 import type { TemplateLibraryTab } from '../types/template-library'
@@ -56,12 +55,6 @@ export function useCanvasLifecycle() {
 
   const openUrl = useCallback(
     (url: string, title?: string) => canvasLifecycle.openUrl(url, title),
-    []
-  )
-
-  const attachAIBrowserView = useCallback(
-    (viewId: string, url: string, title?: string) =>
-      canvasLifecycle.attachAIBrowserView(viewId, url, title),
     []
   )
 
@@ -154,16 +147,6 @@ export function useCanvasLifecycle() {
     []
   )
 
-  const updateBounds = useCallback(
-    () => canvasLifecycle.updateActiveBounds(),
-    []
-  )
-
-  const setContainerBoundsGetter = useCallback(
-    (getter: () => DOMRect | null) => canvasLifecycle.setContainerBoundsGetter(getter),
-    []
-  )
-
   return {
     // State
     tabs,
@@ -176,7 +159,6 @@ export function useCanvasLifecycle() {
     // Tab Actions
     openFile,
     openUrl,
-    attachAIBrowserView,
     openContent,
     openPlan,
     openChat,
@@ -198,44 +180,7 @@ export function useCanvasLifecycle() {
     // Layout Actions
     setOpen,
     toggleOpen,
-
-    // BrowserView Actions
-    updateBounds,
-    setContainerBoundsGetter,
   }
-}
-
-/**
- * Hook for browser state of a specific tab
- * Subscribes to browser state changes for efficient updates
- */
-export function useBrowserState(tabId: string | undefined) {
-  const [browserState, setBrowserState] = useState<BrowserState>({
-    isLoading: false,
-    canGoBack: false,
-    canGoForward: false,
-  })
-
-  useEffect(() => {
-    if (!tabId) return
-
-    // Get initial state from tab
-    const tab = canvasLifecycle.getTab(tabId)
-    if (tab?.browserState) {
-      setBrowserState(tab.browserState)
-    }
-
-    // Subscribe to changes
-    const unsub = canvasLifecycle.onBrowserStateChange((id, state) => {
-      if (id === tabId) {
-        setBrowserState(state)
-      }
-    })
-
-    return unsub
-  }, [tabId])
-
-  return browserState
 }
 
 /**
@@ -286,4 +231,4 @@ export function useActiveTab(): TabState | undefined {
 }
 
 // Re-export types for convenience
-export type { TabState, BrowserState, ContentType }
+export type { TabState, ContentType }

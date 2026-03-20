@@ -34,7 +34,7 @@
  *
  * Examples:
  *   - Space list display -> Essential
- *   - AI Browser tools   -> Extended
+ *   - Browser automation tools -> Extended
  *   - Search feature     -> Extended
  *   - Performance monitor -> Extended
  *

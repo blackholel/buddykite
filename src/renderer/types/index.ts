@@ -334,7 +334,6 @@ export interface Workflow {
   steps: WorkflowStep[];
   settings?: {
     thinkingEnabled?: boolean;
-    aiBrowserEnabled?: boolean;
   };
   createdAt: string;
   updatedAt: string;

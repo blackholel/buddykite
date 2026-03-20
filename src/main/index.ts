@@ -420,7 +420,7 @@ app.on('window-all-closed', () => {
     console.warn('[Main] Failed to shutdown observability during window-all-closed:', error)
   })
 
-  // Clean up extended services (AI Browser, Overlay, Search, etc.)
+  // Clean up extended services (Overlay, Search, etc.)
   cleanupExtendedServices()
 
   // Clean up tray

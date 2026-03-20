@@ -109,7 +109,6 @@ export interface KiteAPI {
       name?: string
       size?: number
     }>
-    aiBrowserEnabled?: boolean  // Enable AI Browser tools
     thinkingEnabled?: boolean  // Enable extended thinking mode
     planEnabled?: boolean  // Enable plan mode (no tool execution)
     mode?: ChatMode
@@ -162,7 +161,6 @@ export interface KiteAPI {
       name?: string
       size?: number
     }>
-    aiBrowserEnabled?: boolean
     thinkingEnabled?: boolean
     planEnabled?: boolean
     canvasContext?: {
@@ -386,31 +384,6 @@ export interface KiteAPI {
   dismissUpdateVersion: (version: string) => Promise<IpcResponse>
   onUpdaterStatus: (callback: (data: unknown) => void) => () => void
 
-  // Browser (embedded browser for Content Canvas)
-  createBrowserView: (viewId: string, url?: string) => Promise<IpcResponse>
-  destroyBrowserView: (viewId: string) => Promise<IpcResponse>
-  showBrowserView: (viewId: string, bounds: { x: number; y: number; width: number; height: number }) => Promise<IpcResponse>
-  hideBrowserView: (viewId: string) => Promise<IpcResponse>
-  resizeBrowserView: (viewId: string, bounds: { x: number; y: number; width: number; height: number }) => Promise<IpcResponse>
-  navigateBrowserView: (viewId: string, url: string) => Promise<IpcResponse>
-  browserGoBack: (viewId: string) => Promise<IpcResponse>
-  browserGoForward: (viewId: string) => Promise<IpcResponse>
-  browserReload: (viewId: string) => Promise<IpcResponse>
-  browserStop: (viewId: string) => Promise<IpcResponse>
-  getBrowserState: (viewId: string) => Promise<IpcResponse>
-  captureBrowserView: (viewId: string) => Promise<IpcResponse>
-  executeBrowserJS: (viewId: string, code: string) => Promise<IpcResponse>
-  startBrowserSopRecording: (viewId: string) => Promise<IpcResponse>
-  stopBrowserSopRecording: (viewId: string) => Promise<IpcResponse>
-  getBrowserSopRecordingState: (viewId: string) => Promise<IpcResponse>
-  clearBrowserSopRecording: (viewId: string) => Promise<IpcResponse>
-  setBrowserZoom: (viewId: string, level: number) => Promise<IpcResponse>
-  toggleBrowserDevTools: (viewId: string) => Promise<IpcResponse>
-  showBrowserContextMenu: (options: { viewId: string; url?: string; zoomLevel: number }) => Promise<IpcResponse>
-  onBrowserStateChange: (callback: (data: unknown) => void) => () => void
-  onBrowserSopRecordingEvent: (callback: (data: unknown) => void) => () => void
-  onBrowserZoomChanged: (callback: (data: { viewId: string; zoomLevel: number }) => void) => () => void
-
   // Canvas Tab Menu
   showCanvasTabContextMenu: (options: {
     tabId: string
@@ -426,14 +399,6 @@ export interface KiteAPI {
     tabIndex?: number
     tabPath?: string
   }) => void) => () => void
-
-  // AI Browser
-  onAIBrowserActiveViewChanged: (callback: (data: { viewId: string; url: string | null; title: string | null }) => void) => () => void
-
-  // Overlay (for floating UI above BrowserView)
-  showChatCapsuleOverlay: () => Promise<IpcResponse>
-  hideChatCapsuleOverlay: () => Promise<IpcResponse>
-  onCanvasExitMaximized: (callback: () => void) => () => void
 
   // Performance Monitoring (Developer Tools)
   perfStart: (config?: { sampleInterval?: number; maxSamples?: number }) => Promise<IpcResponse>
@@ -708,42 +673,9 @@ const api: KiteAPI = {
   dismissUpdateVersion: (version) => ipcRenderer.invoke('updater:dismiss-version', version),
   onUpdaterStatus: (callback) => createEventListener('updater:status', callback),
 
-  // Browser (embedded browser for Content Canvas)
-  createBrowserView: (viewId, url) => ipcRenderer.invoke('browser:create', { viewId, url }),
-  destroyBrowserView: (viewId) => ipcRenderer.invoke('browser:destroy', { viewId }),
-  showBrowserView: (viewId, bounds) => ipcRenderer.invoke('browser:show', { viewId, bounds }),
-  hideBrowserView: (viewId) => ipcRenderer.invoke('browser:hide', { viewId }),
-  resizeBrowserView: (viewId, bounds) => ipcRenderer.invoke('browser:resize', { viewId, bounds }),
-  navigateBrowserView: (viewId, url) => ipcRenderer.invoke('browser:navigate', { viewId, url }),
-  browserGoBack: (viewId) => ipcRenderer.invoke('browser:go-back', { viewId }),
-  browserGoForward: (viewId) => ipcRenderer.invoke('browser:go-forward', { viewId }),
-  browserReload: (viewId) => ipcRenderer.invoke('browser:reload', { viewId }),
-  browserStop: (viewId) => ipcRenderer.invoke('browser:stop', { viewId }),
-  getBrowserState: (viewId) => ipcRenderer.invoke('browser:get-state', { viewId }),
-  captureBrowserView: (viewId) => ipcRenderer.invoke('browser:capture', { viewId }),
-  executeBrowserJS: (viewId, code) => ipcRenderer.invoke('browser:execute-js', { viewId, code }),
-  startBrowserSopRecording: (viewId) => ipcRenderer.invoke('browser:sop-recording:start', { viewId }),
-  stopBrowserSopRecording: (viewId) => ipcRenderer.invoke('browser:sop-recording:stop', { viewId }),
-  getBrowserSopRecordingState: (viewId) => ipcRenderer.invoke('browser:sop-recording:get-state', { viewId }),
-  clearBrowserSopRecording: (viewId) => ipcRenderer.invoke('browser:sop-recording:clear', { viewId }),
-  setBrowserZoom: (viewId, level) => ipcRenderer.invoke('browser:zoom', { viewId, level }),
-  toggleBrowserDevTools: (viewId) => ipcRenderer.invoke('browser:dev-tools', { viewId }),
-  showBrowserContextMenu: (options) => ipcRenderer.invoke('browser:show-context-menu', options),
-  onBrowserStateChange: (callback) => createEventListener('browser:state-change', callback),
-  onBrowserSopRecordingEvent: (callback) => createEventListener('browser:sop-recording:event', callback),
-  onBrowserZoomChanged: (callback) => createEventListener('browser:zoom-changed', callback as (data: unknown) => void),
-
   // Canvas Tab Menu (native Electron menu)
   showCanvasTabContextMenu: (options) => ipcRenderer.invoke('canvas:show-tab-context-menu', options),
   onCanvasTabAction: (callback) => createEventListener('canvas:tab-action', callback as (data: unknown) => void),
-
-  // AI Browser - active view change notification from main process
-  onAIBrowserActiveViewChanged: (callback) => createEventListener('ai-browser:active-view-changed', callback as (data: unknown) => void),
-
-  // Overlay (for floating UI above BrowserView)
-  showChatCapsuleOverlay: () => ipcRenderer.invoke('overlay:show-chat-capsule'),
-  hideChatCapsuleOverlay: () => ipcRenderer.invoke('overlay:hide-chat-capsule'),
-  onCanvasExitMaximized: (callback) => createEventListener('canvas:exit-maximized', callback as (data: unknown) => void),
 
   // Performance Monitoring (Developer Tools)
   perfStart: (config) => ipcRenderer.invoke('perf:start', config),
@@ -811,8 +743,7 @@ const platformInfo = {
 
 contextBridge.exposeInMainWorld('platform', platformInfo)
 
-// Expose basic electron IPC for overlay SPA
-// This is used by the overlay window which doesn't need the full kite API
+// Expose minimal electron IPC bridge for compatibility fallbacks
 const electronAPI = {
   ipcRenderer: {
     on: (channel: string, callback: (...args: unknown[]) => void) => {
@@ -839,7 +770,7 @@ declare global {
       isWindows: boolean
       isLinux: boolean
     }
-    // For overlay SPA - access via contextBridge
+    // Minimal fallback bridge
     electron?: {
       ipcRenderer: {
         on: (channel: string, callback: (...args: unknown[]) => void) => void

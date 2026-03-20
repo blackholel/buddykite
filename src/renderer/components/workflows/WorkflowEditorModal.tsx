@@ -20,8 +20,7 @@ interface WorkflowEditorModalProps {
 }
 
 const DEFAULT_SETTINGS = {
-  thinkingEnabled: false,
-  aiBrowserEnabled: false
+  thinkingEnabled: false
 }
 
 const NAME_PATTERN = /^[a-z0-9-]+$/

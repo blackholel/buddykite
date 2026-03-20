@@ -34,13 +34,15 @@ describe('Config Service', () => {
   const originalEnv = {
     seedDir: process.env.KITE_BUILTIN_SEED_DIR,
     disableSeed: process.env.KITE_DISABLE_BUILTIN_SEED,
-    sourceDir: process.env.KITE_SEED_SOURCE_DIR
+    sourceDir: process.env.KITE_SEED_SOURCE_DIR,
+    outputDir: process.env.KITE_SEED_OUTPUT_DIR
   }
 
   beforeEach(() => {
     delete process.env.KITE_BUILTIN_SEED_DIR
     process.env.KITE_DISABLE_BUILTIN_SEED = '1'
     delete process.env.KITE_SEED_SOURCE_DIR
+    delete process.env.KITE_SEED_OUTPUT_DIR
   })
 
   afterEach(() => {
@@ -58,6 +60,11 @@ describe('Config Service', () => {
       delete process.env.KITE_SEED_SOURCE_DIR
     } else {
       process.env.KITE_SEED_SOURCE_DIR = originalEnv.sourceDir
+    }
+    if (originalEnv.outputDir === undefined) {
+      delete process.env.KITE_SEED_OUTPUT_DIR
+    } else {
+      process.env.KITE_SEED_OUTPUT_DIR = originalEnv.outputDir
     }
   })
 
@@ -488,21 +495,16 @@ describe('Config Service', () => {
     it('should package allowlisted seed entries while removing sensitive and cache data', () => {
       const scriptPath = path.join(projectRoot, 'scripts', 'copy-kite-seed.mjs')
       const sourceSeedDir = path.join(getTestDir(), 'seed-source-full-copy')
-      const outputDir = path.join(projectRoot, 'build', 'default-kite-config')
-      const backupOutputDir = path.join(getTestDir(), 'seed-output-backup')
+      const outputDir = path.join(getTestDir(), 'seed-output-full-copy')
       const pluginCacheDir = path.join(sourceSeedDir, 'plugins', 'cache', 'demo-market', 'demo-plugin', '1.0.0')
       const pluginNonCacheDir = path.join(sourceSeedDir, 'plugins', 'superpowers')
       const instanceCacheDir = path.join(sourceSeedDir, 'instances', 'kite', 'electron-data', 'Cache')
       const tempDebugDir = path.join(sourceSeedDir, 'temp', 'claude-config', 'debug')
       const installPath = path.join(pluginCacheDir)
       const nonCacheInstallPath = path.join(pluginNonCacheDir)
-      const hasOriginalOutput = fs.existsSync(outputDir)
 
       fs.rmSync(sourceSeedDir, { recursive: true, force: true })
-      fs.rmSync(backupOutputDir, { recursive: true, force: true })
-      if (hasOriginalOutput) {
-        fs.cpSync(outputDir, backupOutputDir, { recursive: true })
-      }
+      fs.rmSync(outputDir, { recursive: true, force: true })
       fs.mkdirSync(path.join(sourceSeedDir, 'custom-dir', 'nested'), { recursive: true })
       fs.mkdirSync(pluginCacheDir, { recursive: true })
       fs.mkdirSync(path.join(pluginNonCacheDir, 'commands'), { recursive: true })
@@ -552,7 +554,8 @@ describe('Config Service', () => {
           cwd: projectRoot,
           env: {
             ...process.env,
-            KITE_SEED_SOURCE_DIR: sourceSeedDir
+            KITE_SEED_SOURCE_DIR: sourceSeedDir,
+            KITE_SEED_OUTPUT_DIR: outputDir
           },
           encoding: 'utf-8'
         })
@@ -588,9 +591,6 @@ describe('Config Service', () => {
           .toBe('__KITE_ROOT__/plugins/superpowers')
       } finally {
         fs.rmSync(outputDir, { recursive: true, force: true })
-        if (hasOriginalOutput) {
-          fs.cpSync(backupOutputDir, outputDir, { recursive: true })
-        }
       }
     })
   })
@@ -749,6 +749,7 @@ describe('Config Service', () => {
       expect(saved.mcpServers['chrome-devtools'].args).toContain('--browser-url=http://127.0.0.1:9222')
       expect(saved.mcpServers['chrome-devtools'].args).not.toContain('--autoConnect')
     })
+
   })
 
   describe('saveConfig', () => {

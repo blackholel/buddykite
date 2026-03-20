@@ -8,7 +8,6 @@ const MCP_TOOL_PREFIX = 'mcp__'
 
 const MCP_SERVER_LABELS: Record<string, string> = {
   'chrome-devtools': 'Chrome DevTools',
-  'ai-browser': 'AI Browser',
   'codepilot-widget': 'Widget'
 }
 

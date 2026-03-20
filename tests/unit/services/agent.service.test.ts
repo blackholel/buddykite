@@ -90,12 +90,6 @@ vi.mock('../../../src/main/openai-compat-router', () => ({
   encodeBackendConfig: vi.fn()
 }))
 
-vi.mock('../../../src/main/services/ai-browser', () => ({
-  isAIBrowserTool: vi.fn(() => false),
-  AI_BROWSER_SYSTEM_PROMPT: '',
-  createAIBrowserMcpServer: vi.fn()
-}))
-
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   query: vi.fn(),
   unstable_v2_createSession: vi.fn(),

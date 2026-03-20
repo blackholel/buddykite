@@ -16,7 +16,6 @@ import { listEnabledPlugins } from '../plugins.service'
 import { isValidDirectoryPath } from '../../utils/path-validation'
 import { getSpace } from '../space.service'
 import { getSpaceToolkit } from '../toolkit.service'
-import { createAIBrowserMcpServer, AI_BROWSER_SYSTEM_PROMPT } from '../ai-browser'
 import { SKILLS_LAZY_SYSTEM_PROMPT } from '../skills-mcp-server'
 import { buildPluginMcpServers } from '../plugin-mcp.service'
 import { getLockedUserConfigRootDir } from '../config-source-mode.service'
@@ -464,7 +463,6 @@ function buildMcpServersConfig(
   spaceId: string,
   workDir: string,
   conversationId: string,
-  aiBrowserEnabled?: boolean,
   enabledPluginMcps?: string[],
   promptForMcpRouting?: string,
   conversationHistoryTexts?: string[]
@@ -478,11 +476,6 @@ function buildMcpServersConfig(
   if (!mcpDisabled && enabledPluginMcps && enabledPluginMcps.length > 0) {
     const pluginServers = buildPluginMcpServers(enabledPluginMcps, mcpServers)
     Object.assign(mcpServers, pluginServers)
-  }
-
-  if (aiBrowserEnabled) {
-    mcpServers['ai-browser'] = createAIBrowserMcpServer()
-    console.log(`[Agent][${conversationId}] AI Browser MCP server added`)
   }
 
   const widgetMcpEnabled = shouldEnableCodepilotWidgetMcp({
@@ -499,7 +492,7 @@ function buildMcpServersConfig(
   if (mcpDisabled) {
     console.log(`[Agent][${conversationId}] MCP disabled by configuration (external only)`)
     const internalOnly = Object.fromEntries(
-      Object.entries(mcpServers).filter(([name]) => name === 'ai-browser' || name === 'codepilot-widget')
+      Object.entries(mcpServers).filter(([name]) => name === 'codepilot-widget')
     )
     return Object.keys(internalOnly).length > 0 ? { mcpServers: internalOnly } : {}
   }
@@ -576,7 +569,6 @@ export interface BuildSdkOptionsParams {
   effectiveModel?: string
   useAnthropicCompatModelMapping?: boolean
   electronPath: string
-  aiBrowserEnabled?: boolean
   thinkingEnabled?: boolean
   responseLanguage?: LocaleCode
   disableToolsForCompat?: boolean
@@ -606,7 +598,6 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): Record<string, a
     effectiveModel,
     useAnthropicCompatModelMapping,
     electronPath,
-    aiBrowserEnabled,
     thinkingEnabled,
     responseLanguage = 'en',
     disableToolsForCompat,
@@ -695,7 +686,6 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): Record<string, a
       append: [
         buildSystemPromptAppend(workDir, responseLanguage),
         WIDGET_SYSTEM_PROMPT,
-        aiBrowserEnabled ? AI_BROWSER_SYSTEM_PROMPT : '',
         effectiveLazyLoad ? SKILLS_LAZY_SYSTEM_PROMPT : ''
       ].filter(Boolean).join('\n')
     },
@@ -725,7 +715,6 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): Record<string, a
       spaceId,
       workDir,
       conversationId,
-      aiBrowserEnabled,
       enabledPluginMcps,
       promptForMcpRouting,
       conversationHistoryTexts

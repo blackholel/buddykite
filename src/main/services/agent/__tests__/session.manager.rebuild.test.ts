@@ -145,7 +145,6 @@ describe('session.manager rebuild', () => {
 
   it('配置不变复用 session，配置变化触发重建', async () => {
     const configA: SessionConfig = {
-      aiBrowserEnabled: false,
       skillsLazyLoad: false,
       profileId: 'profile-a',
       providerSignature: 'sig-a',
@@ -177,7 +176,6 @@ describe('session.manager rebuild', () => {
       .mockReturnValueOnce(createQueryMock({ close: closeB }))
 
     const base: SessionConfig = {
-      aiBrowserEnabled: false,
       skillsLazyLoad: false,
       profileId: 'profile-a',
       providerSignature: 'sig-a',
@@ -209,7 +207,6 @@ describe('session.manager rebuild', () => {
       .mockReturnValueOnce(createQueryMock({ close: closeC }))
 
     const base: SessionConfig = {
-      aiBrowserEnabled: false,
       skillsLazyLoad: false,
       profileId: 'profile-a',
       providerSignature: 'sig-a',
@@ -246,7 +243,6 @@ describe('session.manager rebuild', () => {
       .mockReturnValueOnce(createQueryMock({ close: closeB }))
 
     const base: SessionConfig = {
-      aiBrowserEnabled: false,
       skillsLazyLoad: false,
       responseLanguage: 'en',
       profileId: 'profile-a',
@@ -276,7 +272,6 @@ describe('session.manager rebuild', () => {
       .mockReturnValueOnce(createQueryMock({ close: closeB }))
 
     const base: SessionConfig = {
-      aiBrowserEnabled: false,
       skillsLazyLoad: false,
       responseLanguage: 'en',
       profileId: 'profile-a',
@@ -307,7 +302,6 @@ describe('session.manager rebuild', () => {
       .mockReturnValueOnce(createQueryMock({ close: closeB }))
 
     const config: SessionConfig = {
-      aiBrowserEnabled: false,
       skillsLazyLoad: false,
       responseLanguage: 'en',
       profileId: 'profile-a',
@@ -445,7 +439,6 @@ describe('session.manager rebuild', () => {
       },
       undefined,
       {
-        aiBrowserEnabled: false,
         skillsLazyLoad: false,
         profileId: 'profile-a',
         providerSignature: 'sig-a',
@@ -496,7 +489,6 @@ describe('session.manager rebuild', () => {
       },
       undefined,
       {
-        aiBrowserEnabled: false,
         skillsLazyLoad: false,
         profileId: 'profile-a',
         providerSignature: 'sig-a',
@@ -588,7 +580,6 @@ describe('session.manager rebuild', () => {
 
 describe('session.manager cleanup', () => {
   const baseConfig: SessionConfig = {
-    aiBrowserEnabled: false,
     skillsLazyLoad: false,
     profileId: 'profile-cleanup',
     providerSignature: 'sig-cleanup',

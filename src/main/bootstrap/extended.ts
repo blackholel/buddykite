@@ -12,9 +12,6 @@
  * CURRENT SERVICES:
  *   - Onboarding: First-time user guide (only needed once)
  *   - Remote: Remote access feature (optional)
- *   - Browser: Embedded browser for Content Canvas (V2 feature)
- *   - AIBrowser: AI browser automation tools (V2 feature)
- *   - Overlay: Floating UI elements (optional)
  *   - Search: Global search (optional)
  *   - Performance: Developer monitoring tools (dev only)
  *   - GitBash: Windows Git Bash setup (Windows optional)
@@ -26,9 +23,6 @@ import { join, resolve } from 'path'
 import { app, BrowserWindow } from 'electron'
 import { registerOnboardingHandlers } from '../ipc/onboarding'
 import { registerRemoteHandlers } from '../ipc/remote'
-import { registerBrowserHandlers } from '../ipc/browser'
-import { registerAIBrowserHandlers, cleanupAIBrowserHandlers } from '../ipc/ai-browser'
-import { registerOverlayHandlers, cleanupOverlayHandlers } from '../ipc/overlay'
 import { initializeSearchHandlers, cleanupSearchHandlers } from '../ipc/search'
 import { registerPerfHandlers } from '../ipc/perf'
 import { registerGitBashHandlers, initializeGitBashOnStartup } from '../ipc/git-bash'
@@ -114,18 +108,6 @@ export function initializeExtendedServices(mainWindow: BrowserWindow): void {
   // Workflows: Space-level workflow management
   registerWorkflowHandlers(mainWindow)
 
-  // Browser: Embedded BrowserView for Content Canvas
-  // Note: BrowserView is created lazily when Canvas is opened
-  registerBrowserHandlers(mainWindow)
-
-  // AI Browser: AI automation tools (V2 feature)
-  // Uses lazy initialization - heavy modules loaded on first tool call
-  registerAIBrowserHandlers(mainWindow)
-
-  // Overlay: Floating UI elements (chat capsule, etc.)
-  // Already implements lazy initialization internally
-  registerOverlayHandlers(mainWindow)
-
   // Search: Global search functionality
   initializeSearchHandlers(mainWindow)
 
@@ -162,12 +144,6 @@ export function initializeExtendedServices(mainWindow: BrowserWindow): void {
  * Called during window-all-closed to properly release resources.
  */
 export function cleanupExtendedServices(): void {
-  // AI Browser: Cleanup MCP server and browser context
-  cleanupAIBrowserHandlers()
-
-  // Overlay: Cleanup overlay BrowserView
-  cleanupOverlayHandlers()
-
   // Search: Cancel any ongoing searches
   cleanupSearchHandlers()
 

@@ -45,7 +45,6 @@ export interface SendMessageRequest {
   thinkingEnabled?: boolean   // Enable extended thinking mode
   planEnabled?: boolean
   mode?: ChatMode
-  aiBrowserEnabled?: boolean  // Enable AI Browser tools
   canvasContext?: {
     isOpen: boolean
     tabCount: number

@@ -64,11 +64,6 @@ vi.mock('../../conversation.service', () => ({
   getConversation: vi.fn(() => null)
 }))
 
-vi.mock('../../ai-browser', () => ({
-  createAIBrowserMcpServer: vi.fn(),
-  AI_BROWSER_SYSTEM_PROMPT: ''
-}))
-
 vi.mock('../../skills-mcp-server', () => ({
   SKILLS_LAZY_SYSTEM_PROMPT: ''
 }))

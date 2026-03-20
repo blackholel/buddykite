@@ -2,8 +2,8 @@
  * Content Canvas - Main content viewing area
  *
  * The Content Canvas transforms Kite from a simple chat interface
- * into a rich content browser. It displays code, markdown, images,
- * and embedded browser views.
+ * into a rich content workspace. It displays code, markdown, images,
+ * and other generated artifacts.
  *
  * Layout:
  * - Tab bar at top for switching between open files
@@ -20,7 +20,7 @@
  * - Escape: Collapse canvas
  *
  * This component uses useCanvasLifecycle for state management.
- * BrowserView lifecycle is managed centrally by CanvasLifecycle.
+ * Canvas tab lifecycle is managed centrally by CanvasLifecycle.
  */
 
 import { useCallback, useEffect, lazy, Suspense } from 'react'
@@ -28,7 +28,6 @@ import { X, ChevronLeft, Minimize2, Maximize2 } from 'lucide-react'
 import { useCanvasLifecycle, type TabState, type ContentType } from '../../hooks/useCanvasLifecycle'
 import { CanvasTabBar } from './CanvasTabs'
 import { ChatTabViewer } from './viewers/ChatTabViewer'
-import { api } from '../../api'
 import { useTranslation } from '../../i18n'
 import { useChatStore } from '../../stores/chat.store'
 import { useSpaceStore } from '../../stores/space.store'
@@ -41,7 +40,6 @@ const loadJsonViewer = () => import('./viewers/JsonViewer')
 const loadCsvViewer = () => import('./viewers/CsvViewer')
 const loadTextViewer = () => import('./viewers/TextViewer')
 const loadPlanEditor = () => import('./viewers/PlanEditor')
-const loadBrowserViewer = () => import('./viewers/BrowserViewer')
 const loadTemplateLibraryViewer = () => import('./viewers/TemplateLibraryViewer')
 
 const LazyCodeEditor = lazy(async () => ({ default: (await loadCodeEditor()).CodeEditor }))
@@ -52,10 +50,6 @@ const LazyJsonViewer = lazy(async () => ({ default: (await loadJsonViewer()).Jso
 const LazyCsvViewer = lazy(async () => ({ default: (await loadCsvViewer()).CsvViewer }))
 const LazyTextViewer = lazy(async () => ({ default: (await loadTextViewer()).TextViewer }))
 const LazyPlanEditor = lazy(async () => ({ default: (await loadPlanEditor()).PlanEditor }))
-const LazyBrowserViewer = lazy(async () => ({ default: (await loadBrowserViewer()).BrowserViewer }))
-const LazyBrowserViewerFallback = lazy(async () => ({
-  default: (await loadBrowserViewer()).BrowserViewerFallback
-}))
 const LazyTemplateLibraryViewer = lazy(async () => ({
   default: (await loadTemplateLibraryViewer()).TemplateLibraryViewer
 }))
@@ -70,8 +64,6 @@ const viewerPreloaders: Partial<Record<ContentType, () => Promise<unknown>>> = {
   csv: loadCsvViewer,
   text: loadTextViewer,
   plan: loadPlanEditor,
-  browser: loadBrowserViewer,
-  pdf: loadBrowserViewer,
   'template-library': loadTemplateLibraryViewer
 }
 
@@ -247,23 +239,7 @@ function TabContent({ tab, onScrollChange, onContentChange, onSave }: TabContent
     return <ChatTabViewer tab={tab} />
   }
 
-  // Browser and PDF tabs use BrowserView (handle their own loading state)
-  if (tab.type === 'browser' || tab.type === 'pdf') {
-    if (api.isRemoteMode()) {
-      return (
-        <Suspense fallback={viewerFallback}>
-          <LazyBrowserViewerFallback tab={tab} />
-        </Suspense>
-      )
-    }
-    return (
-      <Suspense fallback={viewerFallback}>
-        <LazyBrowserViewer tab={tab} />
-      </Suspense>
-    )
-  }
-
-  // Handle loading state for non-browser tabs
+  // Handle loading state for non-chat tabs
   if (tab.isLoading) {
     return (
       <div className="flex items-center justify-center h-full">

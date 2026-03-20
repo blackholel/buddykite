@@ -56,7 +56,6 @@ type SendMessageIpcRequest = {
   thinkingEnabled?: boolean
   planEnabled?: boolean
   mode?: 'code' | 'plan'
-  aiBrowserEnabled?: boolean
   invocationContext?: InvocationContext
   canvasContext?: {
     isOpen: boolean

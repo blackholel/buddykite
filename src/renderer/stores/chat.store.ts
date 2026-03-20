@@ -124,7 +124,6 @@ interface QueuedUserTurn {
   fileContexts?: FileContextAttachment[]
   thinkingEnabled?: boolean
   mode?: ChatMode
-  aiBrowserEnabled: boolean
   invocationContext?: InvocationContext
   guided?: boolean
   createdAt: number
@@ -600,7 +599,7 @@ interface ChatState {
   updateConversationAi: (spaceId: string, conversationId: string, ai: ConversationAiConfig) => Promise<boolean>
 
   // Messaging
-  sendMessage: (content: string, images?: ImageAttachment[], aiBrowserEnabled?: boolean, thinkingEnabled?: boolean, fileContexts?: FileContextAttachment[], mode?: ChatMode, invocationContext?: InvocationContext) => Promise<void>
+  sendMessage: (content: string, images?: ImageAttachment[], thinkingEnabled?: boolean, fileContexts?: FileContextAttachment[], mode?: ChatMode, invocationContext?: InvocationContext) => Promise<void>
   sendMessageToConversation: (
     spaceId: string,
     conversationId: string,
@@ -608,7 +607,6 @@ interface ChatState {
     images?: ImageAttachment[],
     thinkingEnabled?: boolean,
     fileContexts?: FileContextAttachment[],
-    aiBrowserEnabled?: boolean,
     mode?: ChatMode,
     invocationContext?: InvocationContext
   ) => Promise<void>
@@ -620,7 +618,6 @@ interface ChatState {
     fileContexts?: FileContextAttachment[]
     thinkingEnabled?: boolean
     mode?: ChatMode
-    aiBrowserEnabled: boolean
     invocationContext?: InvocationContext
   }) => Promise<void>
   flushQueuedTurns: (conversationId: string, trigger: QueueDispatchTrigger) => Promise<void>
@@ -1685,8 +1682,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
   },
 
-  // Send message (with optional images for multi-modal, optional AI Browser and thinking mode, optional file contexts, optional mode)
-  sendMessage: async (content, images, aiBrowserEnabled, thinkingEnabled, fileContexts, mode, invocationContext) => {
+  // Send message (with optional images for multi-modal, optional thinking mode, optional file contexts, optional mode)
+  sendMessage: async (content, images, thinkingEnabled, fileContexts, mode, invocationContext) => {
     const conversation = get().getCurrentConversation()
     const conversationMeta = get().getCurrentConversationMeta()
     const { currentSpaceId } = get()
@@ -1706,13 +1703,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
       fileContexts,
       thinkingEnabled,
       mode,
-      aiBrowserEnabled: aiBrowserEnabled ?? false,
       invocationContext
     })
   },
 
   // Send message to a specific conversation (for Chat Tabs - avoids global context switching)
-  sendMessageToConversation: async (spaceId, conversationId, content, images, thinkingEnabled, fileContexts, aiBrowserEnabled, mode, invocationContext) => {
+  sendMessageToConversation: async (spaceId, conversationId, content, images, thinkingEnabled, fileContexts, mode, invocationContext) => {
     if (!spaceId || !conversationId) {
       console.error('[ChatStore] spaceId and conversationId are required')
       return
@@ -1819,7 +1815,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
         message: content,
         responseLanguage: getCurrentLanguage(),
         images: images,
-        aiBrowserEnabled: aiBrowserEnabled ?? false,
         thinkingEnabled,
         mode: effectiveMode,
         planEnabled: effectiveMode === 'plan',
@@ -2091,7 +2086,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   dispatchTurnInternal: async (turn: QueuedUserTurn): Promise<DispatchResult> => {
-    const { spaceId, conversationId, content, images, fileContexts, thinkingEnabled, aiBrowserEnabled, invocationContext } = turn
+    const { spaceId, conversationId, content, images, fileContexts, thinkingEnabled, invocationContext } = turn
     if (!spaceId || !conversationId) {
       return { accepted: false, error: '[ChatStore] spaceId and conversationId are required' }
     }
@@ -2252,7 +2247,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
         message: content,
         responseLanguage: getCurrentLanguage(),
         images,
-        aiBrowserEnabled,
         thinkingEnabled,
         mode: effectiveMode,
         planEnabled: effectiveMode === 'plan',
@@ -2644,7 +2638,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
         prompt,
         undefined,
         false,
-        undefined,
         undefined,
         'code'
       )

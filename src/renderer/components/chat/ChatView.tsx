@@ -15,7 +15,6 @@ import { useSpaceStore } from '../../stores/space.store'
 import { useChatStore } from '../../stores/chat.store'
 import { useAppStore } from '../../stores/app.store'
 import { useOnboardingStore } from '../../stores/onboarding.store'
-import { useAIBrowserStore } from '../../stores/ai-browser.store'
 import { useCanvasLifecycle } from '../../hooks/useCanvasLifecycle'
 import { useSmartScroll } from '../../hooks/useSmartScroll'
 import { MessageList } from './MessageList'
@@ -458,11 +457,6 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
     setMockAnimating(false)
   }, [currentSpace, onboardingHtml, onboardingPrompt, onboardingResponse, setMockAnimating, setMockThinking])
 
-  // AI Browser state
-  const { enabled: aiBrowserEnabled } = useAIBrowserStore((state) => ({
-    enabled: state.enabled
-  }), shallow)
-
   // Handle send (with optional images for multi-modal messages, optional thinking mode, optional file contexts, optional plan mode)
   const handleSend = async (content: string, images?: ImageAttachment[], thinkingEnabled?: boolean, fileContexts?: FileContextAttachment[], mode?: ChatMode) => {
     // In onboarding mode, intercept and play mock response
@@ -481,8 +475,7 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
       images,
       fileContexts,
       thinkingEnabled,
-      mode,
-      aiBrowserEnabled
+      mode
     })
   }
 
@@ -672,7 +665,6 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
               spaceId: currentSpaceId,
               conversationId: currentConversationId,
               content: answer,
-              aiBrowserEnabled,
               thinkingEnabled: false,
               mode: 'code'
             })

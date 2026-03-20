@@ -362,7 +362,6 @@ export const api = {
       name?: string
       size?: number
     }>
-    aiBrowserEnabled?: boolean  // Enable AI Browser tools
     thinkingEnabled?: boolean  // Enable extended thinking mode
     planEnabled?: boolean  // Enable plan mode (no tool execution)
     mode?: ChatMode
@@ -436,7 +435,6 @@ export const api = {
       name?: string
       size?: number
     }>
-    aiBrowserEnabled?: boolean
     thinkingEnabled?: boolean
     planEnabled?: boolean
     mode?: ChatMode
@@ -1364,164 +1362,6 @@ export const api = {
   subscribeToConversation,
   unsubscribeFromConversation,
 
-  // ===== Browser (Embedded Browser for Content Canvas) =====
-  // Note: Browser features only available in desktop app (not remote mode)
-
-  createBrowserView: async (viewId: string, url?: string): Promise<ApiResponse> => {
-    if (isElectron()) {
-      return window.kite.createBrowserView(viewId, url)
-    }
-    return { success: false, error: 'Browser views only available in desktop app' }
-  },
-
-  destroyBrowserView: async (viewId: string): Promise<ApiResponse> => {
-    if (isElectron()) {
-      return window.kite.destroyBrowserView(viewId)
-    }
-    return { success: false, error: 'Browser views only available in desktop app' }
-  },
-
-  showBrowserView: async (
-    viewId: string,
-    bounds: { x: number; y: number; width: number; height: number }
-  ): Promise<ApiResponse> => {
-    if (isElectron()) {
-      return window.kite.showBrowserView(viewId, bounds)
-    }
-    return { success: false, error: 'Browser views only available in desktop app' }
-  },
-
-  hideBrowserView: async (viewId: string): Promise<ApiResponse> => {
-    if (isElectron()) {
-      return window.kite.hideBrowserView(viewId)
-    }
-    return { success: false, error: 'Browser views only available in desktop app' }
-  },
-
-  resizeBrowserView: async (
-    viewId: string,
-    bounds: { x: number; y: number; width: number; height: number }
-  ): Promise<ApiResponse> => {
-    if (isElectron()) {
-      return window.kite.resizeBrowserView(viewId, bounds)
-    }
-    return { success: false, error: 'Browser views only available in desktop app' }
-  },
-
-  navigateBrowserView: async (viewId: string, url: string): Promise<ApiResponse> => {
-    if (isElectron()) {
-      return window.kite.navigateBrowserView(viewId, url)
-    }
-    return { success: false, error: 'Browser views only available in desktop app' }
-  },
-
-  browserGoBack: async (viewId: string): Promise<ApiResponse> => {
-    if (isElectron()) {
-      return window.kite.browserGoBack(viewId)
-    }
-    return { success: false, error: 'Browser views only available in desktop app' }
-  },
-
-  browserGoForward: async (viewId: string): Promise<ApiResponse> => {
-    if (isElectron()) {
-      return window.kite.browserGoForward(viewId)
-    }
-    return { success: false, error: 'Browser views only available in desktop app' }
-  },
-
-  browserReload: async (viewId: string): Promise<ApiResponse> => {
-    if (isElectron()) {
-      return window.kite.browserReload(viewId)
-    }
-    return { success: false, error: 'Browser views only available in desktop app' }
-  },
-
-  browserStop: async (viewId: string): Promise<ApiResponse> => {
-    if (isElectron()) {
-      return window.kite.browserStop(viewId)
-    }
-    return { success: false, error: 'Browser views only available in desktop app' }
-  },
-
-  getBrowserState: async (viewId: string): Promise<ApiResponse> => {
-    if (isElectron()) {
-      return window.kite.getBrowserState(viewId)
-    }
-    return { success: false, error: 'Browser views only available in desktop app' }
-  },
-
-  captureBrowserView: async (viewId: string): Promise<ApiResponse> => {
-    if (isElectron()) {
-      return window.kite.captureBrowserView(viewId)
-    }
-    return { success: false, error: 'Browser views only available in desktop app' }
-  },
-
-  executeBrowserJS: async (viewId: string, code: string): Promise<ApiResponse> => {
-    if (isElectron()) {
-      return window.kite.executeBrowserJS(viewId, code)
-    }
-    return { success: false, error: 'Browser views only available in desktop app' }
-  },
-
-  startBrowserSopRecording: async (viewId: string): Promise<ApiResponse> => {
-    if (isElectron()) {
-      return window.kite.startBrowserSopRecording(viewId)
-    }
-    return { success: false, error: 'Browser SOP recording only available in desktop app' }
-  },
-
-  stopBrowserSopRecording: async (viewId: string): Promise<ApiResponse> => {
-    if (isElectron()) {
-      return window.kite.stopBrowserSopRecording(viewId)
-    }
-    return { success: false, error: 'Browser SOP recording only available in desktop app' }
-  },
-
-  getBrowserSopRecordingState: async (viewId: string): Promise<ApiResponse> => {
-    if (isElectron()) {
-      return window.kite.getBrowserSopRecordingState(viewId)
-    }
-    return { success: false, error: 'Browser SOP recording only available in desktop app' }
-  },
-
-  clearBrowserSopRecording: async (viewId: string): Promise<ApiResponse> => {
-    if (isElectron()) {
-      return window.kite.clearBrowserSopRecording(viewId)
-    }
-    return { success: false, error: 'Browser SOP recording only available in desktop app' }
-  },
-
-  setBrowserZoom: async (viewId: string, level: number): Promise<ApiResponse> => {
-    if (isElectron()) {
-      return window.kite.setBrowserZoom(viewId, level)
-    }
-    return { success: false, error: 'Browser views only available in desktop app' }
-  },
-
-  toggleBrowserDevTools: async (viewId: string): Promise<ApiResponse> => {
-    if (isElectron()) {
-      return window.kite.toggleBrowserDevTools(viewId)
-    }
-    return { success: false, error: 'Browser views only available in desktop app' }
-  },
-
-  showBrowserContextMenu: async (options: { viewId: string; url?: string; zoomLevel: number }): Promise<ApiResponse> => {
-    if (isElectron()) {
-      return window.kite.showBrowserContextMenu(options)
-    }
-    return { success: false, error: 'Browser views only available in desktop app' }
-  },
-
-  onBrowserStateChange: (callback: (data: unknown) => void) =>
-    onEvent('browser:state-change', callback),
-
-  onBrowserSopRecordingEvent: (callback: (data: unknown) => void) =>
-    onEvent('browser:sop-recording:event', callback),
-
-  onBrowserZoomChanged: (callback: (data: { viewId: string; zoomLevel: number }) => void) =>
-    onEvent('browser:zoom-changed', callback as (data: unknown) => void),
-
   // Canvas Tab Context Menu (native Electron menu)
   showCanvasTabContextMenu: async (options: {
     tabId: string
@@ -1544,11 +1384,6 @@ export const api = {
     tabPath?: string
   }) => void) =>
     onEvent('canvas:tab-action', callback as (data: unknown) => void),
-
-  // AI Browser active view change notification
-  // Sent when AI Browser tools create or select a view
-  onAIBrowserActiveViewChanged: (callback: (data: { viewId: string; url: string | null; title: string | null }) => void) =>
-    onEvent('ai-browser:active-view-changed', callback as (data: unknown) => void),
 
   // ===== Search =====
   search: async (
@@ -1648,29 +1483,6 @@ export const api = {
       return () => {} // No-op in remote mode
     }
     return window.kite.onUpdaterStatus(callback)
-  },
-
-  // ===== Overlay (Electron only) =====
-  // Used for floating UI elements that need to render above BrowserViews
-  showChatCapsuleOverlay: async (): Promise<ApiResponse> => {
-    if (!isElectron()) {
-      return { success: false, error: 'Only available in desktop app' }
-    }
-    return window.kite.showChatCapsuleOverlay()
-  },
-
-  hideChatCapsuleOverlay: async (): Promise<ApiResponse> => {
-    if (!isElectron()) {
-      return { success: false, error: 'Only available in desktop app' }
-    }
-    return window.kite.hideChatCapsuleOverlay()
-  },
-
-  onCanvasExitMaximized: (callback: () => void) => {
-    if (!isElectron()) {
-      return () => {} // No-op in remote mode
-    }
-    return window.kite.onCanvasExitMaximized(callback)
   },
 
   // ===== Performance Monitoring (Electron only, Developer Tools) =====

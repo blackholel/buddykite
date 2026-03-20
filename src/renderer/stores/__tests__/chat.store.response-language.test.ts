@@ -114,7 +114,6 @@ describe('chat.store responseLanguage request building', () => {
       undefined,
       false,
       undefined,
-      false,
       'code',
       'interactive'
     )
@@ -139,7 +138,6 @@ describe('chat.store responseLanguage request building', () => {
       undefined,
       false,
       undefined,
-      false,
       'code',
       'workflow-step'
     )
@@ -209,7 +207,6 @@ describe('chat.store responseLanguage request building', () => {
       fileContexts,
       thinkingEnabled: false,
       mode: 'code',
-      aiBrowserEnabled: false,
       createdAt: Date.now(),
       invocationContext: 'interactive'
     })

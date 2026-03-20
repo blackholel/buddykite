@@ -15,7 +15,6 @@ import { useCallback, useEffect, useMemo } from 'react'
 import { useChatStore } from '../../../stores/chat.store'
 import { useAppStore } from '../../../stores/app.store'
 import { useSpaceStore } from '../../../stores/space.store'
-import { useAIBrowserStore } from '../../../stores/ai-browser.store'
 import { useSmartScroll } from '../../../hooks/useSmartScroll'
 import { useCanvasLifecycle } from '../../../hooks/useCanvasLifecycle'
 import { MessageList } from '../../chat/MessageList'
@@ -37,7 +36,6 @@ export function ChatTabViewer({ tab }: ChatTabViewerProps) {
   const { conversationId, spaceId, workDir: tabWorkDir } = tab
   const { openPlan } = useCanvasLifecycle()
   const appConfig = useAppStore(state => state.config)
-  const aiBrowserEnabled = useAIBrowserStore(state => state.enabled)
   const { currentSpace, spaces, haloSpace } = useSpaceStore((state) => ({
     currentSpace: state.currentSpace,
     spaces: state.spaces,
@@ -212,10 +210,9 @@ export function ChatTabViewer({ tab }: ChatTabViewerProps) {
       images,
       fileContexts,
       thinkingEnabled,
-      aiBrowserEnabled,
       mode
     })
-  }, [aiBrowserEnabled, conversationId, spaceId, submitTurn])
+  }, [conversationId, spaceId, submitTurn])
 
   // Handle stop generation
   const handleStop = useCallback(async () => {
@@ -375,7 +372,6 @@ export function ChatTabViewer({ tab }: ChatTabViewerProps) {
               conversationId,
               content: answer,
               thinkingEnabled: false,
-              aiBrowserEnabled,
               mode: 'code'
             })
           }}

@@ -73,7 +73,6 @@ export interface AgentRunObservationStartInput {
   responseLanguage: string
   imageCount: number
   fileContextCount: number
-  aiBrowserEnabled: boolean
   thinkingEnabled: boolean
 }
 

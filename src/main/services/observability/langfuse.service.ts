@@ -329,7 +329,6 @@ export function startAgentRunObservation(
             responseLanguage: input.responseLanguage,
             imageCount: input.imageCount,
             fileContextCount: input.fileContextCount,
-            aiBrowserEnabled: input.aiBrowserEnabled,
             thinkingEnabled: input.thinkingEnabled
           },
           metadata: {

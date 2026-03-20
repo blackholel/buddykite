@@ -359,7 +359,6 @@ export function registerApiRoutes(app: Express, mainWindow: BrowserWindow | null
       model,
       images,
       thinkingEnabled,
-      aiBrowserEnabled,
       planEnabled,
       mode,
       canvasContext,
@@ -376,7 +375,6 @@ export function registerApiRoutes(app: Express, mainWindow: BrowserWindow | null
       model,
       images,  // Pass images for multi-modal messages (remote access)
       thinkingEnabled,  // Pass thinking mode for extended thinking (remote access)
-      aiBrowserEnabled,  // Pass AI Browser toggle for remote access
       planEnabled,
       mode,
       canvasContext,

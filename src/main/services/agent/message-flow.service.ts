@@ -12,7 +12,7 @@ import { ensureChromeDebugModeReadyForMcp } from '../chrome-debug-launcher.servi
 import { getSpaceConfig } from '../space-config.service'
 import { resolveResourceRuntimePolicy as resolveNormalizedRuntimePolicy } from '../resource-runtime-policy.service'
 import { getCommand } from '../commands.service'
-import { getSkillContent, getSkillDefinition, listSkills, resolveSkillDefinition } from '../skills.service'
+import { listSkills, resolveSkillDefinition } from '../skills.service'
 import {
   getConversation,
   saveSessionId,
@@ -384,46 +384,6 @@ function extractSkillDirectiveTokens(message: string): string[] {
   }
 
   return [...found]
-}
-
-export function shouldAutoEnableAiBrowserForSopSkill(params: {
-  message: string
-  workDir: string
-  allowedSources?: SkillSource[]
-  locale?: string
-}): { enabled: boolean; matchedSkills: string[]; checkedSkills: string[] } {
-  const tokens = extractSkillDirectiveTokens(params.message)
-  if (tokens.length === 0) {
-    return { enabled: false, matchedSkills: [], checkedSkills: [] }
-  }
-
-  const matched = new Set<string>()
-  for (const token of tokens) {
-    const definition = getSkillDefinition(token, params.workDir, {
-      allowedSources: params.allowedSources,
-      locale: params.locale,
-    })
-    if (!definition) continue
-
-    const canonicalName = definition.namespace
-      ? `${definition.namespace}:${definition.name}`
-      : definition.name
-    const content = getSkillContent(canonicalName, params.workDir, {
-      allowedSources: params.allowedSources,
-      locale: params.locale,
-    })
-    if (!content?.frontmatter) continue
-    const sopMode = content.frontmatter.sop_mode
-    if (typeof sopMode === 'string' && sopMode.trim().toLowerCase() === 'manual_browser') {
-      matched.add(token)
-    }
-  }
-
-  return {
-    enabled: matched.size > 0,
-    matchedSkills: [...matched],
-    checkedSkills: tokens,
-  }
 }
 
 function buildCanonicalSkillName(skill: { name: string; namespace?: string }): string {
@@ -1353,7 +1313,6 @@ export async function sendMessage(
     message,
     resumeSessionId,
     images,
-    aiBrowserEnabled,
     thinkingEnabled,
     planEnabled,
     mode,
@@ -1381,7 +1340,6 @@ export async function sendMessage(
     responseLanguage: effectiveResponseLanguage,
     imageCount: Array.isArray(images) ? images.length : 0,
     fileContextCount: Array.isArray(fileContexts) ? fileContexts.length : 0,
-    aiBrowserEnabled: aiBrowserEnabled === true,
     thinkingEnabled: thinkingEnabled === true
   })
   startAgentRunObservationPhase(observabilityHandle, 'send_entry')
@@ -1542,13 +1500,9 @@ export async function sendMessage(
   const isStrictCompatProvider = effectiveAi.disableToolsForCompat
   const compatProviderName = effectiveAi.compatProviderName || 'Compatibility provider'
   // Some Anthropic-compatible backends can be strict; keep text-only for stability.
-  let effectiveAiBrowserEnabled = effectiveAi.disableAiBrowserForCompat ? false : aiBrowserEnabled
   const effectiveThinkingEnabled = effectiveAi.disableThinkingForCompat ? false : thinkingEnabled
   const effectiveImages = effectiveAi.disableImageForCompat ? undefined : images
   if (isStrictCompatProvider) {
-    if (aiBrowserEnabled) {
-      console.warn(`[Agent][${conversationId}] ${compatProviderName}: AI Browser disabled (compat mode)`)
-    }
     if (thinkingEnabled) {
       console.warn(`[Agent][${conversationId}] ${compatProviderName}: Thinking disabled (compat mode)`)
     }
@@ -1649,27 +1603,8 @@ export async function sendMessage(
     })
   }
 
-  const sopAutoEnable = shouldAutoEnableAiBrowserForSopSkill({
-    message: messageForSend,
-    workDir,
-    allowedSources: allowedDirectiveSources as SkillSource[],
-    locale: effectiveResponseLanguage,
-  })
-  if (sopAutoEnable.enabled) {
-    if (effectiveAi.disableAiBrowserForCompat) {
-      console.warn(
-        `[Agent][${conversationId}] ${compatProviderName}: SOP skill requested AI Browser but compat mode blocks it (${sopAutoEnable.matchedSkills.join(', ')})`
-      )
-    } else if (!effectiveAiBrowserEnabled) {
-      effectiveAiBrowserEnabled = true
-      console.log(
-        `[Agent][${conversationId}] AI Browser auto-enabled by SOP skill: ${sopAutoEnable.matchedSkills.join(', ')}`
-      )
-    }
-  }
-
   console.log(
-    `[Agent] sendMessage: conv=${conversationId}, responseLanguage=${effectiveResponseLanguage}${effectiveImages && effectiveImages.length > 0 ? `, images=${effectiveImages.length}` : ''}${effectiveAiBrowserEnabled ? ', AI Browser enabled' : ''}${effectiveThinkingEnabled ? ', thinking=ON' : ''}${canvasContext?.isOpen ? `, canvas tabs=${canvasContext.tabCount}` : ''}${fileContexts && fileContexts.length > 0 ? `, fileContexts=${fileContexts.length}` : ''}`
+    `[Agent] sendMessage: conv=${conversationId}, responseLanguage=${effectiveResponseLanguage}${effectiveImages && effectiveImages.length > 0 ? `, images=${effectiveImages.length}` : ''}${effectiveThinkingEnabled ? ', thinking=ON' : ''}${canvasContext?.isOpen ? `, canvas tabs=${canvasContext.tabCount}` : ''}${fileContexts && fileContexts.length > 0 ? `, fileContexts=${fileContexts.length}` : ''}`
   )
 
   if (mcpDirectiveResult.enabled.length > 0) {
@@ -1974,7 +1909,6 @@ export async function sendMessage(
       effectiveModel: resolved.effectiveModel,
       useAnthropicCompatModelMapping: resolved.useAnthropicCompatModelMapping,
       electronPath,
-      aiBrowserEnabled: effectiveAiBrowserEnabled,
       thinkingEnabled: effectiveThinkingEnabled,
       responseLanguage: effectiveResponseLanguage,
       disableToolsForCompat: effectiveAi.disableToolsForCompat,
@@ -2068,7 +2002,6 @@ export async function sendMessage(
     const sessionConfig: SessionConfig = {
       spaceId,
       workDir,
-      aiBrowserEnabled: !!effectiveAiBrowserEnabled,
       skillsLazyLoad,
       responseLanguage: effectiveResponseLanguage,
       profileId: effectiveAi.profileId,
@@ -2366,7 +2299,7 @@ export async function sendMessage(
 You are in PLAN MODE.
 Allowed tools: AskUserQuestion, Task, Read, Grep, Glob.
 Task tool is exploration-only: inspect code, summarize findings, do not modify files or run commands.
-Do not use Write/Edit/Bash/AI Browser tools in plan mode.
+Do not use Write/Edit/Bash/browser automation tools in plan mode.
 When blocking information is missing, ask via AskUserQuestion first.
 After user replies, return an updated complete implementation plan in Markdown.
 Only output planning content; never switch to execution unless user explicitly triggers Build/execute.

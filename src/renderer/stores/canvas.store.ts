@@ -17,13 +17,12 @@ import { create } from 'zustand'
 import {
   canvasLifecycle,
   type TabState,
-  type BrowserState,
   type ContentType,
 } from '../services/canvas-lifecycle'
 import type { TemplateLibraryTab } from '../types/template-library'
 
 // Re-export types for backward compatibility
-export type { BrowserState, ContentType }
+export type { ContentType }
 export type CanvasTab = TabState
 
 // ============================================
@@ -47,7 +46,6 @@ interface CanvasState {
   // Tab Actions (delegate to canvasLifecycle)
   openFile: (path: string, title?: string) => Promise<void>
   openUrl: (url: string, title?: string) => Promise<void>
-  attachAIBrowserView: (viewId: string, url: string, title?: string) => void
   openContent: (content: string, title: string, type: ContentType, language?: string) => void
   openPlan: (content: string, title: string, spaceId: string, conversationId: string, workDir?: string) => Promise<string>
   openChat: (spaceId: string, conversationId: string, title: string, workDir?: string) => Promise<void>
@@ -64,11 +62,6 @@ interface CanvasState {
   refreshTab: (tabId: string) => Promise<void>
   updateTabContent: (tabId: string, content: string) => void
   saveScrollPosition: (tabId: string, position: number) => void
-
-  // Browser Actions (kept for compatibility, but managed by canvasLifecycle)
-  setBrowserViewId: (tabId: string, viewId: string) => void
-  updateBrowserState: (tabId: string, state: Partial<BrowserState>) => void
-  updateBrowserUrl: (tabId: string, url: string, title?: string) => void
 
   // Layout Actions
   setOpen: (open: boolean) => void
@@ -134,10 +127,6 @@ export const useCanvasStore = create<CanvasState>((set, get) => {
       await canvasLifecycle.openUrl(url, title)
     },
 
-    attachAIBrowserView: (viewId: string, url: string, title?: string) => {
-      canvasLifecycle.attachAIBrowserView(viewId, url, title)
-    },
-
     openContent: (content: string, title: string, type: ContentType, language?: string) => {
       canvasLifecycle.openContent(content, title, type, language)
     },
@@ -196,25 +185,6 @@ export const useCanvasStore = create<CanvasState>((set, get) => {
 
     saveScrollPosition: (tabId: string, position: number) => {
       canvasLifecycle.saveScrollPosition(tabId, position)
-    },
-
-    // ============================================
-    // Browser Actions (no-ops, managed by canvasLifecycle)
-    // ============================================
-
-    setBrowserViewId: (_tabId: string, _viewId: string) => {
-      // No-op: BrowserView lifecycle is managed by canvasLifecycle
-      console.warn('[canvas.store] setBrowserViewId is deprecated, managed by canvasLifecycle')
-    },
-
-    updateBrowserState: (_tabId: string, _state: Partial<BrowserState>) => {
-      // No-op: Browser state updates come from canvasLifecycle via IPC
-      console.warn('[canvas.store] updateBrowserState is deprecated, managed by canvasLifecycle')
-    },
-
-    updateBrowserUrl: (_tabId: string, _url: string, _title?: string) => {
-      // No-op: URL updates come from canvasLifecycle via IPC
-      console.warn('[canvas.store] updateBrowserUrl is deprecated, managed by canvasLifecycle')
     },
 
     // ============================================

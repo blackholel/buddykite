@@ -13,7 +13,7 @@ import './i18n'
 import './assets/styles/globals.css'       // Theme, base styles, shared animations
 import './assets/styles/syntax-theme.css'  // Code syntax highlighting (highlight.js)
 import './assets/styles/canvas-tabs.css'   // VS Code style tab bar
-import './assets/styles/browser-task-card.css' // AI Browser sci-fi effects
+import './assets/styles/browser-task-card.css' // Browser task card effects
 
 
 ReactDOM.createRoot(document.getElementById('root')!).render(<App />)

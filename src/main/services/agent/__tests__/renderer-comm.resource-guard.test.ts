@@ -17,10 +17,6 @@ vi.mock('../../config.service', () => ({
   }))
 }))
 
-vi.mock('../../ai-browser', () => ({
-  isAIBrowserTool: vi.fn(() => false)
-}))
-
 vi.mock('../../chrome-debug-launcher.service', () => ({
   ensureChromeDebugModeReadyForMcp: vi.fn().mockResolvedValue(undefined)
 }))

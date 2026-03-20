@@ -6,7 +6,6 @@ import { useCallback, useEffect, useRef, Suspense, lazy } from 'react'
 import { useAppStore } from './stores/app.store'
 import { useChatStore } from './stores/chat.store'
 import { useOnboardingStore } from './stores/onboarding.store'
-import { initAIBrowserStoreListeners } from './stores/ai-browser.store'
 import { initPerfStoreListeners } from './stores/perf.store'
 import { initSkillsStoreListeners } from './stores/skills.store'
 import { initAgentsStoreListeners } from './stores/agents.store'
@@ -232,15 +231,14 @@ export default function App() {
     }
   }, [])
 
-  // Initialize AI Browser IPC listeners for active view sync
+  // Initialize runtime store listeners
   useEffect(() => {
-    console.log('[App] Initializing AI Browser store listeners')
+    console.log('[App] Initializing runtime store listeners')
     initPerfStoreListeners()
-    const cleanup = initAIBrowserStoreListeners()
     initSkillsStoreListeners()
     initAgentsStoreListeners()
     initCommandsStoreListeners()
-    return cleanup
+    return undefined
   }, [])
 
   // Register agent event listeners (global - handles events for all conversations)

@@ -18,7 +18,9 @@ const projectRoot = resolve(__dirname, '..')
 const sourceDir = process.env.KITE_SEED_SOURCE_DIR
   ? resolve(process.env.KITE_SEED_SOURCE_DIR)
   : join(homedir(), '.kite')
-const outputDir = join(projectRoot, 'build', 'default-kite-config')
+const outputDir = process.env.KITE_SEED_OUTPUT_DIR
+  ? resolve(process.env.KITE_SEED_OUTPUT_DIR)
+  : join(projectRoot, 'build', 'default-kite-config')
 const packageJsonPath = join(projectRoot, 'package.json')
 const installPathTemplate = '__KITE_ROOT__'
 const secretKeyPattern = /(key|token|secret|password)/i
@@ -72,7 +74,7 @@ const defaultPackagedMcpServers = {
   'chrome-devtools': {
     command: 'npx',
     args: ['-y', 'chrome-devtools-mcp@latest', '--autoConnect'],
-    disabled: true
+    disabled: false
   }
 }
 

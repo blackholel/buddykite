@@ -137,7 +137,6 @@ describe('Chat Store - queued turn flow', () => {
       spaceId,
       conversationId,
       content: 'queued message',
-      aiBrowserEnabled: false,
       mode: 'code'
     })
 
@@ -178,7 +177,6 @@ describe('Chat Store - queued turn flow', () => {
         spaceId,
         conversationId,
         content: 'send after timeout',
-        aiBrowserEnabled: false,
         mode: 'code'
       })
 
@@ -220,7 +218,6 @@ describe('Chat Store - queued turn flow', () => {
       spaceId,
       conversationId,
       content: 'message after ask pending',
-      aiBrowserEnabled: false,
       mode: 'code'
     })
 
@@ -274,7 +271,6 @@ describe('Chat Store - queued turn flow', () => {
       spaceId,
       conversationId,
       content: 'must stay queued',
-      aiBrowserEnabled: false,
       mode: 'code'
     })
 
@@ -293,7 +289,6 @@ describe('Chat Store - queued turn flow', () => {
       spaceId,
       conversationId,
       content: 'will fail',
-      aiBrowserEnabled: true,
       mode: 'code'
     })
 
@@ -302,9 +297,9 @@ describe('Chat Store - queued turn flow', () => {
     expect(useChatStore.getState().getQueueError(conversationId)).toContain('transport denied')
   })
 
-  it('uses queued aiBrowserEnabled snapshot during flush', async () => {
+  it('uses queued thinkingEnabled snapshot during flush', async () => {
     const spaceId = 'space-1'
-    const conversationId = 'conv-queue-ai-browser-snapshot'
+    const conversationId = 'conv-queue-thinking-snapshot'
     seedConversation(spaceId, conversationId)
 
     useChatStore.getState().handleAgentRunStart({
@@ -318,7 +313,7 @@ describe('Chat Store - queued turn flow', () => {
       spaceId,
       conversationId,
       content: 'snapshot message',
-      aiBrowserEnabled: true,
+      thinkingEnabled: true,
       mode: 'code'
     })
 
@@ -332,7 +327,7 @@ describe('Chat Store - queued turn flow', () => {
 
     expect(mockSendMessage).toHaveBeenCalledTimes(1)
     expect(mockSendMessage.mock.calls[0]?.[0]).toEqual(
-      expect.objectContaining({ aiBrowserEnabled: true })
+      expect.objectContaining({ thinkingEnabled: true })
     )
   })
 
@@ -352,7 +347,6 @@ describe('Chat Store - queued turn flow', () => {
       spaceId,
       conversationId,
       content: 'queued before stop',
-      aiBrowserEnabled: false,
       mode: 'code'
     })
 
@@ -391,7 +385,6 @@ describe('Chat Store - queued turn flow', () => {
       spaceId,
       conversationId,
       content: 'queued before stop with approval pending',
-      aiBrowserEnabled: false,
       mode: 'code'
     })
 
@@ -482,7 +475,6 @@ describe('Chat Store - queued turn flow', () => {
       spaceId,
       conversationId,
       content: 'queued while running',
-      aiBrowserEnabled: false,
       mode: 'code'
     })
     expect(useChatStore.getState().getQueueCount(conversationId)).toBe(1)
@@ -530,7 +522,6 @@ describe('Chat Store - queued turn flow', () => {
       spaceId,
       conversationId,
       content: 'queued once',
-      aiBrowserEnabled: false,
       mode: 'code'
     })
     expect(useChatStore.getState().getQueueCount(conversationId)).toBe(1)
@@ -583,7 +574,6 @@ describe('Chat Store - queued turn flow', () => {
       spaceId,
       conversationId,
       content: 'guided later',
-      aiBrowserEnabled: false,
       mode: 'code'
     })
 
@@ -641,7 +631,6 @@ describe('Chat Store - queued turn flow', () => {
       spaceId,
       conversationId,
       content: 'guide failed item',
-      aiBrowserEnabled: false,
       mode: 'code'
     })
     const turnId = useChatStore.getState().getQueuedTurns(conversationId)[0]?.id
@@ -679,7 +668,6 @@ describe('Chat Store - queued turn flow', () => {
       spaceId,
       conversationId,
       content: 'clear while guiding',
-      aiBrowserEnabled: false,
       mode: 'code'
     })
 
@@ -720,7 +708,6 @@ describe('Chat Store - queued turn flow', () => {
       spaceId,
       conversationId,
       content: 'fallback new run',
-      aiBrowserEnabled: false,
       mode: 'code'
     })
 
@@ -764,7 +751,6 @@ describe('Chat Store - queued turn flow', () => {
       spaceId,
       conversationId,
       content: 'fallback mismatch',
-      aiBrowserEnabled: false,
       mode: 'code'
     })
 
@@ -808,21 +794,18 @@ describe('Chat Store - queued turn flow', () => {
       spaceId,
       conversationId,
       content: 'first queued',
-      aiBrowserEnabled: false,
       mode: 'code'
     })
     await useChatStore.getState().submitTurn({
       spaceId,
       conversationId,
       content: 'second queued',
-      aiBrowserEnabled: false,
       mode: 'code'
     })
     await useChatStore.getState().submitTurn({
       spaceId,
       conversationId,
       content: 'third queued',
-      aiBrowserEnabled: false,
       mode: 'code'
     })
 
@@ -863,7 +846,6 @@ describe('Chat Store - queued turn flow', () => {
           data: 'fake-base64'
         }
       ],
-      aiBrowserEnabled: false,
       mode: 'code'
     })
 
@@ -887,7 +869,6 @@ describe('Chat Store - queued turn flow', () => {
       spaceId,
       conversationId,
       content: 'retry-by-guide',
-      aiBrowserEnabled: false,
       mode: 'code'
     })
 
@@ -943,14 +924,12 @@ describe('Chat Store - queued turn flow', () => {
       spaceId,
       conversationId: conversationA,
       content: 'queued A',
-      aiBrowserEnabled: false,
       mode: 'code'
     })
     await useChatStore.getState().submitTurn({
       spaceId,
       conversationId: conversationB,
       content: 'queued B',
-      aiBrowserEnabled: false,
       mode: 'code'
     })
 
@@ -975,7 +954,6 @@ describe('Chat Store - queued turn flow', () => {
       spaceId,
       conversationId: conversationA,
       content: 'queued A2',
-      aiBrowserEnabled: false,
       mode: 'code'
     })
     expect(useChatStore.getState().getQueueCount(conversationA)).toBe(1)
@@ -995,7 +973,6 @@ describe('Chat Store - queued turn flow', () => {
       spaceId: wrongSpaceId,
       conversationId,
       content: 'should be blocked',
-      aiBrowserEnabled: false,
       createdAt: Date.now()
     })
 
@@ -1018,7 +995,6 @@ describe('Chat Store - queued turn flow', () => {
       spaceId: wrongSpaceId,
       conversationId,
       content: 'should not enter queue',
-      aiBrowserEnabled: false,
       mode: 'code'
     })
 
@@ -1046,7 +1022,6 @@ describe('Chat Store - queued turn flow', () => {
           spaceId: wrongSpaceId,
           conversationId,
           content: 'head mismatch',
-          aiBrowserEnabled: false,
           mode: 'code',
           createdAt: Date.now()
         }

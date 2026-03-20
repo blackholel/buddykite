@@ -1032,7 +1032,7 @@ export function MessageList({
               />
             )}
 
-            {/* Real-time browser task card - shows AI browser operations as they happen */}
+            {/* Real-time browser task card - shows browser operations as they happen */}
             {streamingBrowserToolCalls.length > 0 && (
               <div className="mb-2">
                 <BrowserTaskCard

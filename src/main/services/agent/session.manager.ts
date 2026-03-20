@@ -545,7 +545,6 @@ function getSessionRebuildReasons(existing: SessionConfig, next: SessionConfig):
   const reasons: string[] = []
   if ((existing.spaceId || '') !== (next.spaceId || '')) reasons.push('spaceId')
   if ((existing.workDir || '') !== (next.workDir || '')) reasons.push('workDir')
-  if (existing.aiBrowserEnabled !== next.aiBrowserEnabled) reasons.push('aiBrowserEnabled')
   if (existing.skillsLazyLoad !== next.skillsLazyLoad) reasons.push('skillsLazyLoad')
   if ((existing.responseLanguage || 'en') !== (next.responseLanguage || 'en')) reasons.push('responseLanguage')
   if ((existing.profileId || '') !== (next.profileId || '')) reasons.push('profileId')
@@ -564,7 +563,6 @@ function buildSessionConfigSignature(config: SessionConfig): string {
   return JSON.stringify({
     spaceId: config.spaceId || '',
     workDir: config.workDir || '',
-    aiBrowserEnabled: config.aiBrowserEnabled,
     skillsLazyLoad: config.skillsLazyLoad,
     responseLanguage: config.responseLanguage || 'en',
     profileId: config.profileId || '',
@@ -672,13 +670,11 @@ export async function getOrCreateV2Session(
         `[Agent][${sessionKey}] Session config changed, rebuilding session`,
         {
           from: {
-            aiBrowserEnabled: rebuiltExisting.config.aiBrowserEnabled,
             responseLanguage: rebuiltExisting.config.responseLanguage || 'en',
             profileId: rebuiltExisting.config.profileId,
             effectiveModel: rebuiltExisting.config.effectiveModel
           },
           to: {
-            aiBrowserEnabled: config.aiBrowserEnabled,
             responseLanguage: config.responseLanguage || 'en',
             profileId: config.profileId,
             effectiveModel: config.effectiveModel
@@ -722,7 +718,6 @@ export async function getOrCreateV2Session(
       config: config || {
       spaceId,
       workDir: typeof sdkOptions?.cwd === 'string' ? sdkOptions.cwd : undefined,
-      aiBrowserEnabled: false,
       skillsLazyLoad: false,
       resourceRuntimePolicy: 'app-single-source',
       slashRuntimeMode: 'native',
@@ -1009,7 +1004,6 @@ export async function ensureSessionWarm(
     effectiveModel: resolved.effectiveModel,
     useAnthropicCompatModelMapping: resolved.useAnthropicCompatModelMapping,
     electronPath,
-    aiBrowserEnabled: false,
     thinkingEnabled: false,
     responseLanguage: normalizedResponseLanguage,
     disableToolsForCompat: effectiveAi.disableToolsForCompat,
@@ -1048,7 +1042,6 @@ export async function ensureSessionWarm(
       sessionConfig: {
         spaceId,
         workDir,
-        aiBrowserEnabled: false,
         skillsLazyLoad,
         responseLanguage: normalizedResponseLanguage,
         profileId: effectiveAi.profileId,

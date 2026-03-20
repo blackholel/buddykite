@@ -10,10 +10,6 @@ vi.mock('../../../src/main/services/config.service', () => ({
   }))
 }))
 
-vi.mock('../../../src/main/services/ai-browser', () => ({
-  isAIBrowserTool: vi.fn((toolName: string) => toolName.startsWith('browser_'))
-}))
-
 vi.mock('../../../src/main/http/websocket', () => ({
   broadcastToWebSocket: vi.fn()
 }))

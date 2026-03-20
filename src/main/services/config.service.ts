@@ -299,7 +299,7 @@ const DEFAULT_MCP_SERVERS: Record<string, McpServerConfig> = {
   'chrome-devtools': {
     command: 'npx',
     args: ['-y', 'chrome-devtools-mcp@latest', '--browser-url=http://127.0.0.1:9222'],
-    disabled: true
+    disabled: false
   }
 }
 
@@ -864,9 +864,15 @@ export function getConfig(): KiteConfig {
     const mergedMcpServersBase = deepFillMissing(parsedMcpServers, DEFAULT_CONFIG.mcpServers)
     const normalizedMcpServers = ensureChromeDevtoolsBrowserUrlTarget(mergedMcpServersBase)
     const mergedMcpServers = normalizedMcpServers.servers
+    const shouldPersistChromeDevtoolsDisabledDefault = (() => {
+      const rawChrome = isPlainObject(parsedMcpServers)
+        ? (parsedMcpServers['chrome-devtools'] as Record<string, unknown> | undefined)
+        : undefined
+      return isPlainObject(rawChrome) && !Object.prototype.hasOwnProperty.call(rawChrome, 'disabled')
+    })()
     const shouldPersistMcpMigration = !isPlainObject(parsed.mcpServers) || Object.keys(DEFAULT_MCP_SERVERS).some(
       (serverName) => !(serverName in parsedMcpServers)
-    ) || normalizedMcpServers.changed
+    ) || normalizedMcpServers.changed || shouldPersistChromeDevtoolsDisabledDefault
 
     // Deep merge to ensure all nested defaults are applied
     const mergedConfig: KiteConfig = {

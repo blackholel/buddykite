@@ -12,7 +12,6 @@ import { isAbsolute, resolve, join } from 'path'
 import { broadcastToWebSocket } from '../../http/websocket'
 import { getConfig } from '../config.service'
 import { getSpaceConfig } from '../space-config.service'
-import { isAIBrowserTool } from '../ai-browser'
 import { ensureChromeDebugModeReadyForMcp } from '../chrome-debug-launcher.service'
 import { extractToolPath } from './resource-dir-guard.service'
 import { buildSessionKey } from '../../../shared/session-key'
@@ -1166,13 +1165,6 @@ export function createCanUseTool(
           }
         }
       }
-    }
-
-    // AI Browser tools are always allowed (they run in sandboxed browser context)
-    if (isAIBrowserTool(toolName)) {
-      console.log(`[Agent] AI Browser tool allowed: ${toolName}`)
-      trace.push({ layer: 'GlobalPolicy', outcome: 'allow', rule: 'ai_browser_tool_allowlist' })
-      return finish(buildAllowDecision(input))
     }
 
     // Default: allow

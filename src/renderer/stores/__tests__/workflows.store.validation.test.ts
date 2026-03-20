@@ -107,7 +107,7 @@ describe('WorkflowsStore runtime validation', () => {
     expect(mockSendMessageToConversation).toHaveBeenCalled()
     const firstCall = mockSendMessageToConversation.mock.calls[0]
     expect(firstCall[2]).toBe('/app-skill')
-    expect(firstCall[8]).toBe('workflow-step')
+    expect(firstCall[7]).toBe('workflow-step')
     expect(useWorkflowsStore.getState().error).toBeNull()
   })
 

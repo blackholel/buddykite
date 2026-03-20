@@ -72,7 +72,6 @@ describe('Internal observability routes', () => {
       responseLanguage: 'zh-CN',
       imageCount: 0,
       fileContextCount: 0,
-      aiBrowserEnabled: false,
       thinkingEnabled: false
     })
     finalizeAgentRunObservation(handle, {
