@@ -13,6 +13,10 @@ import type {
 import { resolve } from 'path'
 import { cpus } from 'os'
 import { getConfig, onApiConfigChange } from '../config.service'
+import {
+  ensureChromeDebugModeReadyForMcp,
+  forceChromeDevtoolsUseBrowserUrl
+} from '../chrome-debug-launcher.service'
 import { getSpaceConfig } from '../space-config.service'
 import { resolveResourceRuntimePolicy as resolveNormalizedRuntimePolicy } from '../resource-runtime-policy.service'
 import { clearSessionId, getConversation } from '../conversation.service'
@@ -231,6 +235,20 @@ function isInvalidMcpConfigError(error: unknown): boolean {
   )
 }
 
+function isChromeDevtoolsPortError(error: unknown): boolean {
+  return errorMessage(error).toLowerCase().includes('devtoolsactiveport')
+}
+
+async function prepareChromeDebugEndpointForMcp(
+  sdkOptions: Record<string, any>
+): Promise<void> {
+  try {
+    await ensureChromeDebugModeReadyForMcp(sdkOptions)
+  } catch (error) {
+    console.warn('[Agent] Failed to prepare Chrome debugging endpoint for MCP:', error)
+  }
+}
+
 function buildMcpFallbackOptions(
   sdkOptions: Record<string, any>
 ): Record<string, any> | null {
@@ -281,21 +299,39 @@ async function initializeQuerySession(
 }
 
 async function createV2SessionFromQuery(sdkOptions: Record<string, any>): Promise<V2SDKSession> {
+  const preparedSdkOptions = forceChromeDevtoolsUseBrowserUrl(sdkOptions)
+  await prepareChromeDebugEndpointForMcp(preparedSdkOptions)
+
   try {
-    const initialized = await initializeQuerySession(sdkOptions)
+    const initialized = await initializeQuerySession(preparedSdkOptions)
     return createQueryBackedSession(initialized.querySession, initialized.inputQueue)
   } catch (error) {
-    if (!isInvalidMcpConfigError(error)) {
-      throw error
+    let effectiveError: unknown = error
+
+    if (isChromeDevtoolsPortError(error)) {
+      console.warn(
+        '[Agent] chrome-devtools MCP initialization failed with DevToolsActivePort; retrying after launching Chrome in debugging mode'
+      )
+      await prepareChromeDebugEndpointForMcp(preparedSdkOptions)
+      try {
+        const retried = await initializeQuerySession(preparedSdkOptions)
+        return createQueryBackedSession(retried.querySession, retried.inputQueue)
+      } catch (retryError) {
+        effectiveError = retryError
+      }
     }
 
-    const fallbackOptions = buildMcpFallbackOptions(sdkOptions)
+    if (!isInvalidMcpConfigError(effectiveError)) {
+      throw effectiveError
+    }
+
+    const fallbackOptions = buildMcpFallbackOptions(preparedSdkOptions)
     if (!fallbackOptions) {
-      throw error
+      throw effectiveError
     }
 
     const mcpServerNames = Object.keys(
-      (sdkOptions.mcpServers as Record<string, unknown> | undefined) ?? {}
+      (preparedSdkOptions.mcpServers as Record<string, unknown> | undefined) ?? {}
     )
     console.warn(
       `[Agent] Invalid MCP configuration detected; retrying session without MCP servers (${mcpServerNames.join(', ') || 'unknown'})`

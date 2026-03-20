@@ -17,6 +17,10 @@ import {
 } from './provider-resolver'
 import { resolveEffectiveConversationAi } from './ai-config-resolver'
 import { getEnabledMcpServers } from './sdk-config.builder'
+import {
+  ensureChromeDebugModeReadyForMcp,
+  forceChromeDevtoolsUseBrowserUrl
+} from '../chrome-debug-launcher.service'
 import type { McpServerStatusInfo } from './types'
 
 // Cached MCP status - updated when SDK reports status during conversation
@@ -97,8 +101,6 @@ export async function testMcpConnections(
       return { success: true, servers: [], error: 'No MCP servers configured' }
     }
 
-    console.log('[Agent] MCP servers to test:', Object.keys(enabledMcpServers).join(', '))
-
     // Use a temp space path for the query
     const cwd = getTempSpacePath()
 
@@ -116,6 +118,14 @@ export async function testMcpConnections(
       resolved.vendor,
       resolved.useAnthropicCompatModelMapping
     )
+
+    const preparedMcpOptions = forceChromeDevtoolsUseBrowserUrl({
+      mcpServers: enabledMcpServers
+    }) as { mcpServers?: Record<string, unknown> }
+    const preparedMcpServers = (preparedMcpOptions.mcpServers || enabledMcpServers) as Record<string, unknown>
+    await ensureChromeDebugModeReadyForMcp({ mcpServers: preparedMcpServers })
+
+    console.log('[Agent] MCP servers to test:', Object.keys(preparedMcpServers).join(', '))
 
     // Create query with proper configuration (matching sendMessage)
     // Use a simple prompt that will get a quick response
@@ -144,7 +154,7 @@ export async function testMcpConnections(
         },
         permissionMode: 'bypassPermissions',
         abortController,
-        mcpServers: enabledMcpServers,
+        mcpServers: preparedMcpServers,
         maxTurns: 1 // Only need one turn to get MCP status
       } as any
     })

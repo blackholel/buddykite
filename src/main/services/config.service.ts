@@ -295,6 +295,14 @@ const DEFAULT_API_CONFIG: LegacyApiConfig = {
   model: DEFAULT_MODEL
 }
 
+const DEFAULT_MCP_SERVERS: Record<string, McpServerConfig> = {
+  'chrome-devtools': {
+    command: 'npx',
+    args: ['-y', 'chrome-devtools-mcp@latest', '--browser-url=http://127.0.0.1:9222'],
+    disabled: true
+  }
+}
+
 // Default configuration
 const DEFAULT_CONFIG: KiteConfig = {
   api: DEFAULT_API_CONFIG,
@@ -327,7 +335,7 @@ const DEFAULT_CONFIG: KiteConfig = {
     homeGuideHidden: false,
     starterExperienceHidden: false
   },
-  mcpServers: {},  // Empty by default
+  mcpServers: DEFAULT_MCP_SERVERS,
   isFirstLaunch: true,
   configSourceMode: 'kite',
   resourceExposure: {
@@ -408,6 +416,86 @@ function isBuiltInSeedDisabled(): boolean {
   const value = process.env[DISABLE_BUILTIN_SEED_ENV_KEY]
   if (!value) return false
   return ['1', 'true', 'yes', 'on'].includes(value.toLowerCase())
+}
+
+function stripCliOptionArgs(args: string[], optionNames: string[]): string[] {
+  const output: string[] = []
+  for (let i = 0; i < args.length; i += 1) {
+    const current = args[i]
+    const matched = optionNames.find((name) => current === name || current.startsWith(`${name}=`))
+    if (!matched) {
+      output.push(current)
+      continue
+    }
+
+    if (current === matched) {
+      const next = args[i + 1]
+      if (typeof next === 'string' && !next.startsWith('-')) {
+        i += 1
+      }
+    }
+  }
+  return output
+}
+
+function ensureChromeDevtoolsBrowserUrlTarget(
+  mcpServers: KiteConfig['mcpServers']
+): { servers: KiteConfig['mcpServers']; changed: boolean } {
+  if (!isPlainObject(mcpServers)) {
+    return { servers: mcpServers, changed: false }
+  }
+
+  const rawConfig = mcpServers['chrome-devtools']
+  if (!isPlainObject(rawConfig) || typeof rawConfig.command !== 'string') {
+    return { servers: mcpServers, changed: false }
+  }
+
+  const args = Array.isArray(rawConfig.args)
+    ? rawConfig.args.filter((arg): arg is string => typeof arg === 'string')
+    : []
+
+  const hasChromeDevtoolsPackage = args.some((arg) => arg.includes('chrome-devtools-mcp'))
+  if (!hasChromeDevtoolsPackage) {
+    return { servers: mcpServers, changed: false }
+  }
+
+  const hasAutoConnect = args.some(
+    (arg) => arg === '--autoConnect' || arg === '--auto-connect'
+  )
+  const hasBrowserUrl = args.some(
+    (arg) => arg.startsWith('--browser-url') || arg.startsWith('--browserUrl')
+  )
+  const hasExplicitConnectTarget = args.some(
+    (arg) =>
+      arg.startsWith('--ws-endpoint') ||
+      arg.startsWith('--wsEndpoint')
+  )
+
+  if (hasExplicitConnectTarget) {
+    return { servers: mcpServers, changed: false }
+  }
+
+  const nextArgs = stripCliOptionArgs(args, ['--autoConnect', '--auto-connect'])
+  if (!hasBrowserUrl) {
+    nextArgs.push('--browser-url=http://127.0.0.1:9222')
+  }
+
+  const changed =
+    hasAutoConnect ||
+    !hasBrowserUrl ||
+    nextArgs.length !== args.length ||
+    nextArgs.some((value, idx) => value !== args[idx])
+  if (!changed) {
+    return { servers: mcpServers, changed: false }
+  }
+
+  const updatedServers = { ...mcpServers }
+  updatedServers['chrome-devtools'] = {
+    ...(rawConfig as Record<string, unknown>),
+    args: nextArgs
+  } as McpServerConfig
+
+  return { servers: updatedServers, changed: true }
 }
 
 function deepFillMissing<T>(target: T, seedValue: unknown): T {
@@ -770,6 +858,15 @@ export function getConfig(): KiteConfig {
     const legacyApi = ensureLegacyApiConfig(parsed.api, DEFAULT_CONFIG.api)
     const ai = ensureAiConfig(parsed.ai, legacyApi)
     const mirroredApi = mirrorAiToLegacyApi(ai, legacyApi)
+    const parsedMcpServers = isPlainObject(parsed.mcpServers)
+      ? (parsed.mcpServers as KiteConfig['mcpServers'])
+      : {}
+    const mergedMcpServersBase = deepFillMissing(parsedMcpServers, DEFAULT_CONFIG.mcpServers)
+    const normalizedMcpServers = ensureChromeDevtoolsBrowserUrlTarget(mergedMcpServersBase)
+    const mergedMcpServers = normalizedMcpServers.servers
+    const shouldPersistMcpMigration = !isPlainObject(parsed.mcpServers) || Object.keys(DEFAULT_MCP_SERVERS).some(
+      (serverName) => !(serverName in parsedMcpServers)
+    ) || normalizedMcpServers.changed
 
     // Deep merge to ensure all nested defaults are applied
     const mergedConfig: KiteConfig = {
@@ -792,8 +889,7 @@ export function getConfig(): KiteConfig {
         }
       },
       onboarding: { ...DEFAULT_CONFIG.onboarding, ...parsed.onboarding },
-      // mcpServers is a flat map, just use parsed value or default
-      mcpServers: parsed.mcpServers || DEFAULT_CONFIG.mcpServers,
+      mcpServers: mergedMcpServers,
       // analytics: keep as-is (managed by analytics.service.ts)
       analytics: parsed.analytics,
       configSourceMode: normalizeConfigSourceMode(parsed.configSourceMode),
@@ -854,7 +950,12 @@ export function getConfig(): KiteConfig {
     const shouldPersistThemeMigration = parsed.appearance?.theme !== undefined
       && parsed.appearance.theme !== mergedConfig.appearance.theme
 
-    if (hadLegacyTaxonomyField || shouldPersistThemeMigration || shouldPersistOnboardingMigration) {
+    if (
+      hadLegacyTaxonomyField ||
+      shouldPersistThemeMigration ||
+      shouldPersistOnboardingMigration ||
+      shouldPersistMcpMigration
+    ) {
       writeFileSync(configPath, JSON.stringify(mergedConfig, null, 2))
     }
 
@@ -977,7 +1078,11 @@ export function saveConfig(config: Partial<KiteConfig>): KiteConfig {
   }
   // mcpServers: replace entirely when provided (not merged)
   if (updatesWithoutLegacy.mcpServers !== undefined) {
-    newConfig.mcpServers = updatesWithoutLegacy.mcpServers as KiteConfig['mcpServers']
+    const nextMcpServers = isPlainObject(updatesWithoutLegacy.mcpServers)
+      ? (updatesWithoutLegacy.mcpServers as KiteConfig['mcpServers'])
+      : {}
+    const mergedMcpServers = deepFillMissing(nextMcpServers, DEFAULT_CONFIG.mcpServers)
+    newConfig.mcpServers = ensureChromeDevtoolsBrowserUrlTarget(mergedMcpServers).servers
   }
   // analytics: replace entirely when provided (managed by analytics.service.ts)
   if (updatesWithoutLegacy.analytics !== undefined) {

@@ -682,6 +682,73 @@ describe('Config Service', () => {
       expect(saved.onboarding.homeGuideHidden).toBe(true)
       expect(saved.onboarding.starterExperienceHidden).toBe(true)
     })
+
+    it('should inject built-in mcp servers when persisted mcpServers is empty', async () => {
+      await initializeApp()
+
+      const configPath = getConfigPath()
+      fs.writeFileSync(configPath, JSON.stringify({
+        mcpServers: {},
+        isFirstLaunch: false
+      }))
+
+      const config = getConfig()
+      expect(config.mcpServers['chrome-devtools']).toBeDefined()
+      expect(config.mcpServers['chrome-devtools'].command).toBe('npx')
+
+      const saved = JSON.parse(fs.readFileSync(configPath, 'utf-8'))
+      expect(saved.mcpServers['chrome-devtools']).toBeDefined()
+    })
+
+    it('should append --browser-url for chrome-devtools mcp when missing', async () => {
+      await initializeApp()
+
+      const configPath = getConfigPath()
+      fs.writeFileSync(configPath, JSON.stringify({
+        mcpServers: {
+          'chrome-devtools': {
+            command: 'npx',
+            args: ['-y', 'chrome-devtools-mcp@latest']
+          }
+        },
+        isFirstLaunch: false
+      }))
+
+      const config = getConfig()
+      expect(config.mcpServers['chrome-devtools']).toBeDefined()
+      expect((config.mcpServers['chrome-devtools'] as { args?: string[] }).args).toContain(
+        '--browser-url=http://127.0.0.1:9222'
+      )
+
+      const saved = JSON.parse(fs.readFileSync(configPath, 'utf-8'))
+      expect(saved.mcpServers['chrome-devtools'].args).toContain(
+        '--browser-url=http://127.0.0.1:9222'
+      )
+    })
+
+    it('should migrate --autoConnect to --browser-url for chrome-devtools mcp', async () => {
+      await initializeApp()
+
+      const configPath = getConfigPath()
+      fs.writeFileSync(configPath, JSON.stringify({
+        mcpServers: {
+          'chrome-devtools': {
+            command: 'npx',
+            args: ['-y', 'chrome-devtools-mcp@latest', '--autoConnect']
+          }
+        },
+        isFirstLaunch: false
+      }))
+
+      const config = getConfig()
+      const args = (config.mcpServers['chrome-devtools'] as { args?: string[] }).args || []
+      expect(args).toContain('--browser-url=http://127.0.0.1:9222')
+      expect(args).not.toContain('--autoConnect')
+
+      const saved = JSON.parse(fs.readFileSync(configPath, 'utf-8'))
+      expect(saved.mcpServers['chrome-devtools'].args).toContain('--browser-url=http://127.0.0.1:9222')
+      expect(saved.mcpServers['chrome-devtools'].args).not.toContain('--autoConnect')
+    })
   })
 
   describe('saveConfig', () => {
@@ -742,7 +809,8 @@ describe('Config Service', () => {
       } as any)
 
       const config = getConfig()
-      expect(config.mcpServers).toEqual({ server2: { command: 'cmd2' } })
+      expect(config.mcpServers['server2']).toEqual({ command: 'cmd2' })
+      expect(config.mcpServers['chrome-devtools']).toBeDefined()
     })
 
     it('should normalize invalid configSourceMode to kite', () => {

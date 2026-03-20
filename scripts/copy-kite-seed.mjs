@@ -68,6 +68,13 @@ const excludedPluginNames = new Set(
     .map((fullName) => fullName.split('@')[0]?.trim())
     .filter(Boolean)
 )
+const defaultPackagedMcpServers = {
+  'chrome-devtools': {
+    command: 'npx',
+    args: ['-y', 'chrome-devtools-mcp@latest', '--autoConnect'],
+    disabled: true
+  }
+}
 
 function isDirectory(path) {
   try {
@@ -138,6 +145,26 @@ function isPlainObject(value) {
   return value && typeof value === 'object' && !Array.isArray(value)
 }
 
+function deepFillMissing(target, source) {
+  if (!isPlainObject(target) || !isPlainObject(source)) {
+    return target
+  }
+
+  const merged = { ...target }
+  for (const [key, value] of Object.entries(source)) {
+    if (!(key in merged)) {
+      merged[key] = JSON.parse(JSON.stringify(value))
+      continue
+    }
+
+    if (isPlainObject(merged[key]) && isPlainObject(value)) {
+      merged[key] = deepFillMissing(merged[key], value)
+    }
+  }
+
+  return merged
+}
+
 function sanitizeConfig(config) {
   if (!config || typeof config !== 'object' || Array.isArray(config)) return null
   const sanitized = sanitizeSecrets(JSON.parse(JSON.stringify(config)))
@@ -153,6 +180,9 @@ function sanitizeConfig(config) {
       }
     }
   }
+
+  const mcpServers = isPlainObject(sanitized.mcpServers) ? sanitized.mcpServers : {}
+  sanitized.mcpServers = deepFillMissing(mcpServers, defaultPackagedMcpServers)
 
   delete sanitized.analytics
 

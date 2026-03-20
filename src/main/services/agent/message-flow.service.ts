@@ -8,6 +8,7 @@
 import { BrowserWindow } from 'electron'
 import { promises as fsPromises } from 'fs'
 import { getConfig } from '../config.service'
+import { ensureChromeDebugModeReadyForMcp } from '../chrome-debug-launcher.service'
 import { getSpaceConfig } from '../space-config.service'
 import { resolveResourceRuntimePolicy as resolveNormalizedRuntimePolicy } from '../resource-runtime-policy.service'
 import { getCommand } from '../commands.service'
@@ -66,6 +67,7 @@ import {
 import {
   acquireSessionWithResumeFallback,
   closeV2Session,
+  reconnectMcpServer,
   getActiveSession,
   getActiveSessions,
   setActiveSession,
@@ -169,6 +171,23 @@ function hasUsageTokenFields(usage: {
 
 const getErrorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : typeof error === 'string' ? error : ''
+
+const CHROME_DEVTOOLS_MCP_SERVER_NAME = 'chrome-devtools'
+
+function isChromeDevtoolsMcpToolName(toolName: string | undefined): boolean {
+  if (typeof toolName !== 'string') return false
+  return toolName.startsWith('mcp__chrome-devtools__')
+}
+
+function isChromeDevtoolsConnectionError(output: string): boolean {
+  const normalized = output.toLowerCase()
+  if (!normalized) return false
+  return (
+    normalized.includes('could not connect to chrome') ||
+    normalized.includes('devtoolsactiveport') ||
+    normalized.includes('remote-debugging-port')
+  )
+}
 
 const isAbortLikeError = (error: unknown): boolean => {
   if (error instanceof Error && error.name === 'AbortError') return true
@@ -2162,6 +2181,7 @@ export async function sendMessage(
       sendToRenderer('agent:process', spaceId, conversationId, processEvent)
     }
     let loadedSkillEventSeq = 0
+    let chromeDevtoolsRecoveryTriggered = false
     const emittedLoadedSkillKeys = new Set<string>()
     const emitLoadedSkills = (skills: string[], source: 'native' | 'legacy'): void => {
       if (!shouldEmitSlashSkillLoadedEvent(slashRuntimeMode, source)) {
@@ -2890,6 +2910,62 @@ If the user asks about this project/codebase, inspect files in current workspace
               ts: normalizedThought.timestamp,
               visibility: normalizedThought.visibility
             })
+
+            const shouldRecoverChromeDevtoolsMcp =
+              isError &&
+              isChromeDevtoolsMcpToolName(existingToolCall?.name) &&
+              isChromeDevtoolsConnectionError(toolOutput)
+            if (shouldRecoverChromeDevtoolsMcp && !chromeDevtoolsRecoveryTriggered) {
+              chromeDevtoolsRecoveryTriggered = true
+              emitProcessEvent(
+                'mcp_recover',
+                {
+                  serverName: CHROME_DEVTOOLS_MCP_SERVER_NAME,
+                  phase: 'started',
+                  reason: 'tool_result_connection_error',
+                  toolCallId
+                },
+                {
+                  ts: normalizedThought.timestamp,
+                  visibility: 'debug'
+                }
+              )
+              void (async () => {
+                try {
+                  await ensureChromeDebugModeReadyForMcp(sdkOptions as Record<string, unknown>)
+                  const reconnectResult = await reconnectMcpServer(
+                    spaceId,
+                    conversationId,
+                    CHROME_DEVTOOLS_MCP_SERVER_NAME
+                  )
+                  emitProcessEvent(
+                    'mcp_recover',
+                    {
+                      serverName: CHROME_DEVTOOLS_MCP_SERVER_NAME,
+                      phase: reconnectResult.success ? 'success' : 'failed',
+                      error: reconnectResult.error || null,
+                      toolCallId
+                    },
+                    {
+                      visibility: 'debug'
+                    }
+                  )
+                } catch (recoveryError) {
+                  emitProcessEvent(
+                    'mcp_recover',
+                    {
+                      serverName: CHROME_DEVTOOLS_MCP_SERVER_NAME,
+                      phase: 'failed',
+                      error: getErrorMessage(recoveryError) || 'unknown error',
+                      toolCallId
+                    },
+                    {
+                      visibility: 'debug'
+                    }
+                  )
+                }
+              })()
+            }
           } else if (normalizedThought.type === 'result') {
             resultContentFromThought = normalizedThought.content || undefined
             const finalContent = resolveFinalContent({

@@ -19,6 +19,7 @@ import { ToolIcon } from '../icons/ToolIcons'
 import { useChatStore } from '../../stores/chat.store'
 import type { ToolCall } from '../../types'
 import { useTranslation } from '../../i18n'
+import { formatToolNameForDisplay } from '../../utils/mcp-tool-display'
 
 interface ToolCardProps {
   toolCall: ToolCall
@@ -97,7 +98,10 @@ export function ToolCard({ toolCall, conversationId }: ToolCardProps) {
   }
 
   const getToolDisplayName = (name: string): string => {
-    return TOOL_DISPLAY_NAMES[name] ?? name
+    if (TOOL_DISPLAY_NAMES[name]) {
+      return TOOL_DISPLAY_NAMES[name]
+    }
+    return formatToolNameForDisplay(name)
   }
 
   // Get tool description from input

@@ -24,6 +24,7 @@ import { getToolIcon } from '../icons/ToolIcons'
 import { TodoCard, parseTodoInput } from '../tool/TodoCard'
 import type { Thought, ParallelGroup, ToolStatus } from '../../types'
 import { useTranslation } from '../../i18n'
+import { formatToolNameForDisplay, isMcpToolName } from '../../utils/mcp-tool-display'
 import {
   getThoughtKey,
   truncateText,
@@ -114,6 +115,14 @@ function getActionSummaryData(thoughts: Thought[]): { key: string; params?: Reco
   for (let i = thoughts.length - 1; i >= 0; i--) {
     const t = thoughts[i]
     if (t.type === 'tool_use' && t.toolName) {
+      if (isMcpToolName(t.toolName)) {
+        return {
+          key: 'Using {{tool}}...',
+          params: {
+            tool: truncateText(formatToolNameForDisplay(t.toolName), 36)
+          }
+        }
+      }
       const input = t.toolInput
       switch (t.toolName) {
         case 'Read': return { key: 'Reading {{file}}...', params: { file: extractFileName(input?.file_path, 20) } }
@@ -190,7 +199,7 @@ const ThoughtItem = memo(function ThoughtItem({
   // Build content based on thought type
   function buildContent(): string {
     if (thought.type === 'tool_use') {
-      return `${thought.toolName}: ${JSON.stringify(thought.toolInput || {}).substring(0, 100)}`
+      return `${formatToolNameForDisplay(thought.toolName)}: ${JSON.stringify(thought.toolInput || {}).substring(0, 100)}`
     }
     if (thought.type === 'tool_result') {
       return (thought.toolOutput || '').substring(0, 200)
@@ -222,7 +231,7 @@ const ThoughtItem = memo(function ThoughtItem({
         <div className="flex items-center gap-2 mb-0.5">
           <span className={`text-[11px] font-medium ${color}`}>
             {t(getThoughtLabelKey(thought.type))}
-            {thought.toolName && ` · ${thought.toolName}`}
+            {thought.toolName && ` · ${formatToolNameForDisplay(thought.toolName)}`}
           </span>
           <span className="text-[10px] text-muted-foreground/30 tabular-nums">
             {new Date(thought.timestamp).toLocaleTimeString('zh-CN', {
@@ -343,7 +352,9 @@ const ParallelGroupView = memo(function ParallelGroupView({
             >
               <div className="flex items-center gap-2">
                 <Icon size={14} />
-                <span className="font-medium truncate flex-1">{thought.toolName}</span>
+                <span className="font-medium truncate flex-1">
+                  {formatToolNameForDisplay(thought.toolName)}
+                </span>
                 {status === 'running' && (
                   <Loader2 size={12} className="animate-spin" />
                 )}

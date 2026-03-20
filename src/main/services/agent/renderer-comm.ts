@@ -13,6 +13,7 @@ import { broadcastToWebSocket } from '../../http/websocket'
 import { getConfig } from '../config.service'
 import { getSpaceConfig } from '../space-config.service'
 import { isAIBrowserTool } from '../ai-browser'
+import { ensureChromeDebugModeReadyForMcp } from '../chrome-debug-launcher.service'
 import { extractToolPath } from './resource-dir-guard.service'
 import { buildSessionKey } from '../../../shared/session-key'
 import { ASK_USER_QUESTION_ERROR_CODES } from './types'
@@ -157,6 +158,10 @@ function isExternalBrowserLaunchCommand(command: string): boolean {
   if (hasLauncher && targetsWebPage) return true
   if (hasBrowserExecutable && targetsWebPage) return true
   return false
+}
+
+function isChromeDevtoolsMcpToolName(toolName: string): boolean {
+  return toolName.startsWith('mcp__chrome-devtools__')
 }
 
 function resolveShellPathToken(token: string, absoluteWorkDir: string): string {
@@ -838,6 +843,10 @@ export function createCanUseTool(
   const slashRuntimeMode = options?.slashRuntimeMode || resolvedSlashRuntimeMode
   const resourcePolicy = getSpaceResourcePolicy(workDir)
   const strictSpaceOnly = isStrictSpaceOnlyPolicy(resourcePolicy)
+  const mcpServersForChromePrewarm: Record<string, unknown> = {
+    ...((config.mcpServers || {}) as Record<string, unknown>),
+    ...((spaceConfig?.claudeCode?.mcpServers || {}) as Record<string, unknown>)
+  }
   const executionBoundaryRoots = buildExecutionBoundaryRoots(
     absoluteWorkDir,
     config,
@@ -933,6 +942,16 @@ export function createCanUseTool(
       `[Agent] canUseTool called - Tool: ${toolName}, Input:`,
       JSON.stringify(input).substring(0, 200)
     )
+
+    if (isChromeDevtoolsMcpToolName(toolName)) {
+      try {
+        await ensureChromeDebugModeReadyForMcp({
+          mcpServers: mcpServersForChromePrewarm
+        })
+      } catch (error) {
+        console.warn('[Agent] Failed to prewarm Chrome DevTools MCP endpoint:', error)
+      }
+    }
 
     if (toolName === 'AskUserQuestion') {
       // Wait for user response using session-specific resolver.

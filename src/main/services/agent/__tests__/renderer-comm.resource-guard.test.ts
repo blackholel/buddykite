@@ -21,6 +21,10 @@ vi.mock('../../ai-browser', () => ({
   isAIBrowserTool: vi.fn(() => false)
 }))
 
+vi.mock('../../chrome-debug-launcher.service', () => ({
+  ensureChromeDebugModeReadyForMcp: vi.fn().mockResolvedValue(undefined)
+}))
+
 vi.mock('../../../http/websocket', () => ({
   broadcastToWebSocket: vi.fn()
 }))
@@ -51,6 +55,7 @@ vi.mock('../space-resource-policy.service', () => ({
   isStrictSpaceOnlyPolicy: vi.fn(() => true)
 }))
 
+import { ensureChromeDebugModeReadyForMcp } from '../../chrome-debug-launcher.service'
 import { createCanUseTool, resolveToolPolicyConflict } from '../renderer-comm'
 
 function createHandler() {
@@ -214,6 +219,20 @@ describe('renderer-comm resource-dir guard', () => {
 
     expect(result.behavior).toBe('allow')
     expect(result.updatedInput).toEqual(input)
+  })
+
+  it('allows chrome-devtools MCP tool and prewarms debug endpoint', async () => {
+    const canUseTool = createHandler()
+    const input = { type: 'url', url: 'https://www.baidu.com' }
+    const result = await canUseTool(
+      'mcp__chrome-devtools__navigate_page',
+      input,
+      { signal: new AbortController().signal }
+    )
+
+    expect(result.behavior).toBe('allow')
+    expect(result.updatedInput).toEqual(input)
+    expect(ensureChromeDebugModeReadyForMcp).toHaveBeenCalled()
   })
 
   it('allows Bash access to configured global path', async () => {

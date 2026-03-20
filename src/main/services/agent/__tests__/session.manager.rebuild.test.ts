@@ -45,7 +45,13 @@ vi.mock('../../resource-index.service', () => ({
   getResourceIndexHash: vi.fn(() => 'resource-hash')
 }))
 
+vi.mock('../../chrome-debug-launcher.service', () => ({
+  ensureChromeDebugModeReadyForMcp: vi.fn().mockResolvedValue(undefined),
+  forceChromeDevtoolsUseBrowserUrl: vi.fn((options) => options)
+}))
+
 import { query } from '@anthropic-ai/claude-agent-sdk'
+import { ensureChromeDebugModeReadyForMcp } from '../../chrome-debug-launcher.service'
 import { getConfig, onApiConfigChange } from '../../config.service'
 import { clearSessionId, getConversation } from '../../conversation.service'
 import { resolveEffectiveConversationAi } from '../ai-config-resolver'
@@ -463,6 +469,46 @@ describe('session.manager rebuild', () => {
     ).toBe(false)
     expect(closeInvalidMcp).toHaveBeenCalledTimes(1)
     expect(closeRecovered).not.toHaveBeenCalled()
+  })
+
+  it('初始化命中 DevToolsActivePort 时会触发 Chrome 预热后重试', async () => {
+    const closeRetry = vi.fn()
+    vi.mocked(query)
+      .mockReset()
+      .mockReturnValueOnce(createQueryMock({
+        initializationResult: vi.fn().mockRejectedValue(
+          new Error('Could not find DevToolsActivePort file')
+        )
+      }))
+      .mockReturnValueOnce(createQueryMock({ close: closeRetry }))
+
+    await getOrCreateV2Session(
+      'space-1',
+      'conv-devtools-port',
+      {
+        cwd: '/workspace/project',
+        mcpServers: {
+          'chrome-devtools': {
+            command: 'npx',
+            args: ['-y', 'chrome-devtools-mcp@latest', '--autoConnect']
+          }
+        }
+      },
+      undefined,
+      {
+        aiBrowserEnabled: false,
+        skillsLazyLoad: false,
+        profileId: 'profile-a',
+        providerSignature: 'sig-a',
+        effectiveModel: 'model-a',
+        enabledPluginMcpsHash: 'mcp-1',
+        hasCanUseTool: true
+      }
+    )
+
+    expect(query).toHaveBeenCalledTimes(2)
+    expect(ensureChromeDebugModeReadyForMcp).toHaveBeenCalled()
+    expect(closeRetry).not.toHaveBeenCalled()
   })
 
   it('resume 失败非白名单错误直接抛出，不 fallback', async () => {

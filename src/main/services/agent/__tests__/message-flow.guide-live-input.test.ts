@@ -5,6 +5,7 @@ import { guideLiveInput, sendMessage } from '../message-flow.service'
 const sessionManagerMocks = vi.hoisted(() => ({
   acquireSessionWithResumeFallback: vi.fn(),
   closeV2Session: vi.fn(),
+  reconnectMcpServer: vi.fn(),
   getActiveSession: vi.fn(),
   setActiveSession: vi.fn(),
   deleteActiveSession: vi.fn(),
@@ -35,6 +36,7 @@ const changeSetMocks = vi.hoisted(() => ({
 vi.mock('../session.manager', () => ({
   acquireSessionWithResumeFallback: sessionManagerMocks.acquireSessionWithResumeFallback,
   closeV2Session: sessionManagerMocks.closeV2Session,
+  reconnectMcpServer: sessionManagerMocks.reconnectMcpServer,
   getActiveSession: sessionManagerMocks.getActiveSession,
   setActiveSession: sessionManagerMocks.setActiveSession,
   deleteActiveSession: sessionManagerMocks.deleteActiveSession,

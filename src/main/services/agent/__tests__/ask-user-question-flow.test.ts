@@ -9,6 +9,7 @@ import { ASK_USER_QUESTION_ERROR_CODES } from '../types'
 const sessionManagerMocks = vi.hoisted(() => ({
   acquireSessionWithResumeFallback: vi.fn(),
   closeV2Session: vi.fn(),
+  reconnectMcpServer: vi.fn(),
   getActiveSession: vi.fn(),
   setActiveSession: vi.fn(),
   deleteActiveSession: vi.fn(),
@@ -23,6 +24,7 @@ const sessionManagerMocks = vi.hoisted(() => ({
 vi.mock('../session.manager', () => ({
   acquireSessionWithResumeFallback: sessionManagerMocks.acquireSessionWithResumeFallback,
   closeV2Session: sessionManagerMocks.closeV2Session,
+  reconnectMcpServer: sessionManagerMocks.reconnectMcpServer,
   getActiveSession: sessionManagerMocks.getActiveSession,
   setActiveSession: sessionManagerMocks.setActiveSession,
   deleteActiveSession: sessionManagerMocks.deleteActiveSession,
