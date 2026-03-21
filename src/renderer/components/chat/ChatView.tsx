@@ -582,6 +582,7 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
             <>
               <MessageList
                 messages={displayMessages}
+                conversationId={currentConversationId}
                 streamingContent={displayStreamingContent}
                 isGenerating={displayIsGenerating}
                 activeRunId={activeRunId}

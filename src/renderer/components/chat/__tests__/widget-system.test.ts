@@ -6,6 +6,10 @@ import {
   sanitizeForIframe,
   sanitizeForStreaming
 } from '../../../lib/widget-sanitizer'
+import {
+  WIDGET_STABILITY_EVENT_TYPES,
+  createWidgetStabilityEmitter
+} from '../../../lib/widget-stability-events'
 
 function widgetSegments(content: string) {
   return parseAllShowWidgets(content).filter((segment) => segment.type === 'widget')
@@ -135,5 +139,76 @@ describe('widget-sanitizer', () => {
     expect(srcdoc).toContain('widget:resize')
     expect(srcdoc).toContain('widget:error')
     expect(srcdoc).toContain('ResizeObserver')
+  })
+})
+
+describe('widget-stability-events', () => {
+  it('eventType 枚举保持固定顺序', () => {
+    expect(WIDGET_STABILITY_EVENT_TYPES).toEqual([
+      'widget_ready',
+      'widget_update_sent',
+      'widget_finalize_sent',
+      'widget_resize_recv',
+      'widget_theme_sent',
+      'widget_error_recv',
+      'widget_link_open'
+    ])
+  })
+
+  it('runId 缺失时不产生日志事件', () => {
+    const events: unknown[] = []
+    const emitter = createWidgetStabilityEmitter(
+      {
+        runId: '',
+        conversationId: 'conv-1',
+        widgetKey: 'w-1',
+        instanceId: 'instance-1'
+      },
+      {
+        sink: (event) => events.push(event)
+      }
+    )
+
+    const result = emitter.emit({
+      eventType: 'widget_ready',
+      isPartial: true
+    })
+
+    expect(result).toBeNull()
+    expect(events).toHaveLength(0)
+  })
+
+  it('同一 instanceId 下 seq 单调递增，且保留固定字段', () => {
+    const events: Array<Record<string, unknown>> = []
+    const emitter = createWidgetStabilityEmitter(
+      {
+        runId: 'run-1',
+        conversationId: 'conv-1',
+        widgetKey: 'w-1',
+        instanceId: 'instance-1'
+      },
+      {
+        sink: (event) => events.push(event as unknown as Record<string, unknown>),
+        now: (() => {
+          let now = 1000
+          return () => {
+            now += 25
+            return now
+          }
+        })()
+      }
+    )
+
+    emitter.emit({ eventType: 'widget_ready', isPartial: true })
+    emitter.emit({ eventType: 'widget_update_sent', isPartial: true })
+    emitter.emit({ eventType: 'widget_finalize_sent', isPartial: false })
+
+    expect(events).toHaveLength(3)
+    expect(events.map((event) => event.seq)).toEqual([1, 2, 3])
+    expect(events.every((event) => event.runId === 'run-1')).toBe(true)
+    expect(events.every((event) => event.conversationId === 'conv-1')).toBe(true)
+    expect(events.every((event) => event.widgetKey === 'w-1')).toBe(true)
+    expect(events.every((event) => typeof event.timestamp === 'string')).toBe(true)
+    expect(events.every((event) => typeof event.latencyMs === 'number')).toBe(true)
   })
 })

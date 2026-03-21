@@ -70,6 +70,7 @@ interface McpActivityItem {
 
 interface MessageListProps {
   messages: Message[]
+  conversationId?: string | null
   streamingContent: string
   isGenerating: boolean
   activeRunId?: string | null
@@ -245,13 +246,17 @@ function StreamingBubble({
   isStreaming,
   thoughts,
   textBlockVersion = 0,
-  workDir
+  workDir,
+  runId,
+  conversationId
 }: {
   content: string
   isStreaming: boolean
   thoughts: Thought[]
   textBlockVersion?: number
   workDir?: string
+  runId?: string | null
+  conversationId?: string | null
 }) {
   // DOM refs for measuring heights
   const historyRef = useRef<HTMLDivElement>(null)  // Contains all past segments
@@ -471,6 +476,8 @@ function StreamingBubble({
                         title={segment.title}
                         widgetCode={segment.widgetCode}
                         isPartial={segment.isPartial}
+                        runId={runId}
+                        conversationId={conversationId}
                       />
                     </WidgetErrorBoundary>
                   )
@@ -515,6 +522,8 @@ function StreamingBubble({
                     title={segment.title}
                     widgetCode={segment.widgetCode}
                     isPartial={segment.isPartial}
+                    runId={runId}
+                    conversationId={conversationId}
                   />
                 </WidgetErrorBoundary>
               )
@@ -534,6 +543,7 @@ function StreamingBubble({
 
 export function MessageList({
   messages,
+  conversationId = null,
   streamingContent,
   isGenerating,
   activeRunId = null,
@@ -1079,6 +1089,8 @@ export function MessageList({
                 thoughts={runtimeThoughts}
                 textBlockVersion={textBlockVersion}
                 workDir={workDir}
+                runId={activeRunId}
+                conversationId={conversationId}
               />
             )}
 

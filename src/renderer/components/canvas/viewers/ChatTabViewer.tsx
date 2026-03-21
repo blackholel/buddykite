@@ -289,6 +289,7 @@ export function ChatTabViewer({ tab }: ChatTabViewerProps) {
             <>
               <MessageList
                 messages={messages}
+                conversationId={conversationId}
                 streamingContent={streamingContent}
                 isGenerating={isGenerating}
                 activeRunId={activeRunId}

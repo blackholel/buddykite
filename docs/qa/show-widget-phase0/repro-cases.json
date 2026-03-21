@@ -1,0 +1,171 @@
+[
+  {
+    "case_id": "single_widget_01",
+    "title": "单 widget 基础闭环（简单卡片）",
+    "input": "请用 show-widget 渲染一个简单 KPI 卡片，标题为 Revenue，数值为 1.2M。",
+    "expected_observables": {
+      "widget_present": true,
+      "partial_rendered": true,
+      "finalize_sent": true,
+      "widget_error": false,
+      "height_jump": false
+    },
+    "tags": ["single_widget", "smoke"],
+    "severity": "high"
+  },
+  {
+    "case_id": "single_widget_02",
+    "title": "单 widget 图表闭环（柱状图）",
+    "input": "请用 show-widget 输出一个 4 个月销售额柱状图，不要生成额外 html 文件。",
+    "expected_observables": {
+      "widget_present": true,
+      "partial_rendered": true,
+      "finalize_sent": true,
+      "widget_error": false,
+      "height_jump": false
+    },
+    "tags": ["single_widget", "chart"],
+    "severity": "high"
+  },
+  {
+    "case_id": "multi_widget_01",
+    "title": "同条回复双 widget（KPI + 图表）",
+    "input": "同一条回复里先给一个 KPI 卡片，再给一个趋势图，两个都用 show-widget。",
+    "expected_observables": {
+      "widget_present": true,
+      "partial_rendered": true,
+      "finalize_sent": true,
+      "widget_error": false,
+      "height_jump": false
+    },
+    "tags": ["multi_widget", "concurrency"],
+    "severity": "high"
+  },
+  {
+    "case_id": "multi_widget_02",
+    "title": "同条回复双图表（线图 + 饼图）",
+    "input": "请在同条回复中渲染线图和饼图两个 widget，验证互不串扰。",
+    "expected_observables": {
+      "widget_present": true,
+      "partial_rendered": true,
+      "finalize_sent": true,
+      "widget_error": false,
+      "height_jump": false
+    },
+    "tags": ["multi_widget", "chart"],
+    "severity": "high"
+  },
+  {
+    "case_id": "mixed_text_widget_01",
+    "title": "文本-Widget-文本混排（分析结论）",
+    "input": "先输出 2 句结论，再给 show-widget 可视化，最后再给 2 条总结建议。",
+    "expected_observables": {
+      "widget_present": true,
+      "partial_rendered": true,
+      "finalize_sent": true,
+      "widget_error": false,
+      "height_jump": false
+    },
+    "tags": ["mixed_text_widget", "layout"],
+    "severity": "medium"
+  },
+  {
+    "case_id": "mixed_text_widget_02",
+    "title": "长文本夹 widget（Markdown 列表 + 图）",
+    "input": "先输出一段 markdown 列表，再插入 show-widget 图表，最后继续 markdown 列表。",
+    "expected_observables": {
+      "widget_present": true,
+      "partial_rendered": true,
+      "finalize_sent": true,
+      "widget_error": false,
+      "height_jump": false
+    },
+    "tags": ["mixed_text_widget", "markdown"],
+    "severity": "medium"
+  },
+  {
+    "case_id": "unclosed_fence_01",
+    "title": "流式中断未闭合 fence（应仅 partial）",
+    "input": "模拟网络抖动：让 show-widget JSON 在输出中途截断，不要补全闭合围栏。",
+    "expected_observables": {
+      "widget_present": true,
+      "partial_rendered": true,
+      "finalize_sent": false,
+      "widget_error": false,
+      "height_jump": false
+    },
+    "tags": ["unclosed_fence", "partial_only"],
+    "severity": "high"
+  },
+  {
+    "case_id": "unclosed_fence_02",
+    "title": "未闭合 script 片段（partial 清洗）",
+    "input": "输出 show-widget，包含未闭合 script 片段并中途停止，验证 partial 清洗。",
+    "expected_observables": {
+      "widget_present": true,
+      "partial_rendered": true,
+      "finalize_sent": false,
+      "widget_error": false,
+      "height_jump": false
+    },
+    "tags": ["unclosed_fence", "script"],
+    "severity": "high"
+  },
+  {
+    "case_id": "script_finalize_01",
+    "title": "finalize 前后脚本行为（Chart CDN）",
+    "input": "使用 show-widget 输出 chart.js 图表，要求 streaming 阶段仅静态，finalize 后可交互。",
+    "expected_observables": {
+      "widget_present": true,
+      "partial_rendered": true,
+      "finalize_sent": true,
+      "widget_error": false,
+      "height_jump": false
+    },
+    "tags": ["script_finalize", "cdn"],
+    "severity": "high"
+  },
+  {
+    "case_id": "script_finalize_02",
+    "title": "inline script finalize（按钮交互）",
+    "input": "输出一个带按钮点击计数的 show-widget，确认 finalize 后交互生效。",
+    "expected_observables": {
+      "widget_present": true,
+      "partial_rendered": true,
+      "finalize_sent": true,
+      "widget_error": false,
+      "height_jump": false
+    },
+    "tags": ["script_finalize", "interactive"],
+    "severity": "high"
+  },
+  {
+    "case_id": "theme_switch_01",
+    "title": "浅色->深色切换主题同步",
+    "input": "生成 show-widget 后切换到深色主题，确认 widget 主题变量同步。",
+    "expected_observables": {
+      "widget_present": true,
+      "partial_rendered": true,
+      "finalize_sent": true,
+      "widget_error": false,
+      "height_jump": false
+    },
+    "tags": ["theme_switch", "dark_mode"],
+    "severity": "medium"
+  },
+  {
+    "case_id": "theme_switch_02",
+    "title": "深色->浅色切换主题同步",
+    "input": "生成 show-widget 后切换到浅色主题，确认 widget 背景/文字对比正常。",
+    "expected_observables": {
+      "widget_present": true,
+      "partial_rendered": true,
+      "finalize_sent": true,
+      "widget_error": false,
+      "height_jump": false
+    },
+    "tags": ["theme_switch", "light_mode"],
+    "severity": "medium"
+  }
+]
+
