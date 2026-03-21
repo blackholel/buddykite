@@ -1496,7 +1496,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     await ensureConversationLoadedImpl(set, get, spaceId, conversationId, {
       setCurrent: false,
       subscribe: true,
-      warmSession: true
+      warmSession: false
     })
   },
 

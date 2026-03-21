@@ -449,6 +449,56 @@ function resolveMaxWorkers(): number {
   return normalized
 }
 
+function getWorkerLimitEvictionCandidates(): Array<[string, V2SessionInfo]> {
+  return Array.from(v2Sessions.entries())
+    .filter(([sessionKey]) => !activeSessions.has(sessionKey))
+    .sort((left, right) => {
+      const lastUsedDiff = left[1].lastUsedAt - right[1].lastUsedAt
+      if (lastUsedDiff !== 0) {
+        return lastUsedDiff
+      }
+      const createdDiff = left[1].createdAt - right[1].createdAt
+      if (createdDiff !== 0) {
+        return createdDiff
+      }
+      return left[0].localeCompare(right[0])
+    })
+}
+
+function evictReusableSessionsForWorkerLimit(maxWorkers: number): {
+  evictedCount: number
+  activeCount: number
+  evictableCount: number
+} {
+  const entries = Array.from(v2Sessions.entries())
+  const activeCount = entries.reduce((count, [sessionKey]) => (
+    activeSessions.has(sessionKey) ? count + 1 : count
+  ), 0)
+  const candidates = getWorkerLimitEvictionCandidates()
+  let evictedCount = 0
+
+  for (const [sessionKey] of candidates) {
+    if (v2Sessions.size < maxWorkers) {
+      break
+    }
+    const latestInfo = v2Sessions.get(sessionKey)
+    if (!latestInfo || activeSessions.has(sessionKey)) {
+      continue
+    }
+    console.log(`[Agent][${sessionKey}] Evicting reusable V2 session before creating new session`)
+    v2Sessions.delete(sessionKey)
+    lastResourceIndexRebuildAt.delete(sessionKey)
+    closeSessionSafely(latestInfo.session, `[Agent][${sessionKey}][worker-limit-evict]`)
+    evictedCount += 1
+  }
+
+  return {
+    evictedCount,
+    activeCount,
+    evictableCount: candidates.length
+  }
+}
+
 export function classifyResumeError(error: unknown): {
   code: ResumeErrorCode
   retryable: boolean
@@ -693,10 +743,21 @@ export async function getOrCreateV2Session(
   console.log(`[Agent][${sessionKey}] Creating new V2 session${sessionId ? ` with resume: ${sessionId}` : ''}`)
   const maxWorkers = resolveMaxWorkers()
   if (v2Sessions.size >= maxWorkers) {
-    throw createSessionLimitError(
-      'WORKER_LIMIT_REACHED',
-      `Worker limit reached (${v2Sessions.size}/${maxWorkers})`
-    )
+    const { evictedCount, activeCount, evictableCount } = evictReusableSessionsForWorkerLimit(maxWorkers)
+    if (v2Sessions.size >= maxWorkers) {
+      console.warn('[Agent] WORKER_LIMIT_REACHED diagnostics', {
+        sessionKey,
+        currentSessions: v2Sessions.size,
+        maxWorkers,
+        activeSessions: activeCount,
+        evictableSessions: evictableCount,
+        evictedSessions: evictedCount
+      })
+      throw createSessionLimitError(
+        'WORKER_LIMIT_REACHED',
+        `Worker limit reached (${v2Sessions.size}/${maxWorkers})`
+      )
+    }
   }
   const startTime = Date.now()
 

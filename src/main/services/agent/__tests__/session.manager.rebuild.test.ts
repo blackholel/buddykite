@@ -653,7 +653,7 @@ describe('session.manager cleanup', () => {
     expect(close).toHaveBeenCalledTimes(1)
   })
 
-  it('maxWorkers 达到上限时拒绝新建会话', async () => {
+  it('maxWorkers 达到上限时会优先淘汰非 active 会话后新建', async () => {
     const closeA = vi.fn()
     const closeB = vi.fn()
     vi.mocked(getConfig).mockReturnValue({
@@ -666,13 +666,64 @@ describe('session.manager cleanup', () => {
       .mockReturnValueOnce(createQueryMock({ close: closeB }))
 
     await getOrCreateV2Session('space-1', 'conv-limit-a', {}, undefined, baseConfig)
+    await getOrCreateV2Session('space-1', 'conv-limit-b', {}, undefined, baseConfig)
+
+    expect(query).toHaveBeenCalledTimes(2)
+    expect(closeA).toHaveBeenCalledTimes(1)
+    expect(closeB).not.toHaveBeenCalled()
+  })
+
+  it('maxWorkers 达到上限且全部 active 时拒绝新建', async () => {
+    const closeA = vi.fn()
+    const closeB = vi.fn()
+    vi.mocked(getConfig).mockReturnValue({
+      claudeCode: {
+        maxWorkers: 1
+      }
+    } as any)
+    vi.mocked(query)
+      .mockReturnValueOnce(createQueryMock({ close: closeA }))
+      .mockReturnValueOnce(createQueryMock({ close: closeB }))
+
+    await getOrCreateV2Session('space-1', 'conv-limit-active-a', {}, undefined, baseConfig)
+    setActiveSession('space-1', 'conv-limit-active-a', createRunningSessionState('conv-limit-active-a'))
+
     await expect(
-      getOrCreateV2Session('space-1', 'conv-limit-b', {}, undefined, baseConfig)
+      getOrCreateV2Session('space-1', 'conv-limit-active-b', {}, undefined, baseConfig)
     ).rejects.toMatchObject({
       errorCode: 'WORKER_LIMIT_REACHED'
     })
 
     expect(query).toHaveBeenCalledTimes(1)
+    expect(closeA).not.toHaveBeenCalled()
+    expect(closeB).not.toHaveBeenCalled()
+    deleteActiveSession('space-1', 'conv-limit-active-a')
+  })
+
+  it('淘汰顺序遵循 LRU（lastUsedAt 最旧优先）', async () => {
+    const closeOld = vi.fn()
+    const closeNew = vi.fn()
+    const closeThird = vi.fn()
+    vi.mocked(getConfig).mockReturnValue({
+      claudeCode: {
+        maxWorkers: 2
+      }
+    } as any)
+    vi.mocked(query)
+      .mockReturnValueOnce(createQueryMock({ close: closeOld }))
+      .mockReturnValueOnce(createQueryMock({ close: closeNew }))
+      .mockReturnValueOnce(createQueryMock({ close: closeThird }))
+
+    await getOrCreateV2Session('space-1', 'conv-lru-old', {}, undefined, baseConfig)
+    await vi.advanceTimersByTimeAsync(1000)
+    await getOrCreateV2Session('space-1', 'conv-lru-new', {}, undefined, baseConfig)
+    await vi.advanceTimersByTimeAsync(1000)
+    await getOrCreateV2Session('space-1', 'conv-lru-third', {}, undefined, baseConfig)
+
+    expect(query).toHaveBeenCalledTimes(3)
+    expect(closeOld).toHaveBeenCalledTimes(1)
+    expect(closeNew).not.toHaveBeenCalled()
+    expect(closeThird).not.toHaveBeenCalled()
   })
 
   it.each([

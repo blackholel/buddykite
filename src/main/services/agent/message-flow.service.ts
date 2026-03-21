@@ -1699,14 +1699,15 @@ export async function sendMessage(
   }
   setActiveSession(spaceId, conversationId, sessionState)
 
-  sendToRenderer('agent:run-start', spaceId, conversationId, {
-    type: 'run_start',
-    runId,
-    runEpoch,
-    startedAt: startedAtIso,
-    mode: effectiveMode,
-    slashRuntimeMode
-  })
+  try {
+    sendToRenderer('agent:run-start', spaceId, conversationId, {
+      type: 'run_start',
+      runId,
+      runEpoch,
+      startedAt: startedAtIso,
+      mode: effectiveMode,
+      slashRuntimeMode
+    })
 
   let toolsSnapshotVersion = 0
   const emitToolsSnapshot = (tools: string[], phase: ToolSnapshotPhase) => {
@@ -3316,31 +3317,37 @@ If the user asks about this project/codebase, inspect files in current workspace
 
     // Close V2 session on error (it may be in a bad state)
     closeV2Session(spaceId, conversationId)
-  } finally {
-    if (!observationFinalized) {
-      finalizeObservation('error', 'error', {
-        finalContent: resolveFinalContent({
-          resultContent: resultContentFromThought,
-          latestAssistantContent: sessionState.latestAssistantContent,
-          accumulatedTextContent,
-          currentStreamingText: isStreamingTextBlock ? currentStreamingText : undefined
-        }) || undefined,
-        tokenUsage,
-        toolsById: sessionState.toolsById,
-        errorMessage: 'run finalized unexpectedly without terminal reason'
-      })
+    } finally {
+      if (!observationFinalized) {
+        finalizeObservation('error', 'error', {
+          finalContent: resolveFinalContent({
+            resultContent: resultContentFromThought,
+            latestAssistantContent: sessionState.latestAssistantContent,
+            accumulatedTextContent,
+            currentStreamingText: isStreamingTextBlock ? currentStreamingText : undefined
+          }) || undefined,
+          tokenUsage,
+          toolsById: sessionState.toolsById,
+          errorMessage: 'run finalized unexpectedly without terminal reason'
+        })
+      }
+      releaseDispatchSlot()
+      if (idleTimeoutId) {
+        clearTimeout(idleTimeoutId)
+        idleTimeoutId = null
+      }
+      // Clean up active session state (but keep V2 session for reuse)
+      deleteActiveSession(spaceId, conversationId, runId)
+      clearPendingChangeSet(spaceId, conversationId)
+      console.log(
+        `[Agent][${conversationId}] Active session state cleaned up. V2 sessions: ${getV2SessionsCount()}`
+      )
     }
+  } catch (error) {
     releaseDispatchSlot()
-    if (idleTimeoutId) {
-      clearTimeout(idleTimeoutId)
-      idleTimeoutId = null
-    }
-    // Clean up active session state (but keep V2 session for reuse)
     deleteActiveSession(spaceId, conversationId, runId)
     clearPendingChangeSet(spaceId, conversationId)
-    console.log(
-      `[Agent][${conversationId}] Active session state cleaned up. V2 sessions: ${getV2SessionsCount()}`
-    )
+    throw error
   }
 }
 
@@ -3348,6 +3355,27 @@ If the user asks about this project/codebase, inspect files in current workspace
 interface SessionTarget {
   spaceId: string
   conversationId: string
+  expectedRunId?: string
+}
+
+function createSessionTarget(spaceId: string, conversationId: string): SessionTarget {
+  const activeSession = getActiveSession(spaceId, conversationId)
+  return {
+    spaceId,
+    conversationId,
+    expectedRunId: activeSession?.runId
+  }
+}
+
+function shouldCloseStoppedConversationSession(target: SessionTarget): boolean {
+  const currentActive = getActiveSession(target.spaceId, target.conversationId)
+  if (!currentActive) {
+    return true
+  }
+  if (!target.expectedRunId) {
+    return false
+  }
+  return currentActive.runId === target.expectedRunId
 }
 
 function resolvePendingApproval(target: SessionTarget): void {
@@ -3408,8 +3436,17 @@ async function interruptAndDrain(target: SessionTarget, timeoutMs = 3000): Promi
 }
 
 function cleanupConversation(target: SessionTarget): void {
-  deleteActiveSession(target.spaceId, target.conversationId)
+  if (target.expectedRunId) {
+    deleteActiveSession(target.spaceId, target.conversationId, target.expectedRunId)
+  }
   clearPendingChangeSet(target.spaceId, target.conversationId)
+  if (shouldCloseStoppedConversationSession(target)) {
+    closeV2Session(target.spaceId, target.conversationId)
+  } else {
+    console.log(
+      `[Agent] Skip closing V2 session for ${target.spaceId}:${target.conversationId} because a newer run is active`
+    )
+  }
   console.log(`[Agent] Stopped generation for conversation: ${target.spaceId}:${target.conversationId}`)
 }
 
@@ -3426,7 +3463,7 @@ async function stopSingleConversation(target: SessionTarget): Promise<void> {
  */
 export async function stopGeneration(spaceId: string, conversationId?: string): Promise<void> {
   if (conversationId) {
-    const singleTarget: SessionTarget = { spaceId, conversationId }
+    const singleTarget = createSessionTarget(spaceId, conversationId)
     abortGeneration(singleTarget)
     resolvePendingApproval(singleTarget)
     await stopSingleConversation(singleTarget)
@@ -3436,17 +3473,11 @@ export async function stopGeneration(spaceId: string, conversationId?: string): 
   const targetsBySessionKey = new Map<string, SessionTarget>()
   for (const target of getActiveSessions()) {
     if (target.spaceId !== spaceId) continue
-    targetsBySessionKey.set(target.sessionKey, {
-      spaceId: target.spaceId,
-      conversationId: target.conversationId
-    })
+    targetsBySessionKey.set(target.sessionKey, createSessionTarget(target.spaceId, target.conversationId))
   }
   for (const target of getV2SessionConversationIds()) {
     if (target.spaceId !== spaceId) continue
-    targetsBySessionKey.set(target.sessionKey, {
-      spaceId: target.spaceId,
-      conversationId: target.conversationId
-    })
+    targetsBySessionKey.set(target.sessionKey, createSessionTarget(target.spaceId, target.conversationId))
   }
   const targets = Array.from(targetsBySessionKey.values())
 
