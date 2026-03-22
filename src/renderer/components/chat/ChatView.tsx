@@ -9,7 +9,7 @@
  * - Compact mode (isCompact=true): Sidebar-style when Canvas is open
  */
 
-import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
+import { useState, useCallback, useEffect, useMemo, useRef, type CSSProperties } from 'react'
 import { shallow } from 'zustand/shallow'
 import { useSpaceStore } from '../../stores/space.store'
 import { useChatStore } from '../../stores/chat.store'
@@ -36,6 +36,29 @@ import { getAiSetupState } from '../../../shared/types/ai-profile'
 
 interface ChatViewProps {
   isCompact?: boolean
+}
+
+const AUTO_THREAD_MAX_WIDTH = 'clamp(860px, 72vw, 1280px)'
+const MANUAL_THREAD_MAX_WIDTH_MIN = 860
+const MANUAL_THREAD_MAX_WIDTH_MAX = 1600
+const MANUAL_THREAD_MAX_WIDTH_DEFAULT = 1100
+
+export function resolveChatThreadMaxWidthValue(
+  chatLayout: {
+    mode?: 'auto' | 'manual'
+    manualWidthPx?: number
+  } | null | undefined
+): string {
+  if (!chatLayout || chatLayout.mode !== 'manual') {
+    return AUTO_THREAD_MAX_WIDTH
+  }
+
+  const rawWidth = chatLayout.manualWidthPx
+  const normalizedWidth = typeof rawWidth === 'number' && Number.isFinite(rawWidth)
+    ? Math.max(MANUAL_THREAD_MAX_WIDTH_MIN, Math.min(MANUAL_THREAD_MAX_WIDTH_MAX, Math.round(rawWidth)))
+    : MANUAL_THREAD_MAX_WIDTH_DEFAULT
+
+  return `${normalizedWidth}px`
 }
 
 const SEARCH_HIGHLIGHT_CLASS = 'search-highlight'
@@ -551,12 +574,20 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
     }
   }, [currentConversationId, currentSpaceId, loadChangeSets])
 
+  const threadWidthStyle = useMemo(() => {
+    const maxWidth = resolveChatThreadMaxWidthValue(appConfig?.appearance?.chatLayout)
+    return {
+      '--space-thread-max-width': maxWidth
+    } as CSSProperties
+  }, [appConfig?.appearance?.chatLayout])
+
   return (
     <div
       className={`
         space-studio-chatview space-studio-chat-column flex-1 flex flex-col h-full
         transition-[padding] duration-300 ease-out
       `}
+      style={threadWidthStyle}
     >
       {/* Messages area wrapper - relative for button positioning */}
       <div className="flex-1 relative overflow-hidden">
@@ -565,7 +596,7 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
           ref={containerRef}
           onScroll={handleScroll}
           className={`
-            space-studio-message-scroll h-full overflow-auto py-7
+            space-studio-message-scroll h-full overflow-y-auto overflow-x-hidden py-7
             transition-[padding] duration-300 ease-out
             ${isCompact ? 'px-3' : 'px-4'}
           `}

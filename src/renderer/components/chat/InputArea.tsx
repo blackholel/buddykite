@@ -1189,7 +1189,7 @@ export function InputArea({
       transition-[padding] duration-300 ease-out
       ${isCompact ? 'px-3 py-2' : 'px-4 py-3'}
     `}>
-      <div className={isCompact ? '' : 'max-w-3xl mx-auto'}>
+      <div className="space-studio-thread-width">
         {/* Error toast notification */}
         {imageError && (
           <div className="mb-2 p-3 rounded-xl bg-destructive/10 border border-destructive/20

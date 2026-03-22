@@ -604,6 +604,8 @@ describe('Config Service', () => {
       expect(config.api.apiUrl).toBe('https://api.anthropic.com')
       expect(config.permissions.commandExecution).toBe('ask')
       expect(config.appearance.theme).toBe('light')
+      expect(config.appearance.chatLayout.mode).toBe('auto')
+      expect(config.appearance.chatLayout.manualWidthPx).toBe(1100)
       expect(config.onboarding.starterExperienceHidden).toBe(false)
       expect(config.isFirstLaunch).toBe(true)
       expect(config.configSourceMode).toBe('kite')
@@ -645,6 +647,29 @@ describe('Config Service', () => {
 
       const persisted = JSON.parse(fs.readFileSync(configPath, 'utf-8'))
       expect(persisted.appearance.theme).toBe('light')
+    })
+
+    it('should fill missing chatLayout defaults and persist', async () => {
+      await initializeApp()
+
+      const configPath = getConfigPath()
+      fs.writeFileSync(configPath, JSON.stringify({
+        appearance: { theme: 'dark' },
+        isFirstLaunch: false
+      }))
+
+      const config = getConfig()
+      expect(config.appearance.theme).toBe('dark')
+      expect(config.appearance.chatLayout).toEqual({
+        mode: 'auto',
+        manualWidthPx: 1100
+      })
+
+      const persisted = JSON.parse(fs.readFileSync(configPath, 'utf-8'))
+      expect(persisted.appearance.chatLayout).toEqual({
+        mode: 'auto',
+        manualWidthPx: 1100
+      })
     })
 
     it('should remove legacy taxonomy field on read and persist migrated config', async () => {
@@ -798,6 +823,28 @@ describe('Config Service', () => {
       const config = getConfig()
       expect(config.api.apiKey).toBe('test-key')
       expect(config.api.model).toBe('claude-3-opus')
+    })
+
+    it('should keep theme unchanged when saving only chatLayout', () => {
+      saveConfig({
+        appearance: { theme: 'dark' }
+      } as any)
+
+      saveConfig({
+        appearance: {
+          chatLayout: {
+            mode: 'manual',
+            manualWidthPx: 1240
+          }
+        }
+      } as any)
+
+      const config = getConfig()
+      expect(config.appearance.theme).toBe('dark')
+      expect(config.appearance.chatLayout).toEqual({
+        mode: 'manual',
+        manualWidthPx: 1240
+      })
     })
 
     it('should replace mcpServers entirely', () => {

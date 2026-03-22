@@ -39,11 +39,16 @@ const apiConfigChangeHandlers: ApiConfigChangeHandler[] = []
 const aiConfigChangeHandlers: AiConfigChangeHandler[] = []
 const CONFIG_SOURCE_MODE_VALUES = ['kite', 'claude'] as const
 const APPEARANCE_THEME_VALUES = ['light', 'dark'] as const
+const CHAT_LAYOUT_MODE_VALUES = ['auto', 'manual'] as const
 const LANGFUSE_MASK_MODE_VALUES = ['summary_hash', 'off'] as const
 const LEGACY_TAXONOMY_CONFIG_KEY = 'extension' + 'Taxonomy'
+const CHAT_LAYOUT_MANUAL_WIDTH_MIN = 860
+const CHAT_LAYOUT_MANUAL_WIDTH_MAX = 1600
+const CHAT_LAYOUT_MANUAL_WIDTH_DEFAULT = 1100
 
 export type ConfigSourceMode = (typeof CONFIG_SOURCE_MODE_VALUES)[number]
 type AppearanceThemeMode = (typeof APPEARANCE_THEME_VALUES)[number]
+type ChatLayoutMode = (typeof CHAT_LAYOUT_MODE_VALUES)[number]
 
 function normalizeLangfuseMaskMode(value: unknown): LangfuseMaskMode {
   if (typeof value === 'string' && (LANGFUSE_MASK_MODE_VALUES as readonly string[]).includes(value)) {
@@ -81,6 +86,41 @@ function normalizeAppearanceTheme(value: unknown): AppearanceThemeMode {
   }
 
   return 'light'
+}
+
+function normalizeChatLayoutMode(value: unknown): ChatLayoutMode {
+  if (value === 'auto' || value === 'manual') {
+    return value
+  }
+
+  if (value !== undefined && value !== null) {
+    console.warn('[ChatLayout] Invalid mode detected. Forced to "auto".', value)
+  }
+
+  return 'auto'
+}
+
+function normalizeChatLayoutManualWidth(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return CHAT_LAYOUT_MANUAL_WIDTH_DEFAULT
+  }
+
+  const rounded = Math.round(value)
+  return Math.max(
+    CHAT_LAYOUT_MANUAL_WIDTH_MIN,
+    Math.min(CHAT_LAYOUT_MANUAL_WIDTH_MAX, rounded)
+  )
+}
+
+function normalizeChatLayout(value: unknown): {
+  mode: ChatLayoutMode
+  manualWidthPx: number
+} {
+  const record = isPlainObject(value) ? value : {}
+  const mode = normalizeChatLayoutMode(record.mode)
+  const manualWidthPx = normalizeChatLayoutManualWidth(record.manualWidthPx)
+
+  return { mode, manualWidthPx }
 }
 
 export function normalizeConfigSourceMode(value: unknown): ConfigSourceMode {
@@ -138,6 +178,10 @@ interface KiteConfig {
   }
   appearance: {
     theme: AppearanceThemeMode
+    chatLayout: {
+      mode: ChatLayoutMode
+      manualWidthPx: number
+    }
   }
   system: {
     autoLaunch: boolean
@@ -314,7 +358,11 @@ const DEFAULT_CONFIG: KiteConfig = {
     trustMode: false
   },
   appearance: {
-    theme: 'light'
+    theme: 'light',
+    chatLayout: {
+      mode: 'auto',
+      manualWidthPx: CHAT_LAYOUT_MANUAL_WIDTH_DEFAULT
+    }
   },
   system: {
     autoLaunch: false,
@@ -873,6 +921,14 @@ export function getConfig(): KiteConfig {
     const shouldPersistMcpMigration = !isPlainObject(parsed.mcpServers) || Object.keys(DEFAULT_MCP_SERVERS).some(
       (serverName) => !(serverName in parsedMcpServers)
     ) || normalizedMcpServers.changed || shouldPersistChromeDevtoolsDisabledDefault
+    const normalizedChatLayout = normalizeChatLayout(parsed.appearance?.chatLayout)
+    const rawParsedChatLayout = isPlainObject(parsed.appearance?.chatLayout)
+      ? (parsed.appearance?.chatLayout as Record<string, unknown>)
+      : null
+    const shouldPersistChatLayoutMigration =
+      !rawParsedChatLayout
+      || rawParsedChatLayout.mode !== normalizedChatLayout.mode
+      || rawParsedChatLayout.manualWidthPx !== normalizedChatLayout.manualWidthPx
 
     // Deep merge to ensure all nested defaults are applied
     const mergedConfig: KiteConfig = {
@@ -884,7 +940,8 @@ export function getConfig(): KiteConfig {
       appearance: {
         ...DEFAULT_CONFIG.appearance,
         ...parsed.appearance,
-        theme: normalizeAppearanceTheme(parsed.appearance?.theme)
+        theme: normalizeAppearanceTheme(parsed.appearance?.theme),
+        chatLayout: normalizedChatLayout
       },
       system: {
         ...DEFAULT_CONFIG.system,
@@ -960,7 +1017,8 @@ export function getConfig(): KiteConfig {
       hadLegacyTaxonomyField ||
       shouldPersistThemeMigration ||
       shouldPersistOnboardingMigration ||
-      shouldPersistMcpMigration
+      shouldPersistMcpMigration ||
+      shouldPersistChatLayoutMigration
     ) {
       writeFileSync(configPath, JSON.stringify(mergedConfig, null, 2))
     }
@@ -1002,10 +1060,19 @@ export function saveConfig(config: Partial<KiteConfig>): KiteConfig {
     newConfig.permissions = { ...currentConfig.permissions, ...config.permissions }
   }
   if (config.appearance) {
+    const normalizedChatLayout = normalizeChatLayout(
+      Object.prototype.hasOwnProperty.call(config.appearance, 'chatLayout')
+        ? config.appearance.chatLayout
+        : currentConfig.appearance.chatLayout
+    )
     newConfig.appearance = {
       ...currentConfig.appearance,
       ...config.appearance,
-      theme: normalizeAppearanceTheme(config.appearance.theme)
+      theme:
+        config.appearance.theme === undefined
+          ? currentConfig.appearance.theme
+          : normalizeAppearanceTheme(config.appearance.theme),
+      chatLayout: normalizedChatLayout
     }
   }
   if (config.system) {

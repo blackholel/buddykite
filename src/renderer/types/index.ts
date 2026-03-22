@@ -61,6 +61,7 @@ export type PermissionLevel = 'allow' | 'ask' | 'deny';
 
 // Theme Mode
 export type ThemeMode = 'light' | 'dark';
+export type ChatLayoutMode = 'auto' | 'manual';
 // `claude` is kept only for backward-compatible payload parsing.
 // Runtime behavior is always forced to `kite`.
 export type ConfigSourceMode = 'kite' | 'claude';
@@ -119,6 +120,10 @@ export interface PermissionConfig {
 
 export interface AppearanceConfig {
   theme: ThemeMode;
+  chatLayout?: {
+    mode: ChatLayoutMode;
+    manualWidthPx: number;
+  };
 }
 
 // System configuration for auto-launch and tray behavior

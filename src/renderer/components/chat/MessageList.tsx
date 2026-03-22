@@ -869,8 +869,7 @@ export function MessageList({
 
   return (
     <div className={`
-      space-studio-message-stream space-y-3.5 transition-[max-width] duration-300 ease-out
-      ${isCompact ? 'space-studio-message-stream-compact' : 'space-studio-message-stream-regular'}
+      space-studio-message-stream space-studio-thread-width space-y-3.5 transition-[max-width] duration-300 ease-out
     `}>
       {/* Render completed messages - thoughts shown above assistant messages */}
       {mainMessages.map((message) => {

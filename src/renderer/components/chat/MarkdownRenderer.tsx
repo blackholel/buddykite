@@ -363,7 +363,7 @@ function CodeBlock({ children, className, workDir, basePath, onOpenFilePath, ...
         </button>
       </div>
 
-      <pre className="p-4 overflow-x-auto">
+      <pre className="max-w-full p-4 overflow-x-auto overscroll-x-contain">
         <code ref={codeRef} className={`${className} text-sm font-mono leading-relaxed`} {...props}>
           {children}
         </code>
@@ -467,7 +467,7 @@ function createComponents(options: {
 
     table: ({ children }: { children?: React.ReactNode }) => (
       <div className="my-3 overflow-x-auto rounded-lg border border-border/50">
-        <table className="w-full text-sm">{children}</table>
+        <table className="min-w-full w-max text-sm">{children}</table>
       </div>
     ),
     thead: ({ children }: { children?: React.ReactNode }) => (
@@ -546,7 +546,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
   }
 
   return (
-    <div className={`markdown-content ${className}`}>
+    <div className={`markdown-content min-w-0 ${className}`}>
       <ReactMarkdown
         remarkPlugins={REMARK_PLUGINS}
         rehypePlugins={REHYPE_PLUGINS}

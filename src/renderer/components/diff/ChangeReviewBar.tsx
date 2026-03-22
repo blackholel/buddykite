@@ -115,7 +115,7 @@ export function ChangeReviewBar({
   return (
     <>
       <div className={`mb-2 ${isCompact ? 'px-3' : 'px-4'}`}>
-        <div className={isCompact ? '' : 'mx-auto max-w-3xl'}>
+        <div className="space-studio-thread-width">
           <div className="w-full rounded-2xl border border-border/25 bg-secondary/10">
             {/* Summary bar */}
             <div className="flex items-center justify-between gap-3 px-3 py-2 text-xs">

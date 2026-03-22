@@ -1527,6 +1527,7 @@ body {
 
 .space-studio-chatview {
   background: hsl(var(--space-right-panel));
+  --space-thread-max-width: clamp(860px, 72vw, 1280px);
 }
 
 .space-studio-chat-column {
@@ -1535,6 +1536,7 @@ body {
 
 .space-studio-message-scroll {
   scrollbar-gutter: stable both-edges;
+  overflow-x: hidden;
 }
 
 .space-studio-message-stream {
@@ -1542,12 +1544,9 @@ body {
   margin-inline: auto;
 }
 
-.space-studio-message-stream-regular {
-  max-width: 920px;
-}
-
-.space-studio-message-stream-compact {
-  max-width: 860px;
+.space-studio-thread-width {
+  width: min(var(--space-thread-max-width, clamp(860px, 72vw, 1280px)), 100%);
+  margin-inline: auto;
 }
 
 .space-studio-message-stream > * + * {
@@ -1560,8 +1559,9 @@ body {
 }
 
 .space-studio-message-stack {
-  width: min(760px, 100%);
-  margin-inline: auto;
+  width: 100%;
+  min-width: 0;
+  margin-inline: 0;
 }
 
 .space-studio-message-stack > * + * {
@@ -2229,7 +2229,7 @@ body {
 
 .space-studio-assistant-content {
   margin-inline: auto;
-  max-width: 76ch;
+  max-width: 88ch;
   font-size: 15px;
   line-height: 1.74;
   letter-spacing: 0.002em;

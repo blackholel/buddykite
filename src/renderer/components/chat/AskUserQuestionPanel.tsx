@@ -449,12 +449,12 @@ export function AskUserQuestionPanel({
   return (
     <div
       className={`
-      mx-4 mb-2 animate-slide-up
+      mb-2 animate-slide-up
       transition-[padding] duration-300 ease-out
-      ${isCompact ? '' : ''}
+      ${isCompact ? 'px-3' : 'px-4'}
     `}
     >
-      <div className={isCompact ? '' : ''}>
+      <div className="space-studio-thread-width">
         <div className="rounded-2xl border border-border/25 bg-secondary/10 overflow-hidden">
           {/* Header with pagination */}
           <div className="flex items-center justify-between px-3 py-2 bg-secondary/20 border-b border-border/20">

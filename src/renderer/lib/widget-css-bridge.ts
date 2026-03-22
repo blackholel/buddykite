@@ -69,6 +69,12 @@ export function getWidgetIframeStyleBlock(resolvedVars: Record<string, string>):
 ${rootVars}
 }
 .dark { color-scheme: dark; }
+html,
+body {
+  max-width: 100%;
+  overflow-x: auto;
+  margin: 0;
+}
 body {
   ${WIDGET_CSS_BRIDGE}
   font-family: var(--font-sans);

@@ -8,6 +8,7 @@ import { api } from '../api'
 import type {
   KiteConfig,
   ThemeMode,
+  ChatLayoutMode,
   McpServersConfig,
   ApiProfile,
   ProviderProtocol
@@ -88,6 +89,18 @@ const THEME_OPTIONS: Array<{ value: ThemeMode; labelKey: string }> = [
   { value: 'light', labelKey: 'Light' },
   { value: 'dark', labelKey: 'Dark' }
 ]
+
+const CHAT_LAYOUT_WIDTH_MIN = 860
+const CHAT_LAYOUT_WIDTH_MAX = 1600
+const CHAT_LAYOUT_WIDTH_STEP = 20
+const CHAT_LAYOUT_WIDTH_DEFAULT = 1100
+
+function normalizeManualChatWidth(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return CHAT_LAYOUT_WIDTH_DEFAULT
+  }
+  return Math.max(CHAT_LAYOUT_WIDTH_MIN, Math.min(CHAT_LAYOUT_WIDTH_MAX, Math.round(value)))
+}
 
 type SettingsSectionId =
   | 'model'
@@ -220,6 +233,12 @@ export function SettingsPage() {
   const [defaultProfileId, setDefaultProfileId] = useState(initialAiConfig.defaultProfileId)
   const [selectedProfileId, setSelectedProfileId] = useState(initialAiConfig.defaultProfileId)
   const [theme, setTheme] = useState<ThemeMode>(config?.appearance?.theme === 'dark' ? 'dark' : 'light')
+  const [chatLayoutMode, setChatLayoutMode] = useState<ChatLayoutMode>(
+    config?.appearance?.chatLayout?.mode === 'manual' ? 'manual' : 'auto'
+  )
+  const [manualChatWidthPx, setManualChatWidthPx] = useState<number>(
+    normalizeManualChatWidth(config?.appearance?.chatLayout?.manualWidthPx)
+  )
   const [activeSection, setActiveSection] = useState<SettingsSectionId>('model')
   const [showApiKey, setShowApiKey] = useState(false)
   const [modelInput, setModelInput] = useState('')
@@ -302,7 +321,9 @@ export function SettingsPage() {
 
   useEffect(() => {
     setTheme(config?.appearance?.theme === 'dark' ? 'dark' : 'light')
-  }, [config?.appearance?.theme])
+    setChatLayoutMode(config?.appearance?.chatLayout?.mode === 'manual' ? 'manual' : 'auto')
+    setManualChatWidthPx(normalizeManualChatWidth(config?.appearance?.chatLayout?.manualWidthPx))
+  }, [config?.appearance?.chatLayout?.manualWidthPx, config?.appearance?.chatLayout?.mode, config?.appearance?.theme])
 
   // Load system settings
   useEffect(() => {
@@ -475,6 +496,55 @@ export function SettingsPage() {
 
   const handleLanguageChange = (locale: LocaleCode) => {
     setLanguage(locale)
+  }
+
+  const applyChatLayoutConfigToStore = (nextMode: ChatLayoutMode, nextManualWidthPx: number) => {
+    if (!config) return
+    setConfig({
+      ...config,
+      appearance: {
+        ...config.appearance,
+        chatLayout: {
+          mode: nextMode,
+          manualWidthPx: nextManualWidthPx
+        }
+      }
+    } as KiteConfig)
+  }
+
+  const persistChatLayoutConfig = async (nextMode: ChatLayoutMode, nextManualWidthPx: number) => {
+    const normalizedWidth = normalizeManualChatWidth(nextManualWidthPx)
+    try {
+      await api.setConfig({
+        appearance: {
+          chatLayout: {
+            mode: nextMode,
+            manualWidthPx: normalizedWidth
+          }
+        }
+      })
+      applyChatLayoutConfigToStore(nextMode, normalizedWidth)
+    } catch (error) {
+      console.error('[Settings] Failed to save chat layout:', error)
+      setChatLayoutMode(config?.appearance?.chatLayout?.mode === 'manual' ? 'manual' : 'auto')
+      setManualChatWidthPx(normalizeManualChatWidth(config?.appearance?.chatLayout?.manualWidthPx))
+    }
+  }
+
+  const handleChatLayoutModeChange = async (autoEnabled: boolean) => {
+    const nextMode: ChatLayoutMode = autoEnabled ? 'auto' : 'manual'
+    setChatLayoutMode(nextMode)
+    await persistChatLayoutConfig(nextMode, manualChatWidthPx)
+  }
+
+  const handleManualChatWidthDraftChange = (nextValue: number) => {
+    setManualChatWidthPx(normalizeManualChatWidth(nextValue))
+  }
+
+  const handleManualChatWidthCommit = async (nextValue: number) => {
+    const normalizedWidth = normalizeManualChatWidth(nextValue)
+    setManualChatWidthPx(normalizedWidth)
+    await persistChatLayoutConfig('manual', normalizedWidth)
   }
 
   // Handle auto launch change
@@ -1261,6 +1331,62 @@ export function SettingsPage() {
               {t(themeOption.labelKey)}
             </button>
           ))}
+        </div>
+      </section>
+
+      <section className="settings-modal-card settings-block-card">
+        <div className="settings-block-head">
+          <h3 className="text-base font-semibold tracking-tight">{t('Chat width')}</h3>
+          <p className="text-xs text-muted-foreground">{t('Use one shared width for messages and composer')}</p>
+        </div>
+        <div className="space-y-3">
+          <div className="settings-setting-row">
+            <div className="flex-1 pr-4">
+              <p className="font-medium">{t('Auto width')}</p>
+              <p className="text-sm text-muted-foreground">clamp(860px, 72vw, 1280px)</p>
+            </div>
+            <AppleToggle
+              checked={chatLayoutMode === 'auto'}
+              onChange={(checked) => {
+                void handleChatLayoutModeChange(checked)
+              }}
+            />
+          </div>
+
+          {chatLayoutMode === 'manual' && (
+            <div className="settings-setting-row">
+              <div className="flex-1">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="font-medium">{t('Manual max width')}</p>
+                  <span className="text-sm text-muted-foreground">{manualChatWidthPx}px</span>
+                </div>
+                <input
+                  type="range"
+                  min={CHAT_LAYOUT_WIDTH_MIN}
+                  max={CHAT_LAYOUT_WIDTH_MAX}
+                  step={CHAT_LAYOUT_WIDTH_STEP}
+                  value={manualChatWidthPx}
+                  onChange={(event) => {
+                    handleManualChatWidthDraftChange(Number(event.target.value))
+                  }}
+                  onMouseUp={(event) => {
+                    void handleManualChatWidthCommit(Number((event.currentTarget as HTMLInputElement).value))
+                  }}
+                  onTouchEnd={(event) => {
+                    void handleManualChatWidthCommit(Number((event.currentTarget as HTMLInputElement).value))
+                  }}
+                  onBlur={(event) => {
+                    void handleManualChatWidthCommit(Number((event.currentTarget as HTMLInputElement).value))
+                  }}
+                  className="mt-2 w-full accent-[hsl(var(--primary))]"
+                />
+                <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground/80">
+                  <span>{CHAT_LAYOUT_WIDTH_MIN}px</span>
+                  <span>{CHAT_LAYOUT_WIDTH_MAX}px</span>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </section>
 
