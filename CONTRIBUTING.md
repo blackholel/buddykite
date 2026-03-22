@@ -127,25 +127,43 @@ npm run build:linux
 # - baidu.extractCode
 
 # 5) Update resources/update-manifest.json
+# - distributionMode:
+#   - "dual-source" (default): requires baidu + github links
+#   - "github-only" (temporary fallback): github links only
 # - latestVersion == package.json version
 # - add a release node for that version
 # - fill platforms: darwin-arm64, win32-x64, linux-x64, default
-# - each platform must have github + baidu(url/extractCode)
+# - each platform must have github
+# - in "dual-source", each platform must also have baidu(url/extractCode)
 
 # 6) Validate manifest before publishing
 npm run check:update-manifest
 
 # 7) Publish release
-npm run release      # or release:mac / release:win / release:linux
+npm run release      # publishes mac + win
+npm run release:linux
 ```
 
 `release*` scripts run `npm run check:update-manifest` automatically, but run it manually before publish anyway.
+
+### Temporary GitHub-Only Mode (Emergency)
+
+Use this only when Baidu links are not ready yet:
+
+1. Set `distributionMode` to `"github-only"` in `resources/update-manifest.json`.
+2. Keep required `github` links for all platforms.
+3. Remove placeholder Baidu links for `latestVersion` release node.
+4. Publish as usual after `npm run check:update-manifest` passes.
+
+Once Baidu links are ready, switch back to `"dual-source"` and fill all Baidu fields.
 
 ### Post-Release Verification
 
 1. Open app: "Settings > About", click "Check for updates".
 2. In GitHub-reachable network, download target should be GitHub.
-3. In GitHub-blocked network, download target should fallback to Baidu.
+3. In GitHub-blocked network:
+   - `dual-source`: download target should fallback to Baidu.
+   - `github-only`: download target remains GitHub (known temporary limitation).
 4. For the same version, after clicking "Later", update reminder should not repeat immediately.
 
 ### Common Failures
@@ -154,7 +172,13 @@ npm run release      # or release:mac / release:win / release:linux
    version mismatch between `package.json` and `resources/update-manifest.json`.
 2. `platform "...": baidu.url is required`:
    missing Baidu URL for one or more required platforms.
-3. App still shows old version after publish:
+3. `platform "...": github link must match https://github.com/<owner>/<repo>/releases/tag/vX.Y.Z`:
+   repo/tag mismatch in manifest (`<owner>/<repo>` comes from `package.json > build.publish`).
+4. `platform "...": baidu.url contains placeholder text`:
+   you still have `replace-with-real-link-*` in manifest.
+5. `platform "...": baidu.url is required in dual-source mode`:
+   current `distributionMode` is `dual-source`, but Baidu links are missing.
+6. App still shows old version after publish:
    `latestVersion` not updated or published tag does not match `vX.Y.Z`.
 
 ## Areas We Need Help
