@@ -11,17 +11,12 @@
 2. 在 Applications 中打开 buddykite（不要在 DMG 里直接运行）
 
 ------------------------------------
-首次打开遇到安全提示怎么办
+如果首次打开被系统拦截
 ------------------------------------
-方式 A（推荐）：
-1. 在 Applications 里右键 buddykite.app
-2. 选择“打开”
-3. 在弹窗中再次点“打开”
-
-方式 B：
-1. 打开“系统设置” > “隐私与安全性”
-2. 滑到页面底部找到 buddykite 的拦截提示
+1. 先打开“系统设置” > “隐私与安全性”
+2. 找到 buddykite 的拦截提示
 3. 点击“仍要打开”
+4. 或者在 Applications 里右键 buddykite.app，再点“打开”
 
 ------------------------------------
 如果出现“已损坏，无法打开”
@@ -32,6 +27,8 @@
 临时排查（仅在你确认来源可信时使用）：
 xattr -dr com.apple.quarantine /Applications/buddykite.app
 open -a /Applications/buddykite.app
+
+也可以直接双击 DMG 里的修复.command 自动执行修复。
 
 官方发布页：
 https://github.com/openkursar/hello-halo/releases/latest

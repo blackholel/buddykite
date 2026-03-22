@@ -189,26 +189,26 @@
       },
       "contents": [
         {
-          "x": 180,
-          "y": 170
+          "x": 176,
+          "y": 182
         },
         {
-          "x": 520,
-          "y": 170,
+          "x": 524,
+          "y": 182,
           "type": "link",
           "path": "/Applications"
         },
         {
-          "x": 180,
-          "y": 360,
+          "x": 404,
+          "y": 406,
           "type": "file",
-          "path": "resources/macOS-install-guide.txt"
+          "path": "resources/安装说明.txt"
         },
         {
-          "x": 360,
-          "y": 360,
+          "x": 526,
+          "y": 406,
           "type": "file",
-          "path": "resources/fix-open.command"
+          "path": "resources/修复.command"
         }
       ]
     },

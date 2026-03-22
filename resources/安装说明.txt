@@ -1,0 +1,18 @@
+buddykite macOS 安装说明
+
+正常安装只要两步：
+1) 在 DMG 窗口里把 buddykite 拖到右侧 Applications。
+2) 去 Applications 打开 buddykite。
+
+如果首次打开被系统拦截：
+1) 先在“系统设置 -> 隐私与安全性”里点击「仍要打开」。
+2) 或者在 Applications 里右键 buddykite，选择“打开”。
+
+只有上面仍失败时，再使用命令方式：
+1) 打开终端，执行：
+   xattr -dr com.apple.quarantine "/Applications/buddykite.app"
+2) 然后执行：
+   open "/Applications/buddykite.app"
+
+你也可以直接双击 DMG 里的修复.command，
+它会自动执行上面两条命令。
