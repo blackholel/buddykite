@@ -26,13 +26,6 @@ import {
   listAgentRunObservations,
   refreshObservabilityRuntime
 } from '../../services/observability'
-import {
-  addToolkitResource,
-  clearSpaceToolkit,
-  getSpaceToolkit,
-  migrateToToolkit,
-  removeToolkitResource
-} from '../../services/toolkit.service'
 
 // Helper: get working directory for a space
 function getWorkingDir(spaceId: string): string {
@@ -523,35 +516,6 @@ export function registerApiRoutes(app: Express, mainWindow: BrowserWindow | null
     const result = await agentController.testMcpConnections(mainWindow)
     res.json(result)
   })
-
-  // ===== Toolkit Routes =====
-  app.get('/api/toolkit/:spaceId', safeRoute(async (req, res) => {
-    const workDir = getWorkingDir(req.params.spaceId)
-    res.json({ success: true, data: getSpaceToolkit(workDir) })
-  }))
-
-  app.post('/api/toolkit/:spaceId/add', safeRoute(async (req, res) => {
-    const workDir = getWorkingDir(req.params.spaceId)
-    res.json({ success: true, data: addToolkitResource(workDir, req.body) })
-  }))
-
-  app.post('/api/toolkit/:spaceId/remove', safeRoute(async (req, res) => {
-    const workDir = getWorkingDir(req.params.spaceId)
-    res.json({ success: true, data: removeToolkitResource(workDir, req.body) })
-  }))
-
-  app.delete('/api/toolkit/:spaceId', safeRoute(async (req, res) => {
-    const workDir = getWorkingDir(req.params.spaceId)
-    clearSpaceToolkit(workDir)
-    res.json({ success: true, data: null })
-  }))
-
-  app.post('/api/toolkit/:spaceId/migrate', safeRoute(async (req, res) => {
-    const workDir = getWorkingDir(req.params.spaceId)
-    const skills = Array.isArray(req.body?.skills) ? req.body.skills : []
-    const agents = Array.isArray(req.body?.agents) ? req.body.agents : []
-    res.json({ success: true, data: migrateToToolkit(workDir, skills, agents) })
-  }))
 
   // ===== Preset Routes =====
   app.get('/api/presets', safeRoute(async (_req, res) => {

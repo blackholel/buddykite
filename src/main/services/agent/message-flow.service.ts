@@ -1553,7 +1553,7 @@ export async function sendMessage(
   console.log(
     `[Agent][${conversationId}] Bound resource index snapshot: hash=${boundResourceIndexHash}, skills=${resourceIndexSnapshot.counts.skills}, commands=${resourceIndexSnapshot.counts.commands}, agents=${resourceIndexSnapshot.counts.agents}, runtimePolicy=${resourceRuntimePolicy}`
   )
-  const { effectiveLazyLoad: skillsLazyLoad, toolkit } = getEffectiveSkillsLazyLoad(workDir, config)
+  const { effectiveLazyLoad: skillsLazyLoad } = getEffectiveSkillsLazyLoad(workDir, config)
   const exposureFlags = getResourceExposureRuntimeFlags()
   const allowedDirectiveSources = getExecutionLayerAllowedSources()
   const slashRuntimeMode = resolveSlashRuntimeMode(
@@ -2180,10 +2180,9 @@ export async function sendMessage(
     const expandStartedAt = Date.now()
     startAgentRunObservationPhase(observabilityHandle, 'expand_directives', expandStartedAt)
     const expandedMessage = slashRuntimeMode === 'legacy-inject'
-      ? expandLazyDirectives(messageForSend, workDir, toolkit, {
+      ? expandLazyDirectives(messageForSend, workDir, {
         skip: new Set(['mcp']),
         allowSources: allowedDirectiveSources,
-        bypassToolkitAllowlist: true,
         invocationContext: runtimeInvocationContext,
         locale: effectiveResponseLanguage,
         resourceExposureEnabled: false,

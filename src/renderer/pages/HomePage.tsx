@@ -12,13 +12,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAppStore } from '../stores/app.store'
 import { useSpaceStore } from '../stores/space.store'
-import { useToolkitStore } from '../stores/toolkit.store'
 import { useSkillsStore } from '../stores/skills.store'
 import { useAgentsStore } from '../stores/agents.store'
 import { useCommandsStore } from '../stores/commands.store'
 import { SPACE_ICONS, DEFAULT_SPACE_ICON } from '../types'
-import type { Space, CreateSpaceInput, SpaceIconId, DirectiveRef } from '../types'
-import { formatDirectiveName } from '../utils/directive-helpers'
+import type { Space, CreateSpaceInput, SpaceIconId } from '../types'
 import { resolveSpacePathKind, shortenDisplayPath } from '../utils/space-path'
 import {
   persistWorkspaceViewMode,
@@ -53,7 +51,6 @@ import {
 } from 'lucide-react'
 import { api } from '../api'
 import { useTranslation } from '../i18n'
-import { normalizeEnabledValues } from '../utils/resource-key'
 import { getAiSetupState } from '../../shared/types/ai-profile'
 import { useComposerStore } from '../stores/composer.store'
 
@@ -102,20 +99,6 @@ const QUICK_ACTIONS = [
   }
 ] as const
 
-function getLocalizedResourceName(item: { name: string; displayName?: string; namespace?: string }): string {
-  const base = item.displayName || item.name
-  return item.namespace ? `${item.namespace}:${base}` : base
-}
-
-function directiveLookupKeys(ref: DirectiveRef): string[] {
-  const source = ref.source ?? '-'
-  const namespace = ref.namespace ?? '-'
-  return [
-    `${ref.type}:${source}:${namespace}:${ref.name}`,
-    `${ref.type}:${namespace}:${ref.name}`
-  ]
-}
-
 export function HomePage(): JSX.Element {
   const { t } = useTranslation()
   const {
@@ -134,8 +117,7 @@ export function HomePage(): JSX.Element {
     setCurrentSpace,
     createSpace,
     updateSpace,
-    deleteSpace,
-    getSpacePreferences
+    deleteSpace
   } = useSpaceStore()
 
   // Dialog state
@@ -147,32 +129,9 @@ export function HomePage(): JSX.Element {
   const [editingSpace, setEditingSpace] = useState<Space | null>(null)
   const [editSpaceName, setEditSpaceName] = useState('')
   const [editSpaceIcon, setEditSpaceIcon] = useState<SpaceIconId>(DEFAULT_SPACE_ICON)
-  const [isToolkitUpdating, setIsToolkitUpdating] = useState(false)
-  const [toolkitActionError, setToolkitActionError] = useState<string | null>(null)
-  const [showClearToolkitConfirm, setShowClearToolkitConfirm] = useState(false)
-
-  const {
-    loadToolkit,
-    getToolkit,
-    clearToolkit,
-    migrateFromPreferences,
-    isToolkitLoaded
-  } = useToolkitStore()
-  const { skills, loadedWorkDir: loadedSkillsWorkDir, loadSkills } = useSkillsStore((state) => ({
-    skills: state.skills,
-    loadedWorkDir: state.loadedWorkDir,
-    loadSkills: state.loadSkills
-  }))
-  const { agents, loadedWorkDir: loadedAgentsWorkDir, loadAgents } = useAgentsStore((state) => ({
-    agents: state.agents,
-    loadedWorkDir: state.loadedWorkDir,
-    loadAgents: state.loadAgents
-  }))
-  const { commands, loadedWorkDir: loadedCommandsWorkDir, loadCommands } = useCommandsStore((state) => ({
-    commands: state.commands,
-    loadedWorkDir: state.loadedWorkDir,
-    loadCommands: state.loadCommands
-  }))
+  const skills = useSkillsStore((state) => state.skills)
+  const agents = useAgentsStore((state) => state.agents)
+  const commands = useCommandsStore((state) => state.commands)
 
   // Path selection state
   const [useCustomPath, setUseCustomPath] = useState(false)
@@ -281,146 +240,6 @@ export function HomePage(): JSX.Element {
     }, 6000)
     return () => window.clearTimeout(timer)
   }, [createSpaceSuccessPath])
-
-  // Load toolkit when editing space dialog opens
-  useEffect(() => {
-    if (!editingSpace || editingSpace.isTemp) return
-    const loaded = isToolkitLoaded(editingSpace.id)
-    if (loaded) return
-    void loadToolkit(editingSpace.id)
-  }, [editingSpace, isToolkitLoaded, loadToolkit])
-
-  useEffect(() => {
-    if (!editingSpace || editingSpace.isTemp) return
-    const workDir = editingSpace.path
-    if (skills.length === 0 || loadedSkillsWorkDir !== workDir) {
-      void loadSkills(workDir)
-    }
-    if (agents.length === 0 || loadedAgentsWorkDir !== workDir) {
-      void loadAgents(workDir)
-    }
-    if (commands.length === 0 || loadedCommandsWorkDir !== workDir) {
-      void loadCommands(workDir, true)
-    }
-  }, [
-    agents.length,
-    commands.length,
-    editingSpace,
-    loadAgents,
-    loadCommands,
-    loadSkills,
-    loadedAgentsWorkDir,
-    loadedCommandsWorkDir,
-    loadedSkillsWorkDir,
-    skills.length
-  ])
-
-  const editingToolkitLoaded = !!editingSpace && isToolkitLoaded(editingSpace.id)
-  const editingToolkit = editingSpace ? getToolkit(editingSpace.id) : null
-  const editingPreferences = editingSpace ? getSpacePreferences(editingSpace.id) : undefined
-  const legacyEnabledSkills = editingPreferences?.skills?.enabled || []
-  const legacyEnabledAgents = editingPreferences?.agents?.enabled || []
-  const normalizedEnabledSkills = useMemo(
-    () => normalizeEnabledValues(legacyEnabledSkills),
-    [legacyEnabledSkills]
-  )
-  const normalizedEnabledAgents = useMemo(
-    () => normalizeEnabledValues(legacyEnabledAgents),
-    [legacyEnabledAgents]
-  )
-  const canImportToolkit = legacyEnabledSkills.length > 0 || legacyEnabledAgents.length > 0
-
-  const directiveDisplayMap = useMemo(() => {
-    const map = new Map<string, string>()
-    for (const skill of skills) {
-      const namespace = skill.namespace ?? '-'
-      const source = skill.source ?? '-'
-      const display = `/${getLocalizedResourceName(skill)}`
-      map.set(`skill:${source}:${namespace}:${skill.name}`, display)
-      map.set(`skill:${namespace}:${skill.name}`, display)
-    }
-    for (const agent of agents) {
-      const namespace = agent.namespace ?? '-'
-      const source = agent.source ?? '-'
-      const display = `@${getLocalizedResourceName(agent)}`
-      map.set(`agent:${source}:${namespace}:${agent.name}`, display)
-      map.set(`agent:${namespace}:${agent.name}`, display)
-    }
-    for (const command of commands) {
-      const namespace = command.namespace ?? '-'
-      const source = command.source ?? '-'
-      const display = `/${getLocalizedResourceName(command)}`
-      map.set(`command:${source}:${namespace}:${command.name}`, display)
-      map.set(`command:${namespace}:${command.name}`, display)
-    }
-    return map
-  }, [agents, commands, skills])
-
-  const formatDirectiveDisplayName = useCallback((ref: DirectiveRef): string => {
-    const keys = directiveLookupKeys(ref)
-    for (const key of keys) {
-      const localized = directiveDisplayMap.get(key)
-      if (localized) return localized
-    }
-    return formatDirectiveName(ref)
-  }, [directiveDisplayMap])
-
-  const toolkitGroups = useMemo((): Array<{ key: string; title: string; items: DirectiveRef[] }> => {
-    if (!editingToolkit) return []
-    return [
-      { key: 'skills', title: t('Skills'), items: editingToolkit.skills },
-      { key: 'agents', title: t('Agents'), items: editingToolkit.agents },
-      { key: 'commands', title: t('Commands'), items: editingToolkit.commands }
-    ]
-  }, [editingToolkit, t])
-
-  const handleClearEditingToolkit = async (): Promise<void> => {
-    if (!editingSpace) return
-
-    setIsToolkitUpdating(true)
-    setToolkitActionError(null)
-
-    try {
-      await clearToolkit(editingSpace.id)
-      await loadToolkit(editingSpace.id)
-    } catch (error) {
-      console.error('[HomePage] Failed to clear toolkit:', error)
-      setToolkitActionError(t('Failed to update toolkit'))
-    } finally {
-      setIsToolkitUpdating(false)
-      setShowClearToolkitConfirm(false)
-    }
-  }
-
-  const handleImportToolkitFromPreferences = async (): Promise<void> => {
-    if (!editingSpace) return
-
-    setIsToolkitUpdating(true)
-    setToolkitActionError(null)
-
-    try {
-      if (normalizedEnabledSkills.length === 0 && normalizedEnabledAgents.length === 0) {
-        setToolkitActionError(t('Failed to parse enabled resources'))
-        return
-      }
-
-      const migrated = await migrateFromPreferences(
-        editingSpace.id,
-        normalizedEnabledSkills,
-        normalizedEnabledAgents
-      )
-      if (!migrated) {
-        setToolkitActionError(t('Failed to write toolkit resources'))
-        return
-      }
-      await loadToolkit(editingSpace.id)
-    } catch (error) {
-      console.error('[HomePage] Failed to import toolkit from preferences:', error)
-      setToolkitActionError(t('Failed to write toolkit resources'))
-    } finally {
-      setIsToolkitUpdating(false)
-    }
-  }
 
   const handleHideHomeOnboardingForNow = (): void => {
     setStarterExperienceHiddenForSession(true)
@@ -580,7 +399,6 @@ export function HomePage(): JSX.Element {
     setEditingSpace(space)
     setEditSpaceName(space.name)
     setEditSpaceIcon(space.icon as SpaceIconId)
-    setToolkitActionError(null)
   }
 
   // Handle save space edit
@@ -602,9 +420,6 @@ export function HomePage(): JSX.Element {
     setEditingSpace(null)
     setEditSpaceName('')
     setEditSpaceIcon(DEFAULT_SPACE_ICON)
-    setIsToolkitUpdating(false)
-    setToolkitActionError(null)
-    setShowClearToolkitConfirm(false)
   }
 
   // Format time ago
@@ -1343,94 +1158,6 @@ export function HomePage(): JSX.Element {
               </div>
             </div>
 
-            {/* Toolkit management */}
-            <div className="mb-7">
-              <div className="flex items-start justify-between gap-3 mb-3">
-                <div>
-                  <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    {t('Toolkit')}
-                  </label>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {t('Manage resource access for this space')}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={handleImportToolkitFromPreferences}
-                    disabled={isToolkitUpdating || !canImportToolkit}
-                    className="px-3 py-1.5 text-xs rounded-lg bg-secondary hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {t('Import from Preferences')}
-                  </button>
-                  {showClearToolkitConfirm ? (
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-xs text-muted-foreground">{t('Clear toolkit and return this space to load-all mode?')}</span>
-                      <button
-                        onClick={handleClearEditingToolkit}
-                        disabled={isToolkitUpdating}
-                        className="px-2 py-1 text-xs rounded-lg bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50"
-                      >
-                        {t('Confirm')}
-                      </button>
-                      <button
-                        onClick={() => setShowClearToolkitConfirm(false)}
-                        className="px-2 py-1 text-xs rounded-lg bg-secondary hover:bg-secondary/80"
-                      >
-                        {t('Cancel')}
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => setShowClearToolkitConfirm(true)}
-                      disabled={isToolkitUpdating || !editingToolkitLoaded || editingToolkit === null}
-                      className="px-3 py-1.5 text-xs rounded-lg bg-destructive/10 text-destructive hover:bg-destructive/20 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {t('Clear Toolkit')}
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {!editingToolkitLoaded ? (
-                <div className="rounded-xl border border-border/60 bg-secondary/20 p-3 text-xs text-muted-foreground">
-                  {t('Loading toolkit...')}
-                </div>
-              ) : editingToolkit ? (
-                <div className="space-y-3">
-                  <p className="text-xs text-muted-foreground">
-                    {t('Toolkit whitelist mode is active. Only resources listed below are available.')}
-                  </p>
-                  {toolkitGroups.map((group) => (
-                    <div key={group.key} className="rounded-xl border border-border/60 bg-secondary/20 p-3">
-                      <div className="text-xs font-medium mb-2">{group.title} ({group.items.length})</div>
-                      {group.items.length === 0 ? (
-                        <p className="text-xs text-muted-foreground">{t('No resources')}</p>
-                      ) : (
-                        <div className="flex flex-wrap gap-1.5">
-                          {group.items.map((ref) => (
-                            <span
-                              key={`${group.key}-${ref.id || `${ref.type}:${ref.namespace ?? '-'}:${ref.name}`}`}
-                              className="px-2 py-0.5 rounded-md text-[11px] font-mono bg-muted/60 text-foreground"
-                            >
-                              {formatDirectiveDisplayName(ref)}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="rounded-xl border border-border/60 bg-secondary/20 p-3 text-xs text-muted-foreground">
-                  {t('Toolkit is not configured for this space. All resources are currently available.')}
-                </div>
-              )}
-
-              {toolkitActionError && (
-                <p className="mt-2 text-xs text-destructive">{toolkitActionError}</p>
-              )}
-            </div>
-
             {/* Actions */}
             <div className="flex justify-end gap-2.5">
               <button
@@ -1441,7 +1168,7 @@ export function HomePage(): JSX.Element {
               </button>
               <button
                 onClick={handleSaveEdit}
-                disabled={!editSpaceName.trim() || isToolkitUpdating}
+                disabled={!editSpaceName.trim()}
                 className="px-5 py-2.5 btn-apple text-sm"
               >
                 {t('Save')}

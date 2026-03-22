@@ -28,8 +28,6 @@
 xattr -dr com.apple.quarantine /Applications/buddykite.app
 open -a /Applications/buddykite.app
 
-也可以直接双击 DMG 里的修复.command 自动执行修复。
-
 官方发布页：
 https://github.com/openkursar/hello-halo/releases/latest
 

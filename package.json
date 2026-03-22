@@ -199,16 +199,10 @@
           "path": "/Applications"
         },
         {
-          "x": 404,
+          "x": 466,
           "y": 406,
           "type": "file",
           "path": "resources/安装说明.txt"
-        },
-        {
-          "x": 526,
-          "y": 406,
-          "type": "file",
-          "path": "resources/修复.command"
         }
       ]
     },

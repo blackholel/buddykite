@@ -15,7 +15,7 @@ interface ResourceLike {
 
 /**
  * Build a DirectiveRef from a skill/agent/command definition.
- * The `id` is left empty so the toolkit service can compute a normalized one.
+ * The `id` is left empty so downstream services can compute a normalized one.
  */
 export function buildDirective(type: DirectiveType, resource: ResourceLike): DirectiveRef {
   return {

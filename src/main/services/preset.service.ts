@@ -1,15 +1,27 @@
 /**
  * Preset Service - Manages resource bundle presets (read-only templates)
  *
- * Presets are reusable resource bundles and no longer depend on SpaceToolkit.
- * Backward compatibility: old toolkit-shaped preset files are read and normalized.
+ * Presets are reusable resource bundles.
+ * Backward compatibility: old grouped-resource preset files are read and normalized.
  */
 
 import { join } from 'path'
 import { existsSync, readFileSync, writeFileSync, readdirSync, mkdirSync } from 'fs'
 import { getKiteDir } from './config.service'
 import type { ResourceRef } from './resource-ref.service'
-import type { SpaceToolkit } from './space-config.service'
+
+interface LegacyToolkitDirectiveRef {
+  name: string
+  namespace?: string
+  source?: string
+  path?: string
+}
+
+interface LegacyToolkitResources {
+  skills: LegacyToolkitDirectiveRef[]
+  commands: LegacyToolkitDirectiveRef[]
+  agents: LegacyToolkitDirectiveRef[]
+}
 
 export interface ResourceBundlePreset {
   id: string
@@ -77,7 +89,7 @@ function getPresetsDir(): string {
   return join(getKiteDir(), 'presets')
 }
 
-function getLegacyToolkitPresetsDir(): string {
+function getLegacyPresetDir(): string {
   return join(getKiteDir(), 'toolkit-presets')
 }
 
@@ -116,22 +128,26 @@ function normalizeResourceRef(ref: ResourceRef): ResourceRef {
   }
 }
 
-function toolkitToResourceRefs(toolkit: SpaceToolkit): ResourceRef[] {
-  const skillRefs = toolkit.skills.map((ref) => normalizeResourceRef({
+function legacyPresetResourcesToRefs(resources: LegacyToolkitResources): ResourceRef[] {
+  const skills = Array.isArray(resources.skills) ? resources.skills : []
+  const commands = Array.isArray(resources.commands) ? resources.commands : []
+  const agents = Array.isArray(resources.agents) ? resources.agents : []
+
+  const skillRefs = skills.map((ref) => normalizeResourceRef({
     type: 'skill',
     name: ref.name,
     namespace: ref.namespace,
     source: ref.source as ResourceRef['source'] | undefined,
     path: ref.path
   }))
-  const commandRefs = toolkit.commands.map((ref) => normalizeResourceRef({
+  const commandRefs = commands.map((ref) => normalizeResourceRef({
     type: 'command',
     name: ref.name,
     namespace: ref.namespace,
     source: ref.source as ResourceRef['source'] | undefined,
     path: ref.path
   }))
-  const agentRefs = toolkit.agents.map((ref) => normalizeResourceRef({
+  const agentRefs = agents.map((ref) => normalizeResourceRef({
     type: 'agent',
     name: ref.name,
     namespace: ref.namespace,
@@ -164,14 +180,14 @@ function normalizePreset(input: unknown): ResourceBundlePreset | null {
     }
   }
 
-  // Backward compatibility for old SpaceToolkit-shaped presets
+  // Backward compatibility for old grouped-resource preset shape
   if (resourcesValue && typeof resourcesValue === 'object') {
-    const toolkit = resourcesValue as SpaceToolkit
+    const legacyResources = resourcesValue as LegacyToolkitResources
     return {
       id: raw.id,
       name: raw.name,
       description: raw.description,
-      resources: toolkitToResourceRefs(toolkit),
+      resources: legacyPresetResourcesToRefs(legacyResources),
       ...(typeof raw.systemPromptAppend === 'string' ? { systemPromptAppend: raw.systemPromptAppend } : {}),
       readOnly: Boolean(raw.readOnly)
     }
@@ -182,7 +198,7 @@ function normalizePreset(input: unknown): ResourceBundlePreset | null {
 
 function loadCustomPresets(): ResourceBundlePreset[] {
   const nextGenPresets = loadPresetsFromDir(getPresetsDir())
-  const legacyPresets = loadPresetsFromDir(getLegacyToolkitPresetsDir())
+  const legacyPresets = loadPresetsFromDir(getLegacyPresetDir())
 
   // Prefer the new ~/.kite/presets entries when id collides.
   const merged = new Map<string, ResourceBundlePreset>()
@@ -204,7 +220,7 @@ function ensurePresetsDir(): string {
   const presetsDir = getPresetsDir()
   if (!existsSync(presetsDir)) {
     mkdirSync(presetsDir, { recursive: true })
-    if (existsSync(getLegacyToolkitPresetsDir())) {
+    if (existsSync(getLegacyPresetDir())) {
       console.log('[Preset] Using new custom preset directory ~/.kite/presets (legacy toolkit-presets still readable)')
     }
   }
@@ -226,14 +242,14 @@ export function getPreset(presetId: string): ResourceBundlePreset | null {
 export function savePreset(
   name: string,
   description: string,
-  resources: ResourceRef[] | SpaceToolkit
+  resources: ResourceRef[] | LegacyToolkitResources
 ): ResourceBundlePreset {
   const presetsDir = ensurePresetsDir()
 
   const id = `custom:${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
   const normalizedResources = Array.isArray(resources)
     ? resources.map((item) => normalizeResourceRef(item))
-    : toolkitToResourceRefs(resources)
+    : legacyPresetResourcesToRefs(resources)
   const preset: ResourceBundlePreset = { id, name, description, resources: normalizedResources, readOnly: false }
 
   const filePath = join(presetsDir, `${id.replace(':', '-')}.json`)

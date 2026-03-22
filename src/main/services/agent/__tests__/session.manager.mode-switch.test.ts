@@ -10,10 +10,6 @@ vi.mock('../../config.service', () => ({
   onApiConfigChange: vi.fn()
 }))
 
-vi.mock('../../toolkit.service', () => ({
-  getToolkitHash: vi.fn(() => 'toolkit-hash')
-}))
-
 vi.mock('../../conversation.service', () => ({
   getConversation: vi.fn(() => null),
   clearSessionId: vi.fn()
@@ -34,7 +30,7 @@ vi.mock('../ai-config-resolver', () => ({
 vi.mock('../sdk-config.builder', () => ({
   buildSdkOptions: vi.fn(),
   getWorkingDir: vi.fn(),
-  getEffectiveSkillsLazyLoad: vi.fn(() => ({ effectiveLazyLoad: false, toolkit: [] }))
+  getEffectiveSkillsLazyLoad: vi.fn(() => ({ effectiveLazyLoad: false, strictSpaceOnly: false }))
 }))
 
 vi.mock('../renderer-comm', () => ({

@@ -7,11 +7,9 @@ import { homedir } from 'os'
 import { dirname, isAbsolute, join, relative, resolve } from 'path'
 import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, readdirSync, rmSync, statSync, writeFileSync } from 'fs'
 import { getKiteDir, getLegacySpacesDir, getTempSpacePath, getSpacesDir } from './config.service'
-import { getSpaceConfig, updateSpaceConfig } from './space-config.service'
+import { updateSpaceConfig } from './space-config.service'
 import { v4 as uuidv4 } from 'uuid'
 import { isPathWithinBasePaths } from '../utils/path-validation'
-import { ensureSpaceResourcePolicy } from './agent/space-resource-policy.service'
-import type { ResourceRef } from './resource-ref.service'
 
 interface Space {
   id: string
@@ -37,21 +35,12 @@ interface SpaceLayoutPreferences {
 // Skills preferences for a space
 interface SpaceSkillsPreferences {
   favorites?: string[]
-  enabled?: string[]
-  showOnlyEnabled?: boolean
-}
-
-// Agents preferences for a space
-interface SpaceAgentsPreferences {
-  enabled?: string[]
-  showOnlyEnabled?: boolean
 }
 
 // All space preferences
 interface SpacePreferences {
   layout?: SpaceLayoutPreferences
   skills?: SpaceSkillsPreferences
-  agents?: SpaceAgentsPreferences
 }
 
 interface SpaceMeta {
@@ -68,15 +57,93 @@ interface SpaceIndex {
   customPaths: string[]  // Array of paths to spaces outside the default spaces root.
 }
 
-type SpaceResourceMigrationHandlers = {
-  copySkillToSpaceByRef: (ref: ResourceRef, workDir: string, options?: { overwrite?: boolean }) => unknown
-  copyAgentToSpaceByRef: (ref: ResourceRef, workDir: string, options?: { overwrite?: boolean }) => unknown
-  copyCommandToSpaceByRef: (ref: ResourceRef, workDir: string, options?: { overwrite?: boolean }) => unknown
+const WINDOWS_RESERVED_FOLDER_NAMES = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i
+
+function normalizeStringArray(input: unknown): string[] {
+  if (!Array.isArray(input)) return []
+  const seen = new Set<string>()
+  const output: string[] = []
+  for (const value of input) {
+    if (typeof value !== 'string') continue
+    const normalized = value.trim()
+    if (!normalized || seen.has(normalized)) continue
+    seen.add(normalized)
+    output.push(normalized)
+  }
+  return output
 }
 
-let migrationHandlersPromise: Promise<SpaceResourceMigrationHandlers> | null = null
+function sanitizeSpacePreferences(
+  input: SpacePreferences | Record<string, unknown> | null | undefined
+): SpacePreferences | undefined {
+  if (!input || typeof input !== 'object') return undefined
 
-const WINDOWS_RESERVED_FOLDER_NAMES = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i
+  const raw = input as Record<string, unknown>
+  const result: SpacePreferences = {}
+
+  if (raw.layout && typeof raw.layout === 'object') {
+    const layoutRaw = raw.layout as Record<string, unknown>
+    const layout: SpaceLayoutPreferences = {}
+    if (typeof layoutRaw.artifactRailExpanded === 'boolean') {
+      layout.artifactRailExpanded = layoutRaw.artifactRailExpanded
+    }
+    if (typeof layoutRaw.chatWidth === 'number' && Number.isFinite(layoutRaw.chatWidth)) {
+      layout.chatWidth = layoutRaw.chatWidth
+    }
+    if (Object.keys(layout).length > 0) {
+      result.layout = layout
+    }
+  }
+
+  if (raw.skills && typeof raw.skills === 'object') {
+    const skillsRaw = raw.skills as Record<string, unknown>
+    const favorites = normalizeStringArray(skillsRaw.favorites)
+    if (favorites.length > 0) {
+      result.skills = { favorites }
+    }
+  }
+
+  return Object.keys(result).length > 0 ? result : undefined
+}
+
+function parseSpaceMeta(raw: unknown): SpaceMeta | null {
+  if (!raw || typeof raw !== 'object') return null
+  const metaRaw = raw as Record<string, unknown>
+  if (
+    typeof metaRaw.id !== 'string' ||
+    typeof metaRaw.name !== 'string' ||
+    typeof metaRaw.icon !== 'string' ||
+    typeof metaRaw.createdAt !== 'string' ||
+    typeof metaRaw.updatedAt !== 'string'
+  ) {
+    return null
+  }
+
+  const meta: SpaceMeta = {
+    id: metaRaw.id,
+    name: metaRaw.name,
+    icon: metaRaw.icon,
+    createdAt: metaRaw.createdAt,
+    updatedAt: metaRaw.updatedAt
+  }
+
+  const preferences = sanitizeSpacePreferences(metaRaw.preferences as SpacePreferences | Record<string, unknown> | null | undefined)
+  if (preferences) {
+    meta.preferences = preferences
+  }
+
+  return meta
+}
+
+function readSpaceMetaFile(metaPath: string): SpaceMeta | null {
+  if (!existsSync(metaPath)) return null
+  try {
+    const parsed = JSON.parse(readFileSync(metaPath, 'utf-8'))
+    return parseSpaceMeta(parsed)
+  } catch {
+    return null
+  }
+}
 
 function sanitizeSpaceDirName(name: string): string {
   let normalized = name
@@ -171,14 +238,7 @@ function getSpaceMetaPath(spacePath: string): string {
 
 function readSpaceMeta(spacePath: string): SpaceMeta | null {
   const metaPath = getSpaceMetaPath(spacePath)
-  if (!existsSync(metaPath)) {
-    return null
-  }
-  try {
-    return JSON.parse(readFileSync(metaPath, 'utf-8')) as SpaceMeta
-  } catch {
-    return null
-  }
+  return readSpaceMetaFile(metaPath)
 }
 
 function isProtectedDeletionTarget(pathValue: string): boolean {
@@ -374,12 +434,8 @@ export function getKiteSpace(): Space {
   let preferences: SpacePreferences | undefined
 
   if (existsSync(metaPath)) {
-    try {
-      const meta: SpaceMeta = JSON.parse(readFileSync(metaPath, 'utf-8'))
-      preferences = meta.preferences
-    } catch {
-      // Ignore parse errors
-    }
+    const meta = readSpaceMetaFile(metaPath)
+    preferences = meta?.preferences
   }
 
   return {
@@ -398,9 +454,11 @@ function loadSpaceFromPath(spacePath: string): Space | null {
 
   if (existsSync(metaPath)) {
     try {
-      const meta: SpaceMeta = JSON.parse(readFileSync(metaPath, 'utf-8'))
+      const meta = readSpaceMetaFile(metaPath)
+      if (!meta) {
+        return null
+      }
       const stats = getSpaceStats(spacePath)
-      runSpaceResourceMigration(spacePath)
 
       return {
         id: meta.id,
@@ -418,63 +476,6 @@ function loadSpaceFromPath(spacePath: string): Space | null {
     }
   }
   return null
-}
-
-async function getSpaceResourceMigrationHandlers(): Promise<SpaceResourceMigrationHandlers> {
-  if (!migrationHandlersPromise) {
-    migrationHandlersPromise = Promise.all([
-      import('./skills.service'),
-      import('./agents.service'),
-      import('./commands.service')
-    ]).then(([skills, agents, commands]) => ({
-      copySkillToSpaceByRef: skills.copySkillToSpaceByRef,
-      copyAgentToSpaceByRef: agents.copyAgentToSpaceByRef,
-      copyCommandToSpaceByRef: commands.copyCommandToSpaceByRef
-    }))
-  }
-
-  return migrationHandlersPromise
-}
-
-function migrateToolkitRefToSpace(workDir: string, ref: ResourceRef): void {
-  void getSpaceResourceMigrationHandlers()
-    .then((handlers) => {
-      if (ref.type === 'skill') {
-        handlers.copySkillToSpaceByRef(ref, workDir)
-        return
-      }
-      if (ref.type === 'agent') {
-        handlers.copyAgentToSpaceByRef(ref, workDir)
-        return
-      }
-      if (ref.type === 'command') {
-        handlers.copyCommandToSpaceByRef(ref, workDir)
-      }
-    })
-    .catch((error) => {
-      console.warn('[Space] Failed to migrate toolkit resource to space:', ref, error)
-    })
-}
-
-function runSpaceResourceMigration(workDir: string): void {
-  try {
-    ensureSpaceResourcePolicy(workDir)
-    const spaceConfig = getSpaceConfig(workDir)
-    const toolkit = spaceConfig?.toolkit
-    if (!toolkit) return
-
-    const refs: ResourceRef[] = [
-      ...toolkit.skills.map((ref) => ({ ...ref, type: 'skill' as const })),
-      ...toolkit.agents.map((ref) => ({ ...ref, type: 'agent' as const })),
-      ...toolkit.commands.map((ref) => ({ ...ref, type: 'command' as const }))
-    ]
-
-    refs
-      .filter((ref) => ref.source && ref.source !== 'space')
-      .forEach((ref) => migrateToolkitRefToSpace(workDir, ref))
-  } catch (error) {
-    console.warn('[Space] Failed to run resource migration:', error)
-  }
 }
 
 // List all spaces (including custom path spaces)
@@ -683,13 +684,25 @@ export function updateSpace(spaceId: string, updates: { name?: string; icon?: st
   const metaPath = join(space.path, '.kite', 'meta.json')
 
   try {
-    const meta: SpaceMeta = JSON.parse(readFileSync(metaPath, 'utf-8'))
+    const existingMeta = readSpaceMetaFile(metaPath) ?? {
+      id: space.id,
+      name: space.name,
+      icon: space.icon,
+      createdAt: space.createdAt,
+      updatedAt: space.updatedAt,
+      ...(space.preferences ? { preferences: space.preferences } : {})
+    }
 
-    if (updates.name) meta.name = updates.name
-    if (updates.icon) meta.icon = updates.icon
-    meta.updatedAt = new Date().toISOString()
+    const nextMeta: SpaceMeta = {
+      id: existingMeta.id,
+      name: updates.name ?? existingMeta.name,
+      icon: updates.icon ?? existingMeta.icon,
+      createdAt: existingMeta.createdAt,
+      updatedAt: new Date().toISOString(),
+      ...(existingMeta.preferences ? { preferences: existingMeta.preferences } : {})
+    }
 
-    writeFileSync(metaPath, JSON.stringify(meta, null, 2))
+    writeFileSync(metaPath, JSON.stringify(nextMeta, null, 2))
 
     return getSpace(spaceId)
   } catch (error) {
@@ -709,10 +722,7 @@ export function updateSpacePreferences(
     return null
   }
 
-  // For temp space, store preferences in a special location
-  const metaPath = space.isTemp
-    ? join(space.path, '.kite', 'meta.json')
-    : join(space.path, '.kite', 'meta.json')
+  const metaPath = join(space.path, '.kite', 'meta.json')
 
   try {
     // Ensure .kite directory exists for temp space
@@ -721,48 +731,41 @@ export function updateSpacePreferences(
       mkdirSync(kiteDir, { recursive: true })
     }
 
-    // Load or create meta
-    let meta: SpaceMeta
-    if (existsSync(metaPath)) {
-      meta = JSON.parse(readFileSync(metaPath, 'utf-8'))
-    } else {
-      // Create new meta for temp space
-      meta = {
-        id: space.id,
-        name: space.name,
-        icon: space.icon,
-        createdAt: space.createdAt,
-        updatedAt: new Date().toISOString()
+    const existingMeta = readSpaceMetaFile(metaPath) ?? {
+      id: space.id,
+      name: space.name,
+      icon: space.icon,
+      createdAt: space.createdAt,
+      updatedAt: space.updatedAt,
+      ...(space.preferences ? { preferences: space.preferences } : {})
+    }
+
+    const mergedPreferenceInput: Record<string, unknown> = {}
+    const currentPreferences = existingMeta.preferences
+    if (currentPreferences?.layout || preferences.layout) {
+      mergedPreferenceInput.layout = {
+        ...(currentPreferences?.layout ?? {}),
+        ...(preferences.layout ?? {})
+      }
+    }
+    if (currentPreferences?.skills || preferences.skills) {
+      mergedPreferenceInput.skills = {
+        ...(currentPreferences?.skills ?? {}),
+        ...(preferences.skills ?? {})
       }
     }
 
-    // Deep merge preferences
-    meta.preferences = meta.preferences || {}
-
-    if (preferences.layout) {
-      meta.preferences.layout = {
-        ...meta.preferences.layout,
-        ...preferences.layout
-      }
+    const nextPreferences = sanitizeSpacePreferences(mergedPreferenceInput)
+    const nextMeta: SpaceMeta = {
+      id: existingMeta.id,
+      name: existingMeta.name,
+      icon: existingMeta.icon,
+      createdAt: existingMeta.createdAt,
+      updatedAt: new Date().toISOString(),
+      ...(nextPreferences ? { preferences: nextPreferences } : {})
     }
 
-    if (preferences.skills) {
-      meta.preferences.skills = {
-        ...meta.preferences.skills,
-        ...preferences.skills
-      }
-    }
-
-    if (preferences.agents) {
-      meta.preferences.agents = {
-        ...meta.preferences.agents,
-        ...preferences.agents
-      }
-    }
-
-    meta.updatedAt = new Date().toISOString()
-
-    writeFileSync(metaPath, JSON.stringify(meta, null, 2))
+    writeFileSync(metaPath, JSON.stringify(nextMeta, null, 2))
 
     console.log(`[Space] Updated preferences for ${spaceId}:`, preferences)
 
@@ -784,10 +787,8 @@ export function getSpacePreferences(spaceId: string): SpacePreferences | null {
   const metaPath = join(space.path, '.kite', 'meta.json')
 
   try {
-    if (existsSync(metaPath)) {
-      const meta: SpaceMeta = JSON.parse(readFileSync(metaPath, 'utf-8'))
-      return meta.preferences || null
-    }
+    const meta = readSpaceMetaFile(metaPath)
+    if (meta) return meta.preferences || null
     return null
   } catch (error) {
     console.error('Failed to get space preferences:', error)

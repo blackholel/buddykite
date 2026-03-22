@@ -6,7 +6,7 @@
 
 1. 资源 frontmatter 只有英文 `name/description`，缺少中文展示字段。
 2. 即使资源已补中文字段，前后端部分链路仍使用英文 `name` 做展示，导致侧边栏、模板库、输入建议等界面仍出现英文。
-3. 资源从模板库导入到空间（space/toolkit）后，展示与外层不一致，用户体验割裂。
+3. 资源从模板库导入到空间后，展示与外层不一致，用户体验割裂。
 4. 斜杠命令相关 UI（建议面板、会话列表中的命令痕迹、技能卡片等）没有统一走本地化展示名。
 
 目标是：**展示层中文统一，执行层稳定不变**（执行仍使用原始标识符，避免行为回归）。
@@ -166,9 +166,9 @@
 - `src/renderer/components/chat/ConversationList.tsx`
 - `src/renderer/components/chat/SkillCard.tsx`
 
-### 6.5 Space 设置页 Toolkit 清单
+### 6.5 Space 设置页资源清单
 
-- Toolkit 已加入资源在设置页中优先显示中文名（与外层保持一致）。
+- 已加入空间的资源在设置页中优先显示中文名（与外层保持一致）。
 
 涉及文件：
 - `src/renderer/pages/HomePage.tsx`
@@ -192,7 +192,7 @@
 
 ## 8. 当前行为说明（重要）
 
-1. **显示是中文**：侧栏、模板库、建议面板、Toolkit 列表等尽量统一为本地化展示名。
+1. **显示是中文**：侧栏、模板库、建议面板、空间资源列表等尽量统一为本地化展示名。
 2. **执行仍走英文标识符**：插入到输入框的实际 token 仍为原始 key，保证命令解析稳定。
 3. 这是有意设计：避免“展示中文后命令执行失败”的回归。
 
@@ -204,7 +204,7 @@
 2. 可增加一组端到端 UI 用例，覆盖：
    - 模板库导入后侧栏中文一致性
    - 斜杠面板显示中文但执行成功
-   - Toolkit 清单显示中文
+   - 空间资源清单显示中文
 3. 发布前跑一次全量 `test` 与关键页面冒烟（SpacePage / TemplateLibrary / Settings）。
 
 ---
@@ -224,4 +224,3 @@ npm run migrate:kite-resource-i18n:scan-new -- --pending-out /private/tmp/kite-r
 ```bash
 npm run migrate:kite-resource-i18n:apply-gpt -- --translations-file /private/tmp/kite-resource-translations-zhCN.json
 ```
-

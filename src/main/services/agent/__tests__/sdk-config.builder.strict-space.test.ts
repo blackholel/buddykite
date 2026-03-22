@@ -42,10 +42,6 @@ vi.mock('../../hooks.service', () => ({
   buildHooksConfig: vi.fn(() => MOCK_HOOKS)
 }))
 
-vi.mock('../../toolkit.service', () => ({
-  getSpaceToolkit: vi.fn(() => null)
-}))
-
 vi.mock('../../plugins.service', () => ({
   listEnabledPlugins: vi.fn(() => [{ installPath: '/enabled/plugin-a' }])
 }))

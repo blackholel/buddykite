@@ -85,9 +85,8 @@
 2. 所属插件是否启用
 3. MCP server 是否启用
 4. 当前 space 是否禁用该资源
-5. toolkit 是否允许
-6. exposure 是否允许
-7. legacy/internal 是否显式放行
+5. exposure 是否允许
+6. legacy/internal 是否显式放行
 
 ### 3.2 真值表口径
 
@@ -97,7 +96,6 @@
 | 插件禁用 | 阻断 | 插件子资源与 plugin MCP 同步失效 |
 | MCP 禁用 | 阻断 | 仅对对应 MCP server 生效 |
 | Space 禁用 | 阻断 | 即使资源存在且 exposure 为 public 也不可执行 |
-| toolkit 不允许 | 阻断 | 适用于 whitelist 模式 |
 | exposure 阻断 | 阻断 | 影响展示与直接调用 |
 | legacy/internal 放行 | 可执行 | 仅允许显式兼容场景 |
 
@@ -109,9 +107,8 @@
 2. `PLUGIN_DISABLED`
 3. `MCP_DISABLED`
 4. `SPACE_DISABLED`
-5. `NOT_IN_TOOLKIT`
-6. `EXPOSURE_BLOCKED`
-7. `LEGACY_POLICY_BLOCKED`
+5. `EXPOSURE_BLOCKED`
+6. `LEGACY_POLICY_BLOCKED`
 
 要求：
 
@@ -173,7 +170,6 @@
    - plugin enabled
    - MCP enabled
    - Space disabled
-   - toolkit
    - exposure
 
 ### 5.2 `kill switch`

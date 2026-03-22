@@ -55,12 +55,6 @@ export interface KiteAPI {
     }
     skills?: {
       favorites?: string[]
-      enabled?: string[]
-      showOnlyEnabled?: boolean
-    }
-    agents?: {
-      enabled?: string[]
-      showOnlyEnabled?: boolean
     }
   }) => Promise<IpcResponse>
   getSpacePreferences: (spaceId: string) => Promise<IpcResponse>
@@ -323,13 +317,6 @@ export interface KiteAPI {
     options?: { overwrite?: boolean }
   ) => Promise<IpcResponse>
   clearAgentsCache: () => Promise<IpcResponse>
-
-  // Toolkit
-  getToolkit: (spaceId: string) => Promise<IpcResponse>
-  addToolkitResource: (spaceId: string, directive: Record<string, unknown>) => Promise<IpcResponse>
-  removeToolkitResource: (spaceId: string, directive: Record<string, unknown>) => Promise<IpcResponse>
-  clearToolkit: (spaceId: string) => Promise<IpcResponse>
-  migrateToToolkit: (spaceId: string, skills: string[], agents: string[]) => Promise<IpcResponse>
 
   // Presets
   listPresets: () => Promise<IpcResponse>
@@ -616,13 +603,6 @@ const api: KiteAPI = {
   copyAgentToSpace: (agentName, workDir) => ipcRenderer.invoke('agents:copy-to-space', agentName, workDir),
   copyAgentToSpaceByRef: (ref, workDir, options) => ipcRenderer.invoke('agents:copy-to-space-by-ref', ref, workDir, options),
   clearAgentsCache: () => ipcRenderer.invoke('agents:clear-cache'),
-
-  // Toolkit
-  getToolkit: (spaceId) => ipcRenderer.invoke('toolkit:get', spaceId),
-  addToolkitResource: (spaceId, directive) => ipcRenderer.invoke('toolkit:add', spaceId, directive),
-  removeToolkitResource: (spaceId, directive) => ipcRenderer.invoke('toolkit:remove', spaceId, directive),
-  clearToolkit: (spaceId) => ipcRenderer.invoke('toolkit:clear', spaceId),
-  migrateToToolkit: (spaceId, skills, agents) => ipcRenderer.invoke('toolkit:migrate', spaceId, skills, agents),
 
   // Presets
   listPresets: () => ipcRenderer.invoke('preset:list'),

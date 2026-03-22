@@ -121,7 +121,7 @@ vi.mock('../ai-config-resolver', () => ({
 
 vi.mock('../sdk-config.builder', () => ({
   buildSdkOptions: vi.fn(() => ({})),
-  getEffectiveSkillsLazyLoad: vi.fn(() => ({ effectiveLazyLoad: false, toolkit: [] })),
+  getEffectiveSkillsLazyLoad: vi.fn(() => ({ effectiveLazyLoad: false, strictSpaceOnly: false })),
   getWorkingDir: vi.fn(() => '/tmp/workspace'),
   getEnabledMcpServers: vi.fn(() => []),
   shouldEnableCodepilotWidgetMcp: vi.fn(() => false)

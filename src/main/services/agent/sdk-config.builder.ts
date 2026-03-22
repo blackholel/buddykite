@@ -9,13 +9,12 @@ import { isAbsolute, join } from 'path'
 import { existsSync, mkdirSync, realpathSync } from 'fs'
 import { homedir } from 'os'
 import { getConfig, getTempSpacePath } from '../config.service'
-import { getSpaceConfig, type SpaceToolkit } from '../space-config.service'
+import { getSpaceConfig } from '../space-config.service'
 import { getConversation } from '../conversation.service'
 import { buildHooksConfig } from '../hooks.service'
 import { listEnabledPlugins } from '../plugins.service'
 import { isValidDirectoryPath } from '../../utils/path-validation'
 import { getSpace } from '../space.service'
-import { getSpaceToolkit } from '../toolkit.service'
 import { SKILLS_LAZY_SYSTEM_PROMPT } from '../skills-mcp-server'
 import { buildPluginMcpServers } from '../plugin-mcp.service'
 import { getLockedUserConfigRootDir } from '../config-source-mode.service'
@@ -108,16 +107,14 @@ export function getEffectiveSkillsLazyLoad(
 ): {
   configLazyLoad: boolean
   effectiveLazyLoad: boolean
-  toolkit: SpaceToolkit | null
   strictSpaceOnly: boolean
 } {
   const resolvedConfig = config ?? getConfig()
   const spaceConfig = getSpaceConfig(workDir)
   const configLazyLoad = getConfigSkillsLazyLoad(resolvedConfig, spaceConfig)
-  const toolkit = getSpaceToolkit(workDir)
   const strictSpaceOnly = false
   const effectiveLazyLoad = configLazyLoad
-  return { configLazyLoad, effectiveLazyLoad, toolkit, strictSpaceOnly }
+  return { configLazyLoad, effectiveLazyLoad, strictSpaceOnly }
 }
 
 export function resolveResourceRuntimePolicy(

@@ -41,7 +41,6 @@ import type { ClaudeCodeSlashRuntimeMode } from '../../../shared/types/claude-co
 import { useTranslation } from '../../i18n'
 import { useComposerStore } from '../../stores/composer.store'
 import { getTriggerContext, type TriggerContext } from '../../utils/composer-trigger'
-import { isResourceEnabled } from '../../utils/resource-key'
 import { getAiSetupState } from '../../../shared/types/ai-profile'
 import {
   composeInputMessage,
@@ -259,12 +258,11 @@ export function InputArea({
   const insertQueue = useComposerStore(state => state.insertQueue)
   const dequeueInsert = useComposerStore(state => state.dequeueInsert)
 
-  const { currentSpace, spaces, haloSpace, getSpacePreferences } = useSpaceStore(
+  const { currentSpace, spaces, haloSpace } = useSpaceStore(
     useShallow((state) => ({
       currentSpace: state.currentSpace,
       spaces: state.spaces,
-      haloSpace: state.haloSpace,
-      getSpacePreferences: state.getSpacePreferences
+      haloSpace: state.haloSpace
     }))
   )
   const {
@@ -316,15 +314,6 @@ export function InputArea({
     if (workDir && workDir.trim()) return workDir
     return resolvedSpace?.path || currentSpace?.path
   }, [currentSpace?.path, resolvedSpace?.path, workDir])
-
-  const spacePreferences = useMemo(() => {
-    if (!spaceId) return undefined
-    if (resolvedSpace?.preferences) return resolvedSpace.preferences
-    return getSpacePreferences(spaceId)
-  }, [getSpacePreferences, resolvedSpace?.preferences, spaceId])
-
-  const enabledSkills = spacePreferences?.skills?.enabled || []
-  const enabledAgents = spacePreferences?.agents?.enabled || []
 
   const triggerQuery = triggerContext?.query.trim().toLowerCase() || ''
 
@@ -481,14 +470,10 @@ export function InputArea({
     if (shouldUseSdkSlashCommands) return []
     const suggestions: ComposerResourceSuggestionItem[] = []
     for (const skill of skills) {
-      const suggestion = buildComposerResourceSuggestion('skill', skill)
-      if (suggestion.scope === 'space' && enabledSkills.length > 0 && !isResourceEnabled(enabledSkills, skill)) {
-        continue
-      }
-      suggestions.push(suggestion)
+      suggestions.push(buildComposerResourceSuggestion('skill', skill))
     }
     return suggestions
-  }, [enabledSkills, shouldUseSdkSlashCommands, skills])
+  }, [shouldUseSdkSlashCommands, skills])
 
   const commandCandidates = useMemo<ComposerResourceSuggestionItem[]>(() => {
     if (shouldUseSdkSlashCommands) return sdkSlashCommandCandidates
@@ -503,14 +488,10 @@ export function InputArea({
     if (shouldUseSdkSlashCommands) return []
     const suggestions: ComposerResourceSuggestionItem[] = []
     for (const agent of agents) {
-      const suggestion = buildComposerResourceSuggestion('agent', agent)
-      if (suggestion.scope === 'space' && enabledAgents.length > 0 && !isResourceEnabled(enabledAgents, agent)) {
-        continue
-      }
-      suggestions.push(suggestion)
+      suggestions.push(buildComposerResourceSuggestion('agent', agent))
     }
     return suggestions
-  }, [agents, enabledAgents, shouldUseSdkSlashCommands])
+  }, [agents, shouldUseSdkSlashCommands])
 
   const rankedSkillSuggestions = useMemo(
     () => rankSuggestions(skillCandidates, {

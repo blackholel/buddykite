@@ -5,8 +5,6 @@ type Translate = (key: string) => string
 export interface ActionButtonStateInput {
   actionMode: ResourceActionMode
   t: Translate
-  hasToolkit?: boolean
-  inToolkit?: boolean
   isActionDisabled?: boolean
   actionDisabledReason?: string
   isActionInProgress?: boolean
@@ -56,21 +54,6 @@ export function resolveActionButtonState(input: ActionButtonStateInput): ActionB
     }
   }
 
-  if (input.actionMode === 'toolkit') {
-    const label = input.isActionInProgress
-      ? input.t('Loading...')
-      : input.hasToolkit
-        ? (input.inToolkit ? input.t('Remove from toolkit') : input.t('Add to toolkit'))
-        : input.t('Activate in space')
-
-    return {
-      show: true,
-      label,
-      disabled: !!input.isActionDisabled || !!input.isActionInProgress,
-      reason: input.actionDisabledReason
-    }
-  }
-
   const alreadyAddedLabel = input.t('Already added')
   const isAlreadyAdded = input.actionDisabledReason === alreadyAddedLabel
 
@@ -83,4 +66,3 @@ export function resolveActionButtonState(input: ActionButtonStateInput): ActionB
     reason: input.actionDisabledReason
   }
 }
-

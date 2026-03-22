@@ -13,8 +13,6 @@ import { createHash } from 'crypto'
 import { getSkillContent, getSkillDefinition } from '../skills.service'
 import { getCommand, getCommandContent } from '../commands.service'
 import { getAgent, getAgentContent } from '../agents.service'
-import { toolkitContains } from '../toolkit.service'
-import type { SpaceToolkit } from '../space-config.service'
 import type { InvocationContext, ResourceExposure } from '../../../shared/resource-access'
 import type { DirectiveRef } from './types'
 
@@ -61,7 +59,6 @@ interface ExpandLazyDirectiveOptions {
   resourceExposureEnabled?: boolean
   allowLegacyWorkflowInternalDirect?: boolean
   legacyDependencyRegexEnabled?: boolean
-  bypassToolkitAllowlist?: boolean
 }
 
 export interface LazyExpansionResult {
@@ -214,20 +211,6 @@ function findReferencedSkill(commandContent: string): string | null {
   return match[1]
 }
 
-function canUseFromToolkit(
-  toolkit: SpaceToolkit | null | undefined,
-  type: 'skill' | 'command' | 'agent',
-  token: ParsedDirectiveToken,
-  options?: ExpandLazyDirectiveOptions
-): boolean {
-  if (options?.bypassToolkitAllowlist) return true
-  if (!toolkit) return true
-  return toolkitContains(toolkit, type, {
-    name: token.name,
-    namespace: token.namespace
-  })
-}
-
 function isAllowedSource(allowedSources: string[] | undefined, source: string | undefined): boolean {
   if (!allowedSources || allowedSources.length === 0) return true
   if (!source) return false
@@ -314,15 +297,9 @@ function expandRequiredSkillDependency(
   token: ParsedDirectiveToken,
   state: ExpansionState,
   workDir?: string,
-  toolkit?: SpaceToolkit | null,
   options?: ExpandLazyDirectiveOptions,
   args?: string
 ): string | null {
-  if (!canUseFromToolkit(toolkit, 'skill', token, options)) {
-    pushMissing(state, 'skills', token.raw)
-    return null
-  }
-
   const skillDefinition = getSkillDefinition(token.raw, workDir, { locale: options?.locale })
   if (!skillDefinition || !isAllowedSource(options?.allowSources, skillDefinition.source)) {
     pushMissing(state, 'skills', token.raw)
@@ -348,14 +325,8 @@ function expandRequiredAgentDependency(
   token: ParsedDirectiveToken,
   state: ExpansionState,
   workDir?: string,
-  toolkit?: SpaceToolkit | null,
   options?: ExpandLazyDirectiveOptions
 ): string | null {
-  if (!canUseFromToolkit(toolkit, 'agent', token, options)) {
-    pushMissing(state, 'agents', token.raw)
-    return null
-  }
-
   const agentDefinition = getAgent(token.raw, workDir)
   if (!agentDefinition || !isAllowedSource(options?.allowSources, agentDefinition.source)) {
     pushMissing(state, 'agents', token.raw)
@@ -381,17 +352,11 @@ function expandSkillDirective(
   token: ParsedDirectiveToken,
   state: ExpansionState,
   workDir?: string,
-  toolkit?: SpaceToolkit | null,
   args?: string,
   options?: ExpandLazyDirectiveOptions,
   injectedType = 'skill'
 ): string | null {
   if (shouldSkipToken(token, options)) {
-    return null
-  }
-
-  if (!canUseFromToolkit(toolkit, 'skill', token, options)) {
-    pushMissing(state, 'skills', token.raw)
     return null
   }
 
@@ -422,7 +387,6 @@ function expandCommandDirective(
   token: ParsedDirectiveToken,
   state: ExpansionState,
   workDir?: string,
-  toolkit?: SpaceToolkit | null,
   args?: string,
   options?: ExpandLazyDirectiveOptions,
   injectedType = 'command',
@@ -437,7 +401,7 @@ function expandCommandDirective(
 
   if (!commandDefinition || !command) {
     if (fallbackToSkill) {
-      return expandSkillDirective(token, state, workDir, toolkit, args, options, 'skill')
+      return expandSkillDirective(token, state, workDir, args, options, 'skill')
     }
     pushMissing(state, 'commands', token.raw)
     return null
@@ -456,11 +420,6 @@ function expandCommandDirective(
   }
   warnWorkflowLegacyInternal('command', token, invocationContext, commandDefinition.exposure, options)
 
-  if (!canUseFromToolkit(toolkit, 'command', token, options)) {
-    pushMissing(state, 'commands', token.raw)
-    return null
-  }
-
   const explicitRequiredSkills = commandDefinition.requiresSkills || []
   const explicitRequiredAgents = commandDefinition.requiresAgents || []
   const hasExplicitDependencies = explicitRequiredSkills.length > 0 || explicitRequiredAgents.length > 0
@@ -469,7 +428,7 @@ function expandCommandDirective(
   for (const requiredSkillRaw of explicitRequiredSkills) {
     const parsedSkill = parseDirectiveToken(requiredSkillRaw)
     if (!parsedSkill) continue
-    const block = expandRequiredSkillDependency(parsedSkill, state, workDir, toolkit, options, args)
+    const block = expandRequiredSkillDependency(parsedSkill, state, workDir, options, args)
     if (!block) return null
     dependencyBlocks.push(block)
   }
@@ -477,7 +436,7 @@ function expandCommandDirective(
   for (const requiredAgentRaw of explicitRequiredAgents) {
     const parsedAgent = parseDirectiveToken(requiredAgentRaw)
     if (!parsedAgent) continue
-    const block = expandRequiredAgentDependency(parsedAgent, state, workDir, toolkit, options)
+    const block = expandRequiredAgentDependency(parsedAgent, state, workDir, options)
     if (!block) return null
     dependencyBlocks.push(block)
   }
@@ -498,7 +457,6 @@ function expandCommandDirective(
           referencedSkillToken,
           state,
           workDir,
-          toolkit,
           options,
           args
         )
@@ -518,16 +476,10 @@ function expandAgentDirective(
   token: ParsedDirectiveToken,
   state: ExpansionState,
   workDir?: string,
-  toolkit?: SpaceToolkit | null,
   args?: string,
   options?: ExpandLazyDirectiveOptions
 ): string | null {
   if (shouldSkipToken(token, options)) {
-    return null
-  }
-
-  if (!canUseFromToolkit(toolkit, 'agent', token, options)) {
-    pushMissing(state, 'agents', token.raw)
     return null
   }
 
@@ -558,7 +510,6 @@ function expandSlashDirective(
   token: ParsedDirectiveToken,
   state: ExpansionState,
   workDir?: string,
-  toolkit?: SpaceToolkit | null,
   args?: string,
   options?: ExpandLazyDirectiveOptions
 ): string | null {
@@ -566,7 +517,6 @@ function expandSlashDirective(
     token,
     state,
     workDir,
-    toolkit,
     args,
     options,
     'command',
@@ -707,7 +657,6 @@ function directiveTokenFromRef(directive: DirectiveRef): ParsedDirectiveToken | 
 export function expandStructuredDirectives(
   directives?: DirectiveRef[],
   workDir?: string,
-  toolkit?: SpaceToolkit | null,
   options?: ExpandLazyDirectiveOptions
 ): LazyExpansionResult {
   if (!directives || directives.length === 0) {
@@ -733,7 +682,6 @@ export function expandStructuredDirectives(
         token,
         state,
         workDir,
-        toolkit,
         directive.args,
         options,
         'skill (structured)'
@@ -743,14 +691,13 @@ export function expandStructuredDirectives(
         token,
         state,
         workDir,
-        toolkit,
         directive.args,
         options,
         'command (structured)',
         false
       )
     } else if (directive.type === 'agent') {
-      block = expandAgentDirective(token, state, workDir, toolkit, directive.args, options)
+      block = expandAgentDirective(token, state, workDir, directive.args, options)
     }
 
     if (block) {
@@ -795,21 +742,8 @@ export function computeFingerprint(content: string): string {
 export function expandLazyDirectives(
   input: string,
   workDir?: string,
-  toolkitOrOptions?: SpaceToolkit | null | ExpandLazyDirectiveOptions,
-  maybeOptions?: ExpandLazyDirectiveOptions
+  options?: ExpandLazyDirectiveOptions
 ): LazyExpansionResult {
-  const toolkit = (
-    toolkitOrOptions &&
-    typeof toolkitOrOptions === 'object' &&
-    ('skills' in toolkitOrOptions || 'commands' in toolkitOrOptions || 'agents' in toolkitOrOptions)
-  ) ? (toolkitOrOptions as SpaceToolkit | null) : undefined
-
-  const options = (
-    toolkitOrOptions &&
-    typeof toolkitOrOptions === 'object' &&
-    !('skills' in toolkitOrOptions || 'commands' in toolkitOrOptions || 'agents' in toolkitOrOptions)
-  ) ? (toolkitOrOptions as ExpandLazyDirectiveOptions) : maybeOptions
-
   const state: ExpansionState = createEmptyExpansionState()
 
   const lines = input.split(/\r?\n/)
@@ -831,7 +765,7 @@ export function expandLazyDirectives(
     if (agentMatch) {
       const token = parseDirectiveToken(agentMatch[1])
       if (!token) return line
-      const expanded = expandAgentDirective(token, state, workDir, toolkit, agentMatch[2], options)
+      const expanded = expandAgentDirective(token, state, workDir, agentMatch[2], options)
       return expanded ?? line
     }
 
@@ -839,7 +773,7 @@ export function expandLazyDirectives(
     if (slashMatch) {
       const token = parseDirectiveToken(slashMatch[1])
       if (!token) return line
-      const expanded = expandSlashDirective(token, state, workDir, toolkit, slashMatch[2], options)
+      const expanded = expandSlashDirective(token, state, workDir, slashMatch[2], options)
       return expanded ?? line
     }
 
@@ -849,8 +783,8 @@ export function expandLazyDirectives(
       if (seenInlineTokenKeys.has(tokenKey)) continue
 
       const block = match.type === 'at'
-        ? expandAgentDirective(match.token, state, workDir, toolkit, undefined, options)
-        : expandSlashDirective(match.token, state, workDir, toolkit, undefined, options)
+        ? expandAgentDirective(match.token, state, workDir, undefined, options)
+        : expandSlashDirective(match.token, state, workDir, undefined, options)
 
       if (!block) continue
       seenInlineTokenKeys.add(tokenKey)

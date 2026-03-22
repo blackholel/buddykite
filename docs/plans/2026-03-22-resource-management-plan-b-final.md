@@ -41,9 +41,9 @@
 
 当前存在一个核心矛盾：
 
-1. 展示侧已经有 resource exposure 和 toolkit 相关约束概念
+1. 展示侧已经有 `resourceExposure` 和来源约束概念
 2. 运行时 directive expansion 仍存在默认绕过路径
-   - `bypassToolkitAllowlist: true`
+   - 历史白名单绕过参数
    - `resourceExposureEnabled: false`
 
 这导致外层看起来像是“有限制”，实际执行时仍可能把资源放进去，形成“展示和运行时双标”的问题。
@@ -54,7 +54,7 @@
 
 1. `space skill / agent / command` 已支持物理删除
 2. `app / global / plugin` 子资源目前没有统一的禁用/删除能力
-3. toolkit 写操作在服务端与 renderer store 中都被整体禁用
+3. 旧白名单写操作在服务端与 renderer store 中都已冻结
 4. 插件本身有安装/启用概念，但没有统一卸载生命周期编排器
 5. MCP 有 global/space 的 disable 语义，但 plugin MCP 主要跟随插件会话启用链路
 
@@ -140,9 +140,8 @@
 1. 插件是否启用
 2. MCP 是否启用
 3. 当前 space 是否禁用该资源
-4. toolkit 是否允许
-5. exposure 是否允许
-6. legacy/internal 是否显式放行
+4. exposure 是否允许
+5. legacy/internal 是否显式放行
 
 ### 5.3 `space-config.json` 状态扩展
 
@@ -264,7 +263,7 @@
 
 必须验证：
 
-1. 旧 `toolkit` 与旧 ID 能被新主键兼容解析
+1. 旧白名单字段与旧 ID 能被新主键兼容解析
 2. `installed` 与 `plugin` 来源别名在新主键下口径一致
 3. 老 `space-config.json` 无新增字段时正常运行
 

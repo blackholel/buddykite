@@ -29,7 +29,7 @@ vi.mock('../ai-config-resolver', () => ({
 vi.mock('../sdk-config.builder', () => ({
   buildSdkOptions: vi.fn(),
   getWorkingDir: vi.fn(),
-  getEffectiveSkillsLazyLoad: vi.fn(() => ({ effectiveLazyLoad: false, toolkit: [] }))
+  getEffectiveSkillsLazyLoad: vi.fn(() => ({ effectiveLazyLoad: false, strictSpaceOnly: false }))
 }))
 
 vi.mock('../renderer-comm', () => ({

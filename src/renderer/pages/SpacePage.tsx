@@ -40,7 +40,6 @@ import { CommandEditorModal } from '../components/commands/CommandEditorModal'
 import { useSkillsStore, type SkillDefinition } from '../stores/skills.store'
 import { useAgentsStore, type AgentDefinition } from '../stores/agents.store'
 import { useCommandsStore, type CommandDefinition } from '../stores/commands.store'
-import { useToolkitStore } from '../stores/toolkit.store'
 import { useComposerStore } from '../stores/composer.store'
 import { pickEntryConversation } from '../utils/space-entry-conversation'
 
@@ -424,10 +423,6 @@ export function SpacePage() {
   const loadedAgentsWorkDir = useAgentsStore(state => state.loadedWorkDir)
   const loadCommands = useCommandsStore(state => state.loadCommands)
   const loadedCommandsWorkDir = useCommandsStore(state => state.loadedWorkDir)
-  const { loadToolkit, isToolkitLoaded } = useToolkitStore((state) => ({
-    loadToolkit: state.loadToolkit,
-    isToolkitLoaded: state.isToolkitLoaded
-  }), shallow)
   const preloadedWorkDirRef = useRef<Record<PreloadResourceKind, string | null>>({
     skills: null,
     agents: null,
@@ -487,13 +482,6 @@ export function SpacePage() {
     loadSkills,
     preloadResource
   ])
-
-  useEffect(() => {
-    if (!currentSpace || currentSpace.isTemp) return
-    const toolkitLoaded = isToolkitLoaded(currentSpace.id)
-    if (toolkitLoaded) return
-    void loadToolkit(currentSpace.id)
-  }, [currentSpace?.id, currentSpace?.isTemp, isToolkitLoaded, loadToolkit])
 
   // Layout mode: 'split' = 分栏布局 (左侧固定 ChatView), 'tabs-only' = 纯标签页模式
   const [layoutMode] = useState<'split' | 'tabs-only'>(() => {

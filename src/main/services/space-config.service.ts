@@ -57,15 +57,8 @@ export interface SpaceResourcePolicy {
   allowedSources?: ResourceSource[]
 }
 
-export interface SpaceToolkit {
-  skills: import('./agent/types').DirectiveRef[]
-  commands: import('./agent/types').DirectiveRef[]
-  agents: import('./agent/types').DirectiveRef[]
-}
-
 export interface SpaceConfig {
   claudeCode?: SpaceClaudeCodeConfig
-  toolkit?: SpaceToolkit
   resourcePolicy?: SpaceResourcePolicy
 }
 

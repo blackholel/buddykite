@@ -6,5 +6,4 @@ export type ResourceType = 'skill' | 'agent' | 'command'
 
 export type AnyResource = SkillDefinition | AgentDefinition | CommandDefinition
 
-export type ResourceActionMode = 'toolkit' | 'copy-to-space' | 'none'
-
+export type ResourceActionMode = 'copy-to-space' | 'none'

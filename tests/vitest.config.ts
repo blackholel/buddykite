@@ -30,7 +30,6 @@ export default defineConfig({
       '../src/main/services/agent/__tests__/renderer-comm.resource-guard.test.ts',
       '../src/main/services/agent/__tests__/slash-runtime-mode.service.test.ts',
       '../src/main/services/agent/__tests__/skill-expander.space-only.test.ts',
-      '../src/main/services/__tests__/toolkit.service.test.ts',
       '../src/main/services/__tests__/workflow.service.space-only.test.ts',
       '../src/main/services/__tests__/resource-copy-by-ref.test.ts',
       '../src/main/services/__tests__/resource-delete-guard.test.ts',

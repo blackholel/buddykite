@@ -197,12 +197,6 @@ export const api = {
       }
       skills?: {
         favorites?: string[]
-        enabled?: string[]
-        showOnlyEnabled?: boolean
-      }
-      agents?: {
-        enabled?: string[]
-        showOnlyEnabled?: boolean
       }
     }
   ): Promise<ApiResponse> => {
@@ -1104,49 +1098,6 @@ export const api = {
       return window.kite.clearAgentsCache()
     }
     return httpRequest('POST', '/api/agents/clear-cache')
-  },
-
-  // ===== Toolkit =====
-  getToolkit: async (spaceId: string): Promise<ApiResponse> => {
-    if (isElectron()) {
-      return window.kite.getToolkit(spaceId)
-    }
-    return httpRequest('GET', `/api/toolkit/${encodeURIComponent(spaceId)}`)
-  },
-
-  addToolkitResource: async (spaceId: string, directive: Record<string, unknown>): Promise<ApiResponse> => {
-    if (isElectron()) {
-      return window.kite.addToolkitResource(spaceId, directive)
-    }
-    return httpRequest('POST', `/api/toolkit/${encodeURIComponent(spaceId)}/add`, directive)
-  },
-
-  removeToolkitResource: async (spaceId: string, directive: Record<string, unknown>): Promise<ApiResponse> => {
-    if (isElectron()) {
-      return window.kite.removeToolkitResource(spaceId, directive)
-    }
-    return httpRequest('POST', `/api/toolkit/${encodeURIComponent(spaceId)}/remove`, directive)
-  },
-
-  clearToolkit: async (spaceId: string): Promise<ApiResponse> => {
-    if (isElectron()) {
-      return window.kite.clearToolkit(spaceId)
-    }
-    return httpRequest('DELETE', `/api/toolkit/${encodeURIComponent(spaceId)}`)
-  },
-
-  migrateToToolkit: async (
-    spaceId: string,
-    skills: string[],
-    agents: string[]
-  ): Promise<ApiResponse> => {
-    if (isElectron()) {
-      return window.kite.migrateToToolkit(spaceId, skills, agents)
-    }
-    return httpRequest('POST', `/api/toolkit/${encodeURIComponent(spaceId)}/migrate`, {
-      skills,
-      agents
-    })
   },
 
   // ===== Presets =====

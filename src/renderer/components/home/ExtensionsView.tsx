@@ -6,7 +6,6 @@ import { type AgentDefinition, useAgentsStore } from '../../stores/agents.store'
 import { useChatStore } from '../../stores/chat.store'
 import { type CommandDefinition, useCommandsStore } from '../../stores/commands.store'
 import { type SkillDefinition, useSkillsStore } from '../../stores/skills.store'
-import { useToolkitStore } from '../../stores/toolkit.store'
 import { useSpaceStore } from '../../stores/space.store'
 import { ResourceCard } from '../resources/ResourceCard'
 import {
@@ -52,7 +51,6 @@ export function ExtensionsView(): JSX.Element {
     if (!state.currentSpaceId) return null
     return state.spaceStates.get(state.currentSpaceId)?.currentConversationId ?? null
   })
-  const { loadToolkit } = useToolkitStore()
   const [resourceIndexHash, setResourceIndexHash] = useState<string | null>(null)
   const [sessionResourceHash, setSessionResourceHash] = useState<string | null>(null)
   const [resourceHashError, setResourceHashError] = useState<string | null>(null)
@@ -88,12 +86,6 @@ export function ExtensionsView(): JSX.Element {
     if (!isRemote && !commandsLoading) loadCommands()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-
-  useEffect(() => {
-    if (currentSpace && !currentSpace.isTemp) {
-      void loadToolkit(currentSpace.id)
-    }
-  }, [currentSpace, loadToolkit])
 
   const normalizedItems = useMemo(() => normalizeExtensionItems({
     skills: skills as SkillDefinition[],
@@ -375,7 +367,7 @@ export function ExtensionsView(): JSX.Element {
                         resource={item.resource}
                         type="skill"
                         index={index}
-                        actionMode="toolkit"
+                        actionMode="none"
                       />
                     ))}
                   </div>
@@ -393,7 +385,7 @@ export function ExtensionsView(): JSX.Element {
                         resource={item.resource}
                         type="agent"
                         index={index}
-                        actionMode="toolkit"
+                        actionMode="none"
                       />
                     ))}
                   </div>
@@ -412,7 +404,7 @@ export function ExtensionsView(): JSX.Element {
                           resource={item.resource}
                           type="command"
                           index={index}
-                          actionMode="toolkit"
+                          actionMode="none"
                         />
                       ))}
                     </div>
@@ -427,7 +419,7 @@ export function ExtensionsView(): JSX.Element {
                     resource={item.resource}
                     type={item.type}
                     index={index}
-                    actionMode="toolkit"
+                    actionMode="none"
                   />
                 ))}
               </div>

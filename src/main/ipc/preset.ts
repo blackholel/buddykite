@@ -1,13 +1,25 @@
 /**
  * Preset IPC Handlers
  *
- * Handles IPC communication for toolkit preset management.
+ * Handles IPC communication for resource preset management.
  */
 
 import { ipcMain } from 'electron'
 import { listPresets, getPreset, savePreset } from '../services/preset.service'
-import type { SpaceToolkit } from '../services/space-config.service'
 import type { ResourceRef } from '../services/resource-ref.service'
+
+interface LegacyToolkitDirectiveRef {
+  name: string
+  namespace?: string
+  source?: string
+  path?: string
+}
+
+interface LegacyToolkitResources {
+  skills: LegacyToolkitDirectiveRef[]
+  commands: LegacyToolkitDirectiveRef[]
+  agents: LegacyToolkitDirectiveRef[]
+}
 
 export function registerPresetHandlers(): void {
   ipcMain.handle('preset:list', async () => {
@@ -32,7 +44,7 @@ export function registerPresetHandlers(): void {
     _event,
     name: string,
     description: string,
-    resources: ResourceRef[] | SpaceToolkit
+    resources: ResourceRef[] | LegacyToolkitResources
   ) => {
     try {
       return { success: true, data: savePreset(name, description, resources) }

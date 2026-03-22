@@ -3,9 +3,6 @@ import { createPortal } from 'react-dom'
 import { Copy, X } from 'lucide-react'
 import { api } from '../../api'
 import { useTranslation } from '../../i18n'
-import { useSpaceStore } from '../../stores/space.store'
-import { useToolkitStore } from '../../stores/toolkit.store'
-import { buildDirective } from '../../utils/directive-helpers'
 import { copyResourceWithConflict, resolveActionButtonState, type CopyResourceResponse } from './resource-actions'
 import { shouldLoadResourceContent } from './resource-content-loading'
 import { fetchResourceContent, getSourceColor, getSourceLabel, mapResourceMeta } from './resource-meta'
@@ -20,10 +17,6 @@ export interface ResourceCardProps {
   onAfterAction?: () => void
   isActionDisabled?: boolean
   actionDisabledReason?: string
-}
-
-function toDirective(resource: AnyResource, type: ResourceType) {
-  return buildDirective(type, resource as { name: string; namespace?: string; source?: string })
 }
 
 function toResourceRef(resource: AnyResource, type: ResourceType) {
@@ -77,20 +70,10 @@ export function ResourceCard({
   const [contentError, setContentError] = useState<string | null>(null)
   const [isLoadingContent, setIsLoadingContent] = useState(false)
   const [hasAttemptedLoadInCurrentOpen, setHasAttemptedLoadInCurrentOpen] = useState(false)
-  const [isUpdatingToolkit, setIsUpdatingToolkit] = useState(false)
   const [isCopyingToSpace, setIsCopyingToSpace] = useState(false)
   const contentRequestIdRef = useRef(0)
 
-  const currentSpace = useSpaceStore((state) => state.currentSpace)
-  const { getToolkit, isInToolkit, addResource, removeResource, loadToolkit, isToolkitLoaded } = useToolkitStore()
-
   const meta = useMemo(() => mapResourceMeta(resource, type), [resource, type])
-  const directive = useMemo(() => toDirective(resource, type), [resource, type])
-  const toolkitLoaded = !!currentSpace && isToolkitLoaded(currentSpace.id)
-  const toolkit = getToolkit(currentSpace?.id)
-  const hasToolkit = toolkitLoaded && toolkit !== null
-  const inToolkit = hasToolkit && isInToolkit(currentSpace?.id, directive)
-  const canManageToolkit = !!currentSpace && !currentSpace.isTemp
 
   const mergedActionDisabledReason = actionMode === 'copy-to-space' && !actionDisabledReason && !workDir
     ? t('No space selected')
@@ -103,11 +86,9 @@ export function ResourceCard({
   const actionState = resolveActionButtonState({
     actionMode,
     t,
-    hasToolkit,
-    inToolkit,
     isActionDisabled: mergedActionDisabled,
     actionDisabledReason: mergedActionDisabledReason,
-    isActionInProgress: actionMode === 'toolkit' ? isUpdatingToolkit : isCopyingToSpace
+    isActionInProgress: isCopyingToSpace
   })
 
   const closeDialog = useCallback(() => setIsOpen(false), [])
@@ -129,13 +110,6 @@ export function ResourceCard({
       document.body.style.overflow = previousOverflow
     }
   }, [isOpen])
-
-  useEffect(() => {
-    if (actionMode !== 'toolkit') return
-    if (currentSpace && !currentSpace.isTemp && !toolkitLoaded) {
-      void loadToolkit(currentSpace.id)
-    }
-  }, [actionMode, currentSpace, toolkitLoaded, loadToolkit])
 
   useEffect(() => {
     if (isOpen) return
@@ -198,20 +172,6 @@ export function ResourceCard({
     }
   }
 
-  const handleToolkitAction = async (): Promise<void> => {
-    if (!currentSpace || actionState.disabled) return
-    try {
-      setIsUpdatingToolkit(true)
-      const updatedToolkit = inToolkit
-        ? await removeResource(currentSpace.id, directive)
-        : await addResource(currentSpace.id, directive)
-      if (!updatedToolkit) return
-      onAfterAction?.()
-    } finally {
-      setIsUpdatingToolkit(false)
-    }
-  }
-
   const handleCopyToSpaceAction = async (): Promise<void> => {
     if (!workDir || actionState.disabled) return
 
@@ -238,19 +198,12 @@ export function ResourceCard({
 
   const handleActionClick = async (event: React.MouseEvent): Promise<void> => {
     event.stopPropagation()
-
-    if (actionMode === 'toolkit') {
-      await handleToolkitAction()
-      return
-    }
     if (actionMode === 'copy-to-space') {
       await handleCopyToSpaceAction()
     }
   }
 
-  const shouldShowAction = actionState.show && (
-    actionMode !== 'toolkit' || canManageToolkit
-  )
+  const shouldShowAction = actionState.show
 
   const showActionReason = actionMode === 'copy-to-space'
     && !!actionState.reason

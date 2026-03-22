@@ -14,5 +14,6 @@ buddykite macOS 安装说明
 2) 然后执行：
    open "/Applications/buddykite.app"
 
-你也可以直接双击 DMG 里的修复.command，
-它会自动执行上面两条命令。
+说明：
+- DMG 中不再提供可双击的修复脚本，因为 macOS 会优先拦截来自已下载 DMG 的散装脚本文件。
+- 如果你需要执行命令，请直接复制上面的两条命令到终端里运行。

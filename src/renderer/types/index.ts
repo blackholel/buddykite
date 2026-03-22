@@ -256,21 +256,12 @@ export interface SpaceLayoutPreferences {
 // Skills preferences for a space
 export interface SpaceSkillsPreferences {
   favorites?: string[];  // Favorited skill names
-  enabled?: string[];    // Enabled skill names for this space
-  showOnlyEnabled?: boolean; // Whether to show only enabled skills
-}
-
-// Agents preferences for a space
-export interface SpaceAgentsPreferences {
-  enabled?: string[];    // Enabled agent names for this space
-  showOnlyEnabled?: boolean; // Whether to show only enabled agents
 }
 
 // All space preferences (extensible for future features)
 export interface SpacePreferences {
   layout?: SpaceLayoutPreferences;
   skills?: SpaceSkillsPreferences;
-  agents?: SpaceAgentsPreferences;
 }
 
 export interface Space {
@@ -943,10 +934,6 @@ export function getFileIconId(extension: string): string {
   return FILE_ICON_IDS[extension.toLowerCase()] || FILE_ICON_IDS.default;
 }
 
-// ============================================
-// Toolkit Types (mirrored from main process)
-// ============================================
-
 export type DirectiveType = 'skill' | 'command' | 'agent'
 
 export interface DirectiveRef {
@@ -956,10 +943,4 @@ export interface DirectiveRef {
   namespace?: string
   source?: string
   args?: string
-}
-
-export interface SpaceToolkit {
-  skills: DirectiveRef[]
-  commands: DirectiveRef[]
-  agents: DirectiveRef[]
 }

@@ -393,7 +393,7 @@ export type PluginConfig = { type: 'local'; path: string }
 export type SettingSource = 'user' | 'project' | 'local'
 
 // ============================================
-// Directive Types (used by toolkit, skills, commands, agents)
+// Directive Types (used by skills, commands, agents)
 // ============================================
 
 export type DirectiveType = 'skill' | 'command' | 'agent'

@@ -89,14 +89,12 @@ describe('skill-expander strict allowSources', () => {
     expect(result.expanded.commands).toEqual(['app-command'])
   })
 
-  it('allows global and space resources when bypassing toolkit allowlist', () => {
+  it('allows global and space resources with execution-layer allowSources', () => {
     const result = expandLazyDirectives(
       '/space-skill\n/app-skill\n@app-agent\n/app-command',
       undefined,
-      { skills: [], agents: [], commands: [] },
       {
-        allowSources: getExecutionLayerAllowedSources(),
-        bypassToolkitAllowlist: true
+        allowSources: getExecutionLayerAllowedSources()
       }
     )
 

@@ -5,7 +5,7 @@
  * Covers space creation, listing, and stats calculation.
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import fs from 'fs'
 import path from 'path'
 
@@ -15,11 +15,11 @@ import {
   createSpace,
   getSpace,
   deleteSpace,
-  getAllSpacePaths
+  getAllSpacePaths,
+  updateSpacePreferences,
+  getSpacePreferences
 } from '../../../src/main/services/space.service'
 import { initializeApp, getSpacesDir, getTempSpacePath } from '../../../src/main/services/config.service'
-import { updateSpaceConfig } from '../../../src/main/services/space-config.service'
-import { _testInitConfigSourceModeLock, _testResetConfigSourceModeLock } from '../../../src/main/services/config-source-mode.service'
 
 describe('Space Service', () => {
   beforeEach(async () => {
@@ -114,63 +114,37 @@ describe('Space Service', () => {
       expect(spaces.some(space => space.id === 'legacy-kite-space-id')).toBe(true)
     })
 
-    it('should migrate toolkit refs on listSpaces without ESM module resolution errors', async () => {
-      _testResetConfigSourceModeLock()
-      _testInitConfigSourceModeLock('kite')
-
-      const appRoot = path.join(globalThis.__KITE_TEST_DIR__, '.kite')
-      const appSkillDir = path.join(appRoot, 'skills', 'review')
-      const appAgentPath = path.join(appRoot, 'agents', 'reviewer.md')
-      const appCommandPath = path.join(appRoot, 'commands', 'lint.md')
-      fs.mkdirSync(appSkillDir, { recursive: true })
-      fs.mkdirSync(path.dirname(appAgentPath), { recursive: true })
-      fs.mkdirSync(path.dirname(appCommandPath), { recursive: true })
-      fs.writeFileSync(path.join(appSkillDir, 'SKILL.md'), '# review skill from app\n', 'utf-8')
-      fs.writeFileSync(appAgentPath, '# reviewer agent from app\n', 'utf-8')
-      fs.writeFileSync(appCommandPath, '# lint command from app\n', 'utf-8')
-
+    it('should keep listSpaces as read-only without mutating legacy space-config fields', async () => {
       const space = await createSpace({
-        name: 'Migration Regression',
+        name: 'List Readonly',
         icon: 'folder'
       })
 
-      updateSpaceConfig(space.path, (config) => ({
-        ...config,
+      const configPath = path.join(space.path, '.kite', 'space-config.json')
+      const originalConfig = {
+        resourcePolicy: {
+          version: 1,
+          mode: 'legacy',
+          allowMcp: true,
+          allowPluginMcpDirective: true,
+          allowedSources: ['app', 'global', 'space', 'installed', 'plugin']
+        },
         toolkit: {
-          skills: [{ id: 'skill:app:-:review', type: 'skill', name: 'review', source: 'app' }],
-          agents: [{ id: 'agent:app:-:reviewer', type: 'agent', name: 'reviewer', source: 'app' }],
-          commands: [{ id: 'command:app:-:lint', type: 'command', name: 'lint', source: 'app' }]
+          skills: [{ id: 'skill:space:-:legacy', type: 'skill', name: 'legacy', source: 'space' }],
+          commands: [],
+          agents: []
         }
-      }))
-
-      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-      const spaces = listSpaces()
-      const warnings = warnSpy.mock.calls.flat().map((entry) => String(entry))
-      warnSpy.mockRestore()
-
-      const migratedSkillPath = path.join(space.path, '.claude', 'skills', 'review', 'SKILL.md')
-      const migratedAgentPath = path.join(space.path, '.claude', 'agents', 'reviewer.md')
-      const migratedCommandPath = path.join(space.path, '.claude', 'commands', 'lint.md')
-      for (let i = 0; i < 20; i += 1) {
-        if (
-          fs.existsSync(migratedSkillPath) &&
-          fs.existsSync(migratedAgentPath) &&
-          fs.existsSync(migratedCommandPath)
-        ) {
-          break
-        }
-        await new Promise((resolveDelay) => setTimeout(resolveDelay, 10))
       }
+      fs.writeFileSync(configPath, JSON.stringify(originalConfig, null, 2), 'utf-8')
+
+      const before = fs.readFileSync(configPath, 'utf-8')
+      const spaces = listSpaces()
+      const after = fs.readFileSync(configPath, 'utf-8')
 
       expect(spaces.some((item) => item.id === space.id)).toBe(true)
-      expect(fs.existsSync(migratedSkillPath)).toBe(true)
-      expect(fs.existsSync(migratedAgentPath)).toBe(true)
-      expect(fs.existsSync(migratedCommandPath)).toBe(true)
-
-      expect(warnings.some((line) => line.includes("Cannot find module './skills.service'"))).toBe(false)
-      expect(warnings.some((line) => line.includes("Cannot find module './agents.service'"))).toBe(false)
-      expect(warnings.some((line) => line.includes("Cannot find module './commands.service'"))).toBe(false)
+      expect(after).toBe(before)
     })
+
   })
 
   describe('createSpace', () => {
@@ -429,6 +403,59 @@ describe('Space Service', () => {
 
       const paths = getAllSpacePaths()
       expect(paths).toContain(legacySpacePath)
+    })
+  })
+
+  describe('preferences normalization', () => {
+    it('should drop legacy enabled/showOnlyEnabled/agents fields when persisting preferences', async () => {
+      const space = await createSpace({
+        name: 'Preference Cleanup',
+        icon: 'folder'
+      })
+
+      const metaPath = path.join(space.path, '.kite', 'meta.json')
+      const dirtyMeta = {
+        id: space.id,
+        name: space.name,
+        icon: space.icon,
+        createdAt: space.createdAt,
+        updatedAt: space.updatedAt,
+        enabledSkills: ['legacy-skill'],
+        enabledAgents: ['legacy-agent'],
+        preferences: {
+          skills: {
+            favorites: ['old-favorite'],
+            enabled: ['legacy-skill'],
+            showOnlyEnabled: true
+          },
+          agents: {
+            enabled: ['legacy-agent'],
+            showOnlyEnabled: true
+          }
+        }
+      }
+      fs.writeFileSync(metaPath, JSON.stringify(dirtyMeta, null, 2), 'utf-8')
+
+      const updated = updateSpacePreferences(space.id, {
+        skills: { favorites: ['new-favorite'] }
+      })
+      expect(updated).toBeTruthy()
+
+      const savedMeta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'))
+      expect(savedMeta.preferences).toEqual({
+        skills: {
+          favorites: ['new-favorite']
+        }
+      })
+      expect(savedMeta).not.toHaveProperty('enabledSkills')
+      expect(savedMeta).not.toHaveProperty('enabledAgents')
+
+      const prefs = getSpacePreferences(space.id)
+      expect(prefs).toEqual({
+        skills: {
+          favorites: ['new-favorite']
+        }
+      })
     })
   })
 })

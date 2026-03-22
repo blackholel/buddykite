@@ -4,58 +4,6 @@ import { copyResourceWithConflict, resolveActionButtonState } from '../resource-
 const t = (key: string): string => key
 
 describe('resource action mode', () => {
-  it('toolkit 模式文案与禁用态正确', () => {
-    expect(resolveActionButtonState({
-      actionMode: 'toolkit',
-      t,
-      hasToolkit: false,
-      inToolkit: false
-    })).toMatchObject({
-      show: true,
-      label: 'Activate in space',
-      disabled: false
-    })
-
-    expect(resolveActionButtonState({
-      actionMode: 'toolkit',
-      t,
-      hasToolkit: true,
-      inToolkit: false
-    })).toMatchObject({
-      label: 'Add to toolkit'
-    })
-
-    expect(resolveActionButtonState({
-      actionMode: 'toolkit',
-      t,
-      hasToolkit: true,
-      inToolkit: true
-    })).toMatchObject({
-      label: 'Remove from toolkit'
-    })
-
-    expect(resolveActionButtonState({
-      actionMode: 'toolkit',
-      t,
-      hasToolkit: true,
-      inToolkit: false,
-      isActionInProgress: true
-    })).toMatchObject({
-      label: 'Loading...',
-      disabled: true
-    })
-
-    expect(resolveActionButtonState({
-      actionMode: 'toolkit',
-      t,
-      hasToolkit: true,
-      inToolkit: false,
-      isActionDisabled: true
-    })).toMatchObject({
-      disabled: true
-    })
-  })
-
   it('copy-to-space 冲突覆盖分支正确', async () => {
     const copyFn = vi.fn(async (overwrite?: boolean) => {
       if (!overwrite) {
@@ -107,4 +55,3 @@ describe('resource action mode', () => {
     expect(state.disabled).toBe(true)
   })
 })
-

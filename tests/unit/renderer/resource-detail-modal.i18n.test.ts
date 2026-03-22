@@ -45,7 +45,7 @@ describe('resource detail modal i18n title', () => {
         skill: {
           name: 'review',
           displayName: '代码审查',
-          namespace: 'toolkit',
+          namespace: 'ops',
           path: '/tmp/.claude/skills/review/SKILL.md',
           source: 'space',
           exposure: 'runtime-direct'
@@ -55,7 +55,7 @@ describe('resource detail modal i18n title', () => {
       })
     )
 
-    expect(html).toContain('/toolkit:代码审查')
+    expect(html).toContain('/ops:代码审查')
   })
 
   it('AgentDetailModal 标题使用本地化 displayName', () => {

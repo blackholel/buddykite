@@ -35,10 +35,6 @@ export function SkillsDropdown({ workDir, onInsertSkill, onOpenPanel }: SkillsDr
     return currentSpace?.path
   }, [currentSpace?.path, workDir])
   const favorites = currentSpace?.preferences?.skills?.favorites || []
-  const enabled = currentSpace?.preferences?.skills?.enabled || []
-  const showOnlyEnabled = currentSpace?.preferences?.skills?.showOnlyEnabled ?? false
-
-  const isEnabled = (skillName: string) => enabled.includes(skillName)
 
   // Load skills when dropdown opens
   useEffect(() => {
@@ -49,21 +45,15 @@ export function SkillsDropdown({ workDir, onInsertSkill, onOpenPanel }: SkillsDr
 
   // Get favorited skills
   const favoritedSkills = useMemo(() => {
-    const base = showOnlyEnabled
-      ? skills.filter(skill => isEnabled(skill.name))
-      : skills
-    return base.filter(skill => favorites.includes(skill.name))
-  }, [skills, favorites, showOnlyEnabled, enabled])
+    return skills.filter(skill => favorites.includes(skill.name))
+  }, [skills, favorites])
 
   // Get recent skills (non-favorited, limited to 5)
   const recentSkills = useMemo(() => {
-    const base = showOnlyEnabled
-      ? skills.filter(skill => isEnabled(skill.name))
-      : skills
-    return base
+    return skills
       .filter(skill => !favorites.includes(skill.name))
       .slice(0, 5)
-  }, [skills, favorites, showOnlyEnabled, enabled])
+  }, [skills, favorites])
 
   // Handle click outside
   useEffect(() => {
