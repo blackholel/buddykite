@@ -297,6 +297,22 @@ npm run dev
 
 ---
 
+## 方案与治理文档
+
+如果你是开发者，或者正在评审资源管理相关改动，建议先看这两篇文档：
+
+- [资源管理方案 B 终版](./plans/2026-03-22-resource-management-plan-b-final.md)
+  - 本轮实施计划、改动边界、测试口径与风险基线
+- [资源管理治理规则](./resource-management-governance.zh-CN.md)
+  - 长期规则基线，定义 `resourceId`、`kill switch`、`CAS + 重试`、`journal + rollback`、`JSONL + snapshot` 等统一口径
+
+相关专题文档：
+
+- [资源可见性与调用控制指南](./resource-exposure-control.zh-CN.md)
+- [插件加载与安装配置说明](./plugin-loading-and-installation.zh-CN.md)
+
+---
+
 ## 加入社区
 
 - [GitHub Discussions](https://github.com/blackholel/buddykite/discussions) — 提问、分享经验
