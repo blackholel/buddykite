@@ -8,7 +8,7 @@ import {
   saveConfig as serviceSaveConfig,
   validateApiConnection as serviceValidateApiConnection
 } from '../services/config.service'
-import type { ProviderProtocol } from '../../shared/types/ai-profile'
+import type { ApiValidationResult, ProviderProtocol } from '../../shared/types/ai-profile'
 
 export interface ControllerResponse<T = unknown> {
   success: boolean
@@ -51,12 +51,12 @@ export async function validateApi(
   provider: string,
   protocol?: ProviderProtocol,
   model?: string
-): Promise<ControllerResponse> {
+): Promise<ControllerResponse<ApiValidationResult>> {
   try {
     const result = await serviceValidateApiConnection(apiKey, apiUrl, provider, protocol, model)
     return {
       success: result.valid,
-      data: { model: result.model },
+      data: result,
       error: result.message
     }
   } catch (error: unknown) {

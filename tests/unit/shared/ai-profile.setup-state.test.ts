@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { getAiSetupState } from '../../../src/shared/types/ai-profile'
+import { ensureAiConfig, getAiSetupState } from '../../../src/shared/types/ai-profile'
 
 describe('getAiSetupState', () => {
   it('returns missing_profile when ai.profiles is explicitly empty', () => {
@@ -146,5 +146,59 @@ describe('getAiSetupState', () => {
     )
 
     expect(state).toEqual({ configured: true, reason: null })
+  })
+
+  it('infers presetKey for known built-in provider profiles', () => {
+    const ai = ensureAiConfig({
+      profiles: [
+        {
+          id: 'p-openai',
+          name: 'OpenAI',
+          vendor: 'openai',
+          protocol: 'openai_compat',
+          apiUrl: 'https://api.openai.com/v1/responses',
+          apiKey: 'sk-test',
+          defaultModel: 'gpt-4o-mini',
+          modelCatalog: ['gpt-4o-mini'],
+          enabled: true
+        },
+        {
+          id: 'p-minimax',
+          name: 'MiniMax',
+          vendor: 'minimax',
+          protocol: 'anthropic_compat',
+          apiUrl: 'https://api.minimaxi.com/anthropic',
+          apiKey: 'mm-key',
+          defaultModel: 'MiniMax-M2.5',
+          modelCatalog: ['MiniMax-M2.5'],
+          enabled: true
+        }
+      ],
+      defaultProfileId: 'p-openai'
+    })
+
+    expect(ai.profiles[0].presetKey).toBe('openai')
+    expect(ai.profiles[1].presetKey).toBe('minimax')
+  })
+
+  it('falls back to custom presetKey when profile does not match built-in template', () => {
+    const ai = ensureAiConfig({
+      profiles: [
+        {
+          id: 'p-custom',
+          name: 'Corp Gateway',
+          vendor: 'anthropic',
+          protocol: 'anthropic_compat',
+          apiUrl: 'https://gateway.example.com/anthropic',
+          apiKey: 'corp-key',
+          defaultModel: 'claude-sonnet-4-5-20250929',
+          modelCatalog: ['claude-sonnet-4-5-20250929'],
+          enabled: true
+        }
+      ],
+      defaultProfileId: 'p-custom'
+    })
+
+    expect(ai.profiles[0].presetKey).toBe('custom')
   })
 })

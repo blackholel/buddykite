@@ -151,9 +151,9 @@ describe('Config Service', () => {
     })
 
     it('should treat 400 from configured endpoint as valid for openai_compat', async () => {
-      const fetchMock = vi.fn().mockResolvedValue(
-        createFetchResponse(400, { detail: 'Input must be a list' })
-      )
+      const fetchMock = vi.fn()
+        .mockResolvedValueOnce(createFetchResponse(400, { detail: 'Input must be a list' }))
+        .mockResolvedValueOnce(createFetchResponse(404, 'Cannot GET /v1/models'))
       vi.stubGlobal('fetch', fetchMock as any)
 
       const result = await validateApiConnection(
@@ -164,7 +164,8 @@ describe('Config Service', () => {
       )
 
       expect(result.valid).toBe(true)
-      expect(fetchMock).toHaveBeenCalledTimes(1)
+      expect(result.manualModelInputRequired).toBe(true)
+      expect(fetchMock).toHaveBeenCalledTimes(2)
       expect(fetchMock).toHaveBeenCalledWith(
         'https://api.tabcode.cc/openai/responses',
         expect.objectContaining({
@@ -188,7 +189,7 @@ describe('Config Service', () => {
       )
 
       expect(result.valid).toBe(true)
-      expect(fetchMock).toHaveBeenCalledTimes(1)
+      expect(fetchMock).toHaveBeenCalledTimes(2)
       expect(fetchMock).toHaveBeenCalledWith(
         'https://api.tabcode.cc/openai/responses',
         expect.objectContaining({
@@ -258,12 +259,33 @@ describe('Config Service', () => {
 
       expect(result.valid).toBe(true)
       expect(result.model).toBe('gpt-5.3-codex')
+      expect(result.availableModels).toEqual(['gpt-5.3-codex'])
+      expect(result.manualModelInputRequired).toBe(false)
       expect(fetchMock).toHaveBeenCalledTimes(2)
       expect(fetchMock).toHaveBeenNthCalledWith(
         2,
         'https://api.tabcode.cc/openai/v1/models',
         expect.objectContaining({ method: 'GET' })
       )
+    })
+
+    it('should return manual model input required when openai endpoint is reachable but model listing fails', async () => {
+      const fetchMock = vi.fn()
+        .mockResolvedValueOnce(createFetchResponse(200, { id: 'ok' }))
+        .mockResolvedValueOnce(createFetchResponse(404, 'Cannot GET /v1/models'))
+      vi.stubGlobal('fetch', fetchMock as any)
+
+      const result = await validateApiConnection(
+        'sk-test',
+        'https://api.tabcode.cc/openai/responses',
+        'openai_compat',
+        'openai_compat'
+      )
+
+      expect(result.valid).toBe(true)
+      expect(result.manualModelInputRequired).toBe(true)
+      expect(result.availableModels).toEqual([])
+      expect(result.connectionSummary).toContain('手动')
     })
 
     it('should use provided test model for anthropic-compatible validation', async () => {
@@ -282,6 +304,8 @@ describe('Config Service', () => {
 
       expect(result.valid).toBe(true)
       expect(result.model).toBe('glm-4.7')
+      expect(result.availableModels).toEqual(['glm-4.7'])
+      expect(result.manualModelInputRequired).toBe(false)
       expect(fetchMock).toHaveBeenCalledTimes(1)
       expect(fetchMock).toHaveBeenCalledWith(
         'https://open.bigmodel.cn/api/anthropic/v1/messages',
@@ -294,6 +318,26 @@ describe('Config Service', () => {
           })
         })
       )
+    })
+
+    it('should treat unknown anthropic-compatible endpoints as manual model input flows', async () => {
+      const fetchMock = vi.fn().mockResolvedValue(
+        createFetchResponse(200, { model: 'claude-sonnet-4-5-20250929' })
+      )
+      vi.stubGlobal('fetch', fetchMock as any)
+
+      const result = await validateApiConnection(
+        'sk-test',
+        'https://gateway.example.com/anthropic',
+        'anthropic_compat',
+        'anthropic_compat',
+        'claude-sonnet-4-5-20250929'
+      )
+
+      expect(result.valid).toBe(true)
+      expect(result.availableModels).toEqual([])
+      expect(result.manualModelInputRequired).toBe(true)
+      expect(result.connectionSummary).toContain('手动')
     })
   })
 

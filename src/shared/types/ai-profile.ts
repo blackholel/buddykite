@@ -31,12 +31,30 @@ export type ProviderVendor =
   | 'moonshot'
   | 'custom'
 export type ProviderProtocol = 'anthropic_official' | 'anthropic_compat' | 'openai_compat'
+export type ProviderPresetKey =
+  | 'openai'
+  | 'anthropic_official'
+  | 'minimax'
+  | 'moonshot'
+  | 'glm'
+  | 'custom'
+
+export interface ApiValidationResult {
+  valid: boolean
+  message?: string
+  model?: string
+  resolvedModel?: string
+  availableModels: string[]
+  manualModelInputRequired: boolean
+  connectionSummary?: string
+}
 
 export interface ApiProfile {
   id: string
   name: string
   vendor: ProviderVendor
   protocol: ProviderProtocol
+  presetKey?: ProviderPresetKey
   apiUrl: string
   apiKey: string
   defaultModel: string
@@ -82,6 +100,14 @@ export const DEFAULT_LEGACY_API_CONFIG: LegacyApiConfig = {
   model: DEFAULT_LEGACY_MODEL
 }
 
+const BUILTIN_PRESET_RECOMMENDED_MODELS: Record<Exclude<ProviderPresetKey, 'custom'>, string[]> = {
+  openai: ['gpt-4o-mini', 'gpt-4.1-mini', 'gpt-4.1', 'gpt-4o', 'gpt-5', 'gpt-5.4', 'gpt-5-codex', 'gpt-5.3-codex'],
+  anthropic_official: [DEFAULT_LEGACY_MODEL],
+  minimax: ['MiniMax-M2.5'],
+  moonshot: ['kimi-k2-thinking', 'kimi-k2-thinking-turbo', 'kimi-k2-0905-preview', 'kimi-k2-turbo-preview'],
+  glm: ['glm-4.7']
+}
+
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0
 }
@@ -107,6 +133,51 @@ function isVendor(value: unknown): value is ProviderVendor {
 
 function isProtocol(value: unknown): value is ProviderProtocol {
   return value === 'anthropic_official' || value === 'anthropic_compat' || value === 'openai_compat'
+}
+
+function isPresetKey(value: unknown): value is ProviderPresetKey {
+  return (
+    value === 'openai' ||
+    value === 'anthropic_official' ||
+    value === 'minimax' ||
+    value === 'moonshot' ||
+    value === 'glm' ||
+    value === 'custom'
+  )
+}
+
+function normalizeUrlForMatching(url: string): string {
+  return url.trim().replace(/\/+$/, '').toLowerCase()
+}
+
+export function inferProfilePresetKey(input: {
+  vendor: ProviderVendor
+  protocol: ProviderProtocol
+  apiUrl: string
+}): ProviderPresetKey {
+  const normalizedUrl = normalizeUrlForMatching(input.apiUrl)
+
+  if (input.vendor === 'openai' && input.protocol === 'openai_compat' && normalizedUrl.includes('api.openai.com/')) {
+    return 'openai'
+  }
+  if (input.vendor === 'anthropic' && input.protocol === 'anthropic_official') {
+    return 'anthropic_official'
+  }
+  if (input.vendor === 'minimax' && input.protocol === 'anthropic_compat' && normalizedUrl.includes('api.minimaxi.com/anthropic')) {
+    return 'minimax'
+  }
+  if (input.vendor === 'moonshot' && input.protocol === 'anthropic_compat' && normalizedUrl.includes('api.moonshot.cn/anthropic')) {
+    return 'moonshot'
+  }
+  if (input.vendor === 'zhipu' && input.protocol === 'anthropic_compat' && normalizedUrl.includes('open.bigmodel.cn/api/anthropic')) {
+    return 'glm'
+  }
+  return 'custom'
+}
+
+export function getPresetRecommendedModels(presetKey: ProviderPresetKey): string[] {
+  if (presetKey === 'custom') return []
+  return [...BUILTIN_PRESET_RECOMMENDED_MODELS[presetKey]]
 }
 
 export function legacyProviderToVendor(provider: LegacyApiProvider): ProviderVendor {
@@ -172,6 +243,11 @@ export function createProfileFromLegacyApi(
     name: profileName,
     vendor: legacyProviderToVendor(safeApi.provider),
     protocol: legacyProviderToProtocol(safeApi.provider),
+    presetKey: inferProfilePresetKey({
+      vendor: legacyProviderToVendor(safeApi.provider),
+      protocol: legacyProviderToProtocol(safeApi.provider),
+      apiUrl: safeApi.apiUrl
+    }),
     apiUrl: safeApi.apiUrl,
     apiKey: safeApi.apiKey,
     defaultModel,
@@ -224,6 +300,13 @@ function normalizeProfile(
     name: isNonEmptyString(rawProfile.name) ? rawProfile.name.trim() : fallback.name,
     vendor: isVendor(rawProfile.vendor) ? rawProfile.vendor : fallback.vendor,
     protocol: isProtocol(rawProfile.protocol) ? rawProfile.protocol : fallback.protocol,
+    presetKey: isPresetKey(rawProfile.presetKey)
+      ? rawProfile.presetKey
+      : inferProfilePresetKey({
+          vendor: isVendor(rawProfile.vendor) ? rawProfile.vendor : fallback.vendor,
+          protocol: isProtocol(rawProfile.protocol) ? rawProfile.protocol : fallback.protocol,
+          apiUrl: asString(rawProfile.apiUrl, fallback.apiUrl)
+        }),
     apiUrl: asString(rawProfile.apiUrl, fallback.apiUrl),
     apiKey: asString(rawProfile.apiKey, fallback.apiKey),
     defaultModel,

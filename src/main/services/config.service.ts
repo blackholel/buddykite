@@ -13,8 +13,11 @@ import {
   createAiConfigFromLegacyApi,
   ensureAiConfig,
   ensureLegacyApiConfig,
+  getPresetRecommendedModels,
+  inferProfilePresetKey,
   mirrorAiToLegacyApi,
   mirrorLegacyApiToAi,
+  type ApiValidationResult,
   type AiConfig,
   type LegacyApiConfig,
   type ProviderProtocol
@@ -1228,7 +1231,7 @@ export async function validateApiConnection(
   provider: string,
   protocol?: ProviderProtocol,
   model?: string
-): Promise<{ valid: boolean; message?: string; model?: string }> {
+): Promise<ApiValidationResult> {
   try {
     const isProviderProtocol = (value: unknown): value is ProviderProtocol =>
       value === 'anthropic_official' || value === 'anthropic_compat' || value === 'openai_compat'
@@ -1279,6 +1282,43 @@ export async function validateApiConnection(
     const normalizedModel = typeof model === 'string' ? model.trim() : ''
     const testModel = normalizedModel || undefined
 
+    const buildSuccessResult = (
+      input: Omit<ApiValidationResult, 'valid' | 'availableModels' | 'manualModelInputRequired'> & {
+        availableModels?: string[]
+        manualModelInputRequired?: boolean
+      }
+    ): ApiValidationResult => ({
+      valid: true,
+      model: input.model,
+      resolvedModel: input.resolvedModel ?? input.model,
+      message: input.message,
+      availableModels: input.availableModels ?? [],
+      manualModelInputRequired: input.manualModelInputRequired ?? false,
+      connectionSummary: input.connectionSummary
+    })
+
+    const buildFailureResult = (message: string): ApiValidationResult => ({
+      valid: false,
+      message,
+      availableModels: [],
+      manualModelInputRequired: false
+    })
+
+    const presetKey = inferProfilePresetKey({
+      vendor:
+        resolvedProtocol === 'openai_compat'
+          ? 'openai'
+          : apiUrl.includes('api.minimaxi.com')
+            ? 'minimax'
+            : apiUrl.includes('api.moonshot.cn')
+              ? 'moonshot'
+              : apiUrl.includes('open.bigmodel.cn')
+                ? 'zhipu'
+                : 'anthropic',
+      protocol: resolvedProtocol,
+      apiUrl
+    })
+
     // OpenAI compatible validation:
     // 1) Probe configured endpoint directly (POST /chat/completions or /responses).
     //    Many gateways do not expose GET /v1/models, but endpoint probe is still enough
@@ -1287,10 +1327,7 @@ export async function validateApiConnection(
     if (resolvedProtocol === 'openai_compat') {
       const probeUrls = resolveOpenAIProbeUrls(apiUrl)
       if (!probeUrls) {
-        return {
-          valid: false,
-          message: 'OpenAI compatible API URL must end with /chat/completions or /responses'
-        }
+        return buildFailureResult('OpenAI compatible API URL must end with /chat/completions or /responses')
       }
 
       const endpointResponse = await fetch(probeUrls.endpoint, {
@@ -1317,17 +1354,16 @@ export async function validateApiConnection(
           : '{}'
       })
 
-      if (endpointResponse.ok) {
-        return { valid: true, model: testModel }
-      }
-
       if (endpointResponse.status === 401 || endpointResponse.status === 403) {
         const authErrorText = await endpointResponse.text().catch(() => '')
-        return {
-          valid: false,
-          message: authErrorText || `HTTP ${endpointResponse.status}`
-        }
+        return buildFailureResult(authErrorText || `HTTP ${endpointResponse.status}`)
       }
+
+      const endpointReachable =
+        endpointResponse.ok ||
+        endpointResponse.status === 400 ||
+        endpointResponse.status === 422 ||
+        endpointResponse.status === 429
 
       if (endpointResponse.status === 400 || endpointResponse.status === 422 || endpointResponse.status === 429) {
         const endpointErrorText = await endpointResponse.text().catch(() => '')
@@ -1343,13 +1379,9 @@ export async function validateApiConnection(
               lower.includes('invalid')
             )
           if (pointsToModel) {
-            return {
-              valid: false,
-              message: endpointErrorText || `Model "${testModel}" is not available on this endpoint`
-            }
+            return buildFailureResult(endpointErrorText || `Model "${testModel}" is not available on this endpoint`)
           }
         }
-        return { valid: true, model: testModel }
       }
 
       const modelsResponse = await fetch(probeUrls.models, {
@@ -1367,25 +1399,37 @@ export async function validateApiConnection(
             .filter((item: string) => item.length > 0)
           : []
         if (testModel && availableModels.length > 0 && !availableModels.includes(testModel)) {
-          return {
-            valid: false,
-            message: `Model "${testModel}" is not listed by provider`
-          }
+          return buildFailureResult(`Model "${testModel}" is not listed by provider`)
         }
         const modelId =
           testModel ||
           data?.data?.[0]?.id ||
           data?.model ||
           undefined
-        return { valid: true, model: modelId }
+        return buildSuccessResult({
+          model: modelId,
+          resolvedModel: modelId,
+          availableModels,
+          manualModelInputRequired: false,
+          connectionSummary: availableModels.length > 0
+            ? `已连接 OpenAI，可继续选择模型`
+            : '连接成功，但当前服务未返回模型列表，请手动填写模型名称'
+        })
+      }
+
+      if (endpointReachable) {
+        return buildSuccessResult({
+          model: testModel,
+          resolvedModel: testModel,
+          availableModels: [],
+          manualModelInputRequired: true,
+          connectionSummary: '连接成功，但当前服务未返回模型列表，请手动填写模型名称'
+        })
       }
 
       const endpointErrorText = await endpointResponse.text().catch(() => '')
       const modelsErrorText = await modelsResponse.text().catch(() => '')
-      return {
-        valid: false,
-        message: endpointErrorText || modelsErrorText || `HTTP ${modelsResponse.status}`
-      }
+      return buildFailureResult(endpointErrorText || modelsErrorText || `HTTP ${modelsResponse.status}`)
     }
 
     // Anthropic compatible validation: POST /v1/messages
@@ -1406,22 +1450,29 @@ export async function validateApiConnection(
 
     if (response.ok) {
       const data = await response.json()
-      return {
-        valid: true,
-        model: data.model || testModel || DEFAULT_MODEL
-      }
+      const resolvedModel = data.model || testModel || DEFAULT_MODEL
+      const availableModels = presetKey === 'custom' ? [] : getPresetRecommendedModels(presetKey)
+      const manualModelInputRequired = presetKey === 'custom'
+      return buildSuccessResult({
+        model: resolvedModel,
+        resolvedModel,
+        availableModels,
+        manualModelInputRequired,
+        connectionSummary: manualModelInputRequired
+          ? '连接成功，但当前服务未返回模型列表，请手动填写模型名称'
+          : `已连接 ${presetKey === 'anthropic_official' ? 'Anthropic' : '兼容服务'}，可继续选择模型`
+      })
     } else {
       const error = await response.json().catch(() => ({}))
-      return {
-        valid: false,
-        message: error.error?.message || `HTTP ${response.status}`
-      }
+      return buildFailureResult(error.error?.message || `HTTP ${response.status}`)
     }
   } catch (error: unknown) {
     const err = error as Error
     return {
       valid: false,
-      message: err.message || 'Connection failed'
+      message: err.message || 'Connection failed',
+      availableModels: [],
+      manualModelInputRequired: false
     }
   }
 }

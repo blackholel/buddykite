@@ -6,21 +6,22 @@ import { useState, useEffect } from 'react'
 import { useAppStore } from '../stores/app.store'
 import { api } from '../api'
 import type {
+  ApiValidationResult,
   KiteConfig,
   ThemeMode,
   ChatLayoutMode,
   McpServersConfig,
-  ApiProfile,
-  ProviderProtocol
+  ApiProfile
 } from '../types'
 import type { ClaudeCodeSlashRuntimeMode } from '../../shared/types/claude-code'
 import type { LucideIcon } from 'lucide-react'
-import { AlertCircle, ArrowLeft, Bot, CheckCircle2, ChevronDown, Download, Eye, EyeOff, Info, Network, Palette, RefreshCw, ServerCog, Shield, SlidersHorizontal, X } from 'lucide-react'
+import { AlertCircle, ArrowLeft, Bot, CheckCircle2, ChevronDown, Download, ExternalLink, Eye, EyeOff, Info, Network, Palette, RefreshCw, ServerCog, Shield, SlidersHorizontal, Star, Trash2, X } from 'lucide-react'
 import { McpServerList } from '../components/settings/McpServerList'
 import { useTranslation, setLanguage, getCurrentLanguage, SUPPORTED_LOCALES, type LocaleCode } from '../i18n'
 import { ensureAiConfig } from '../../shared/types/ai-profile'
 import {
   AI_PROFILE_TEMPLATES,
+  getAiProfileTemplate,
   isValidAnthropicCompatEndpoint,
   isValidOpenAICompatEndpoint,
   normalizeModelCatalog,
@@ -54,27 +55,7 @@ function selectFirstEnabledProfileId(profiles: ApiProfile[]): string {
 }
 
 function ensureTemplateProfiles(profiles: ApiProfile[]): ApiProfile[] {
-  const baseProfiles = [...profiles]
-  for (const template of AI_PROFILE_TEMPLATES) {
-    const exists = baseProfiles.some(
-      profile => profile.vendor === template.vendor && profile.protocol === template.protocol
-    )
-    if (!exists) {
-      baseProfiles.push({
-        id: createProfileId(template.key),
-        name: template.label,
-        vendor: template.vendor,
-        protocol: template.protocol,
-        apiUrl: template.apiUrl,
-        apiKey: '',
-        defaultModel: template.defaultModel,
-        modelCatalog: template.modelCatalog,
-        docUrl: template.docUrl,
-        enabled: false
-      })
-    }
-  }
-  return baseProfiles
+  return profiles
 }
 
 function getProfileMonogram(name: string): string {
@@ -83,6 +64,10 @@ function getProfileMonogram(name: string): string {
   const matchedLatin = trimmed.match(/[A-Za-z]/)
   if (matchedLatin?.[0]) return matchedLatin[0].toUpperCase()
   return trimmed[0]
+}
+
+function isProfileUnconfigured(profile: ApiProfile): boolean {
+  return !profile.apiKey.trim()
 }
 
 const THEME_OPTIONS: Array<{ value: ThemeMode; labelKey: string }> = [
@@ -112,6 +97,7 @@ type SettingsSectionId =
   | 'about'
 
 type SettingsSectionGroup = 'required' | 'optional' | 'advanced'
+type ModelSetupStep = 'provider' | 'account' | 'model'
 
 interface SettingsSectionDef {
   id: SettingsSectionId
@@ -179,6 +165,12 @@ const SETTINGS_SECTION_GROUPS: Array<{ id: SettingsSectionGroup; labelKey: strin
   { id: 'advanced', labelKey: 'Advanced tools' }
 ]
 
+const DEFAULT_EXPANDED_MODEL_STEPS: Record<ModelSetupStep, boolean> = {
+  provider: false,
+  account: true,
+  model: false
+}
+
 // Apple-style toggle component (extracted to top-level to avoid re-creation on every render)
 function AppleToggle({ checked, onChange, disabled = false }: { checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
   return (
@@ -242,15 +234,13 @@ export function SettingsPage() {
   const [activeSection, setActiveSection] = useState<SettingsSectionId>('model')
   const [showApiKey, setShowApiKey] = useState(false)
   const [modelInput, setModelInput] = useState('')
+  const [showAdvancedConnectionFields, setShowAdvancedConnectionFields] = useState(false)
   const [showAdvancedModelFields, setShowAdvancedModelFields] = useState(false)
-  const [expandedModelStep, setExpandedModelStep] = useState<'protocol' | 'api' | 'model'>('api')
+  const [expandedModelSteps, setExpandedModelSteps] = useState<Record<ModelSetupStep, boolean>>(DEFAULT_EXPANDED_MODEL_STEPS)
 
   // Connection status
   const [isValidating, setIsValidating] = useState(false)
-  const [validationResult, setValidationResult] = useState<{
-    valid: boolean
-    message?: string
-  } | null>(null)
+  const [validationResult, setValidationResult] = useState<ApiValidationResult | null>(null)
 
   // Remote access state
   const [remoteStatus, setRemoteStatus] = useState<RemoteAccessStatus | null>(null)
@@ -285,6 +275,7 @@ export function SettingsPage() {
     return null
   })()
   const selectedProfileUrlInvalid = Boolean(selectedProfileUrlError)
+  const selectedTemplate = selectedProfile ? getAiProfileTemplate(selectedProfile) : undefined
 
   // Load remote access status
   useEffect(() => {
@@ -315,8 +306,9 @@ export function SettingsPage() {
   useEffect(() => {
     setShowApiKey(false)
     setModelInput('')
+    setShowAdvancedConnectionFields(false)
     setShowAdvancedModelFields(false)
-    setExpandedModelStep('api')
+    setExpandedModelSteps(DEFAULT_EXPANDED_MODEL_STEPS)
   }, [selectedProfileId])
 
   useEffect(() => {
@@ -662,11 +654,6 @@ export function SettingsPage() {
     }
   }
 
-  const handleProtocolChange = (protocol: ProviderProtocol) => {
-    updateSelectedProfile({ protocol })
-    setValidationResult(null)
-  }
-
   const handleAddModelId = () => {
     if (!selectedProfile) return
     const normalizedModel = modelInput.trim()
@@ -678,12 +665,37 @@ export function SettingsPage() {
     setValidationResult(null)
   }
 
-  const handleAddProfileFromTemplate = () => {
-    const template = AI_PROFILE_TEMPLATES.find(item =>
-      !profiles.some(profile => profile.vendor === item.vendor && profile.protocol === item.protocol)
-    )
-    if (!template) return
+  const toggleModelStep = (step: ModelSetupStep) => {
+    setExpandedModelSteps(prev => ({
+      ...prev,
+      [step]: !prev[step]
+    }))
+  }
 
+  const openModelStep = (step: ModelSetupStep) => {
+    setExpandedModelSteps(prev => (
+      prev[step]
+        ? prev
+        : {
+            ...prev,
+            [step]: true
+          }
+    ))
+  }
+
+  const closeModelStep = (step: ModelSetupStep) => {
+    setExpandedModelSteps(prev => (
+      prev[step]
+        ? {
+            ...prev,
+            [step]: false
+          }
+        : prev
+    ))
+  }
+
+  const createProfileFromTemplate = (templateKey?: string) => {
+    const template = AI_PROFILE_TEMPLATES.find(item => item.key === templateKey) || AI_PROFILE_TEMPLATES[0]
     const profileName = toUniqueProfileName(template.label, profiles)
     const profileId = createProfileId(template.key)
     const nextProfile: ApiProfile = {
@@ -691,6 +703,7 @@ export function SettingsPage() {
       name: profileName,
       apiKey: '',
       enabled: true,
+      presetKey: template.presetKey,
       vendor: template.vendor,
       protocol: template.protocol,
       apiUrl: template.apiUrl,
@@ -705,6 +718,47 @@ export function SettingsPage() {
       setDefaultProfileId(profileId)
     }
     setValidationResult(null)
+  }
+
+  const handleAddProfileFromTemplate = () => {
+    createProfileFromTemplate(selectedTemplate?.key)
+  }
+
+  const handleSelectProviderTemplate = (templateKey: string) => {
+    const template = AI_PROFILE_TEMPLATES.find(item => item.key === templateKey)
+    if (!template) return
+
+    const existingProfile = profiles.find(profile => profile.presetKey === template.presetKey)
+    if (existingProfile) {
+      setSelectedProfileId(existingProfile.id)
+      setValidationResult(null)
+      openModelStep('account')
+      closeModelStep('model')
+      return
+    }
+
+    if (selectedProfile && isProfileUnconfigured(selectedProfile)) {
+      updateSelectedProfile({
+        name: toUniqueProfileName(template.label, profiles.filter(profile => profile.id !== selectedProfile.id)),
+        presetKey: template.presetKey,
+        vendor: template.vendor,
+        protocol: template.protocol,
+        apiUrl: template.apiUrl,
+        apiKey: '',
+        defaultModel: template.defaultModel,
+        modelCatalog: template.modelCatalog,
+        docUrl: template.docUrl,
+        enabled: true
+      })
+      setValidationResult(null)
+      openModelStep('account')
+      closeModelStep('model')
+      return
+    }
+
+    createProfileFromTemplate(template.key)
+    openModelStep('account')
+    closeModelStep('model')
   }
 
   const handleRemoveSelectedProfile = () => {
@@ -725,27 +779,39 @@ export function SettingsPage() {
   }
 
   const parseValidationResult = (response: { success: boolean; data?: unknown; error?: string }) => {
-    const data = response.data as { valid?: boolean; message?: string } | undefined
+    const data = response.data as Partial<ApiValidationResult> | undefined
     const valid = typeof data?.valid === 'boolean' ? data.valid : response.success
-    const message = data?.message || response.error
-    return { valid, message }
+    return {
+      valid,
+      message: data?.message || response.error,
+      model: data?.model,
+      resolvedModel: data?.resolvedModel,
+      availableModels: Array.isArray(data?.availableModels) ? data.availableModels : [],
+      manualModelInputRequired: data?.manualModelInputRequired === true,
+      connectionSummary: data?.connectionSummary
+    } satisfies ApiValidationResult
   }
 
   const handleValidateConnection = async () => {
     if (!selectedProfile) return
 
     if (selectedProfile.enabled !== false && !selectedProfile.apiKey.trim()) {
-      setValidationResult({ valid: false, message: t('Please enter API Key') })
+      setValidationResult({ valid: false, message: t('Please enter API Key'), availableModels: [], manualModelInputRequired: false })
       return
     }
 
     if (selectedProfile.protocol !== 'anthropic_official' && !selectedProfile.apiUrl.trim()) {
-      setValidationResult({ valid: false, message: t('Please enter API URL') })
+      setValidationResult({ valid: false, message: t('Please enter API URL'), availableModels: [], manualModelInputRequired: false })
       return
     }
 
     if (selectedProfileUrlInvalid) {
-      setValidationResult({ valid: false, message: selectedProfileUrlError || t('Please enter API URL') })
+      setValidationResult({
+        valid: false,
+        message: selectedProfileUrlError || t('Please enter API URL'),
+        availableModels: [],
+        manualModelInputRequired: false
+      })
       return
     }
 
@@ -757,6 +823,7 @@ export function SettingsPage() {
       let response = await api.validateApi(
         selectedProfile.apiKey.trim(),
         selectedProfile.apiUrl.trim(),
+        selectedProfile.vendor,
         selectedProfile.protocol,
         selectedProfile.defaultModel.trim()
       )
@@ -768,6 +835,7 @@ export function SettingsPage() {
           selectedProfile.apiKey.trim(),
           selectedProfile.apiUrl.trim(),
           'openai',
+          selectedProfile.protocol,
           selectedProfile.defaultModel.trim()
         )
         parsed = parseValidationResult(response as { success: boolean; data?: unknown; error?: string })
@@ -782,12 +850,34 @@ export function SettingsPage() {
         }
       }
 
+      if (parsed.valid) {
+        const nextCatalog = parsed.availableModels.length > 0
+          ? normalizeModelCatalog(
+              parsed.resolvedModel || selectedProfile.defaultModel,
+              parsed.availableModels
+            )
+          : selectedCatalog
+
+        updateSelectedProfile({
+          defaultModel: parsed.resolvedModel || selectedProfile.defaultModel,
+          modelCatalog: nextCatalog
+        })
+        openModelStep('model')
+      }
+
       setValidationResult({
-        valid: parsed.valid,
-        message: parsed.valid ? t('Connection successful') : (parsed.message || t('Connection failed'))
+        ...parsed,
+        message: parsed.valid
+          ? (parsed.connectionSummary || parsed.message || t('Connection successful'))
+          : (parsed.message || t('Connection failed'))
       })
     } catch (error) {
-      setValidationResult({ valid: false, message: t('Connection failed') })
+      setValidationResult({
+        valid: false,
+        message: t('Connection failed'),
+        availableModels: [],
+        manualModelInputRequired: false
+      })
     } finally {
       setIsValidating(false)
     }
@@ -795,27 +885,32 @@ export function SettingsPage() {
 
   const handleSave = async () => {
     if (profiles.length === 0) {
-      setValidationResult({ valid: false, message: t('Please create at least one profile') })
+      setValidationResult({ valid: false, message: t('Please create at least one profile'), availableModels: [], manualModelInputRequired: false })
       return
     }
 
     if (!selectedProfile) {
-      setValidationResult({ valid: false, message: t('Please select a profile') })
+      setValidationResult({ valid: false, message: t('Please select a profile'), availableModels: [], manualModelInputRequired: false })
       return
     }
 
     if (!selectedProfile.apiKey.trim()) {
-      setValidationResult({ valid: false, message: t('Please enter API Key') })
+      setValidationResult({ valid: false, message: t('Please enter API Key'), availableModels: [], manualModelInputRequired: false })
       return
     }
 
     if (selectedProfile.protocol !== 'anthropic_official' && !selectedProfile.apiUrl.trim()) {
-      setValidationResult({ valid: false, message: t('Please enter API URL') })
+      setValidationResult({ valid: false, message: t('Please enter API URL'), availableModels: [], manualModelInputRequired: false })
       return
     }
 
     if (selectedProfileUrlInvalid) {
-      setValidationResult({ valid: false, message: selectedProfileUrlError || t('Please enter API URL') })
+      setValidationResult({
+        valid: false,
+        message: selectedProfileUrlError || t('Please enter API URL'),
+        availableModels: [],
+        manualModelInputRequired: false
+      })
       return
     }
 
@@ -846,9 +941,21 @@ export function SettingsPage() {
         isFirstLaunch: false
       } as KiteConfig
       setConfig(nextConfig)
-      setValidationResult({ valid: true, message: t('Model connected, you can start chatting') })
+      setValidationResult({
+        valid: true,
+        message: t('Model connected, you can start chatting'),
+        connectionSummary: t('Model connected, you can start chatting'),
+        availableModels: normalizeModelCatalog(selectedProfile.defaultModel, selectedCatalog),
+        manualModelInputRequired: false,
+        resolvedModel: selectedProfile.defaultModel
+      })
     } catch (error) {
-      setValidationResult({ valid: false, message: t('Save failed') })
+      setValidationResult({
+        valid: false,
+        message: t('Save failed'),
+        availableModels: [],
+        manualModelInputRequired: false
+      })
     } finally {
       setIsValidating(false)
     }
@@ -880,13 +987,17 @@ export function SettingsPage() {
   const renderModelSection = () => {
     const hasProfile = Boolean(selectedProfile)
     const hasApiKey = Boolean(selectedProfile?.apiKey.trim())
-    const requiresApiUrl = selectedProfile?.protocol !== 'anthropic_official'
+    const requiresApiUrl = Boolean(selectedProfile && selectedTemplate?.apiUrlBehavior === 'required')
     const hasApiUrl = !requiresApiUrl || Boolean(selectedProfile?.apiUrl.trim())
     const hasDefaultModel = Boolean(selectedProfile?.defaultModel.trim())
-    const protocolReady = hasProfile
-    const apiReady = hasApiKey && hasApiUrl
+    const providerReady = hasProfile
+    const accountReady = hasApiKey && hasApiUrl
     const modelReady = hasDefaultModel
     const completedSteps = [hasProfile, hasApiKey && hasApiUrl, hasDefaultModel].filter(Boolean).length
+    const profileStatusKey = hasApiKey ? 'Connected now' : 'Needs connection'
+    const modelChoices = validationResult?.availableModels?.length
+      ? validationResult.availableModels
+      : (selectedTemplate?.recommendedModels.length ? selectedTemplate.recommendedModels : selectedCatalog)
     const canTestConnection = Boolean(
       selectedProfile &&
       selectedProfile.enabled !== false &&
@@ -897,38 +1008,28 @@ export function SettingsPage() {
     const canSaveModel = Boolean(
       selectedProfile &&
       !selectedProfileUrlInvalid &&
-      (selectedProfile.enabled === false || hasApiKey)
+      (selectedProfile.enabled === false || (hasApiKey && hasApiUrl))
     )
 
     return (
       <section className="settings-modal-card settings-model-shell">
         <div className="settings-model-layout">
           <aside className="settings-model-sidebar">
-            <section className="settings-quick-card">
-              <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">{t('Quick setup for beginners')}</p>
-              <h4 className="mt-2 text-base font-semibold">{t('Model setup')}</h4>
-              <div className="mt-3 flex items-center justify-between rounded-xl border border-border/70 bg-card px-3 py-2">
-                <span className="text-xs text-muted-foreground">{t('Start in 3 simple steps')}</span>
-                <span className="text-sm font-semibold">{completedSteps}/3</span>
-              </div>
-              <div className="mt-3 flex flex-wrap gap-1.5">
-                <span className="rounded-full border border-border/70 bg-card px-2.5 py-1 text-xs text-muted-foreground">1 · {t('Protocol')}</span>
-                <span className="rounded-full border border-border/70 bg-card px-2.5 py-1 text-xs text-muted-foreground">2 · API</span>
-                <span className="rounded-full border border-border/70 bg-card px-2.5 py-1 text-xs text-muted-foreground">3 · {t('Default Model')}</span>
-              </div>
-            </section>
-
             <section className="settings-profile-card">
               <div className="mb-2 flex items-center justify-between">
-                <label className="text-xs font-medium text-muted-foreground">{t('Vendor')}</label>
+                <label className="text-xs font-medium text-muted-foreground">{t('Other connected accounts')}</label>
                 <button
                   type="button"
                   onClick={handleAddProfileFromTemplate}
                   className="inline-flex h-7 w-7 items-center justify-center rounded-md text-xl leading-none text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
-                  title={t('Add Profile')}
+                  title={t('Add account')}
                 >
                   +
                 </button>
+              </div>
+              <div className="mb-3 flex items-center justify-between rounded-xl border border-border/70 bg-card px-3 py-2">
+                <span className="text-xs text-muted-foreground">{t('Start in 3 simple steps')}</span>
+                <span className="text-sm font-semibold">{completedSteps}/3</span>
               </div>
               <div className="space-y-1.5">
                 {profiles.map((profile) => {
@@ -971,12 +1072,12 @@ export function SettingsPage() {
                 <section className="settings-step-card">
                   <div className="settings-step-head">
                     <div>
-                      <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">{t('Current profile')}</p>
-                      <h3 className="mt-1 text-xl font-semibold">{selectedProfile.name}</h3>
+                      <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">{t('Model setup')}</p>
+                      <h3 className="mt-1 text-xl font-semibold">{selectedTemplate?.label || selectedProfile.name}</h3>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${selectedProfile.enabled !== false ? 'bg-kite-success/15 text-kite-success' : 'bg-secondary text-muted-foreground'}`}>
-                        {selectedProfile.enabled !== false ? t('Enabled') : t('Disabled')}
+                      <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${hasApiKey ? 'bg-kite-success/15 text-kite-success' : 'bg-secondary text-muted-foreground'}`}>
+                        {t(profileStatusKey)}
                       </span>
                       <AppleToggle
                         checked={selectedProfile.enabled !== false}
@@ -984,42 +1085,53 @@ export function SettingsPage() {
                       />
                     </div>
                   </div>
-                  <p className="mt-2 text-xs text-muted-foreground">{t('Complete model setup before chatting')}</p>
+                  <p className="mt-2 text-xs text-muted-foreground">{t('Choose a provider, connect your account, then pick a model.')}</p>
                 </section>
 
-                <section className={`settings-step-card ${expandedModelStep !== 'protocol' ? 'settings-step-card-collapsed' : ''}`}>
+                <section className={`settings-step-card ${!expandedModelSteps.provider ? 'settings-step-card-collapsed' : ''}`}>
                   <button
                     type="button"
-                    onClick={() => setExpandedModelStep('protocol')}
+                    onClick={() => toggleModelStep('provider')}
                     className="settings-step-toggle"
+                    aria-expanded={expandedModelSteps.provider}
                   >
                     <div className="settings-step-toggle-left">
-                      <h4 className="text-sm font-semibold">1. {t('Protocol')}</h4>
-                      <span className="settings-step-status">{t('Step 1: Choose protocol')}</span>
+                      <h4 className="text-sm font-semibold">1. {t('Choose provider')}</h4>
+                      <span className="settings-step-status">{t('Step 1: Pick the service you want to connect')}</span>
                     </div>
                     <div className="settings-step-toggle-right">
-                      {protocolReady && <CheckCircle2 className="h-4 w-4 text-kite-success" />}
-                      <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${expandedModelStep === 'protocol' ? 'rotate-180' : ''}`} />
+                      {providerReady && <CheckCircle2 className="h-4 w-4 text-kite-success" />}
+                      <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${expandedModelSteps.provider ? 'rotate-180' : ''}`} />
                     </div>
                   </button>
-                  {expandedModelStep === 'protocol' && (
+                  {expandedModelSteps.provider && (
                     <div className="settings-step-panel">
-                      <p className="mb-3 text-xs text-muted-foreground">{t('Protocol help')}</p>
-                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                        <button
-                          type="button"
-                          onClick={() => handleProtocolChange('anthropic_compat')}
-                          className={`settings-choice-btn ${selectedProfile.protocol !== 'openai_compat' ? 'settings-choice-btn-active' : ''}`}
-                        >
-                          {t('Anthropic Compatible')}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleProtocolChange('openai_compat')}
-                          className={`settings-choice-btn ${selectedProfile.protocol === 'openai_compat' ? 'settings-choice-btn-active' : ''}`}
-                        >
-                          {t('OpenAI Compatible')}
-                        </button>
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                        {AI_PROFILE_TEMPLATES.map((template) => {
+                          const active = selectedProfile.presetKey === template.presetKey
+                          return (
+                            <button
+                              key={template.key}
+                              type="button"
+                              onClick={() => handleSelectProviderTemplate(template.key)}
+                              className={`rounded-xl border p-3 text-left transition ${
+                                active
+                                  ? 'border-primary/45 bg-primary/10'
+                                  : 'border-border bg-background hover:bg-secondary/40'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between gap-3">
+                                <div>
+                                  <p className="text-sm font-semibold text-foreground">{template.label}</p>
+                                  <p className="mt-1 text-xs text-muted-foreground">
+                                    {template.connectionMode === 'custom' ? t('Advanced connection') : t('Recommended for direct setup')}
+                                  </p>
+                                </div>
+                                {active && <CheckCircle2 className="h-4 w-4 text-kite-success shrink-0" />}
+                              </div>
+                            </button>
+                          )
+                        })}
                       </div>
                     </div>
                   )}
@@ -1039,26 +1151,54 @@ export function SettingsPage() {
                   </section>
                 ) : (
                   <>
-                    <section className={`settings-step-card ${expandedModelStep !== 'api' ? 'settings-step-card-collapsed' : ''}`}>
+                    <section className={`settings-step-card ${!expandedModelSteps.account ? 'settings-step-card-collapsed' : ''}`}>
                       <button
                         type="button"
-                        onClick={() => setExpandedModelStep('api')}
+                        onClick={() => toggleModelStep('account')}
                         className="settings-step-toggle"
+                        aria-expanded={expandedModelSteps.account}
                       >
                         <div className="settings-step-toggle-left">
-                          <h4 className="text-sm font-semibold">2. API</h4>
-                          <span className="settings-step-status">{t('Step 2: Enter API Key')}</span>
+                          <h4 className="text-sm font-semibold">2. {t('Connect account')}</h4>
+                          <span className="settings-step-status">{t('Step 2: Add your API Key')}</span>
                         </div>
                         <div className="settings-step-toggle-right">
-                          {apiReady && <CheckCircle2 className="h-4 w-4 text-kite-success" />}
-                          <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${expandedModelStep === 'api' ? 'rotate-180' : ''}`} />
+                          {accountReady && <CheckCircle2 className="h-4 w-4 text-kite-success" />}
+                          <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${expandedModelSteps.account ? 'rotate-180' : ''}`} />
                         </div>
                       </button>
-                      {expandedModelStep === 'api' && (
+                      {expandedModelSteps.account && (
                         <div className="settings-step-panel space-y-3">
+                          <div className="rounded-xl border border-border/75 bg-secondary/20 p-3">
+                            <div className="space-y-2 text-sm">
+                              <div>
+                                <p className="font-medium text-foreground">{t('What is this?')}</p>
+                                <p className="mt-1 text-xs text-muted-foreground">{selectedTemplate?.setupCopy.whatIsThis}</p>
+                              </div>
+                              <div>
+                                <p className="font-medium text-foreground">{t('Where to get it?')}</p>
+                                <p className="mt-1 text-xs text-muted-foreground">{selectedTemplate?.setupCopy.whereToGetKey}</p>
+                              </div>
+                              <div>
+                                <p className="font-medium text-foreground">{t('What happens after connecting?')}</p>
+                                <p className="mt-1 text-xs text-muted-foreground">{selectedTemplate?.setupCopy.whatHappensAfterConnect}</p>
+                              </div>
+                            </div>
+                            {selectedProfile.docUrl && (
+                              <button
+                                type="button"
+                                onClick={() => void api.openExternal(selectedProfile.docUrl!)}
+                                className="mt-3 inline-flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-700"
+                              >
+                                <ExternalLink className="h-4 w-4" />
+                                {t('Open API Key guide')}
+                              </button>
+                            )}
+                          </div>
+
                           <div>
                             <label className="mb-1 block text-xs font-medium text-muted-foreground">API Key</label>
-                            <p className="mb-2 text-xs text-muted-foreground">{t('API Key help')}</p>
+                            <p className="mb-2 text-xs text-muted-foreground">{t('Paste the API Key from the provider console')}</p>
                             <div className="relative">
                               <input
                                 type={showApiKey ? 'text' : 'password'}
@@ -1079,51 +1219,123 @@ export function SettingsPage() {
                                 {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                               </button>
                             </div>
-                            <details className="mt-2">
-                              <summary className="cursor-pointer text-xs text-blue-600 hover:text-blue-700">{t('Where to get API Key')}</summary>
-                              <p className="mt-2 whitespace-pre-line text-xs text-muted-foreground">{t('API Key guide')}</p>
-                            </details>
                           </div>
 
-                          <div>
-                            <label className="mb-1 block text-xs font-medium text-muted-foreground">API URL</label>
-                            <p className="mb-2 text-xs text-muted-foreground">{t('API URL help')}</p>
-                            <input
-                              type="text"
-                              value={selectedProfile.apiUrl}
-                              onChange={(event) => {
-                                updateSelectedProfile({ apiUrl: event.target.value })
-                                setValidationResult(null)
-                              }}
-                              className="w-full input-apple px-4 py-2.5 text-sm"
-                            />
-                            {selectedProfileUrlInvalid && (
-                              <p className="mt-1 text-xs text-destructive">{selectedProfileUrlError}</p>
+                          <div className="rounded-xl border border-dashed border-border/75 bg-secondary/20 p-3">
+                            <button
+                              type="button"
+                              onClick={() => setShowAdvancedConnectionFields(prev => !prev)}
+                              className="flex w-full items-center justify-between text-left"
+                            >
+                              <span className="text-sm font-medium">{t('Advanced connection settings')}</span>
+                              <span className="text-xs text-muted-foreground">
+                                {showAdvancedConnectionFields || selectedTemplate?.apiUrlBehavior === 'required' ? t('Hide') : t('Show')}
+                              </span>
+                            </button>
+
+                            {(showAdvancedConnectionFields || selectedTemplate?.apiUrlBehavior === 'required') && (
+                              <div className="mt-3 space-y-3">
+                                {selectedTemplate?.connectionMode === 'custom' && (
+                                  <div>
+                                    <label className="mb-2 block text-xs font-medium text-muted-foreground">{t('Address type')}</label>
+                                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          updateSelectedProfile({ vendor: 'custom', protocol: 'openai_compat' })
+                                          setValidationResult(null)
+                                        }}
+                                        className={`settings-choice-btn ${selectedProfile.protocol === 'openai_compat' ? 'settings-choice-btn-active' : ''}`}
+                                      >
+                                        {t('OpenAI compatible address')}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          updateSelectedProfile({ vendor: 'custom', protocol: 'anthropic_compat' })
+                                          setValidationResult(null)
+                                        }}
+                                        className={`settings-choice-btn ${selectedProfile.protocol === 'anthropic_compat' ? 'settings-choice-btn-active' : ''}`}
+                                      >
+                                        {t('Claude compatible address')}
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
+
+                                <div>
+                                  <label className="mb-1 block text-xs font-medium text-muted-foreground">{t('Connection URL')}</label>
+                                  <p className="mb-2 text-xs text-muted-foreground">{selectedTemplate?.setupCopy.apiUrlHelp}</p>
+                                  <input
+                                    type="text"
+                                    value={selectedProfile.apiUrl}
+                                    onChange={(event) => {
+                                      updateSelectedProfile({ apiUrl: event.target.value })
+                                      setValidationResult(null)
+                                    }}
+                                    className="w-full input-apple px-4 py-2.5 text-sm"
+                                  />
+                                  {selectedProfileUrlInvalid && (
+                                    <p className="mt-1 text-xs text-destructive">{selectedProfileUrlError}</p>
+                                  )}
+                                </div>
+                              </div>
                             )}
                           </div>
                         </div>
                       )}
                     </section>
 
-                    <section className={`settings-step-card ${expandedModelStep !== 'model' ? 'settings-step-card-collapsed' : ''}`}>
+                    <section className={`settings-step-card ${!expandedModelSteps.model ? 'settings-step-card-collapsed' : ''}`}>
                       <button
                         type="button"
-                        onClick={() => setExpandedModelStep('model')}
+                        onClick={() => toggleModelStep('model')}
                         className="settings-step-toggle"
+                        aria-expanded={expandedModelSteps.model}
                       >
                         <div className="settings-step-toggle-left">
-                          <h4 className="text-sm font-semibold">3. {t('Default Model')}</h4>
-                          <span className="settings-step-status">{t('Step 3: Set model')}</span>
+                          <h4 className="text-sm font-semibold">3. {t('Choose model')}</h4>
+                          <span className="settings-step-status">{t('Step 3: Pick the model used for chat')}</span>
                         </div>
                         <div className="settings-step-toggle-right">
                           {modelReady && <CheckCircle2 className="h-4 w-4 text-kite-success" />}
-                          <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${expandedModelStep === 'model' ? 'rotate-180' : ''}`} />
+                          <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${expandedModelSteps.model ? 'rotate-180' : ''}`} />
                         </div>
                       </button>
-                      {expandedModelStep === 'model' && (
+                      {expandedModelSteps.model && (
                         <div className="settings-step-panel space-y-3">
                           <div>
-                            <p className="mb-2 text-xs text-muted-foreground">{t('Default model help')}</p>
+                            <p className="mb-2 text-xs text-muted-foreground">
+                              {validationResult?.valid
+                                ? (validationResult.manualModelInputRequired
+                                    ? t('The service did not return a model list. Enter the model name manually.')
+                                    : t('Choose the model buddykite should use for chat.'))
+                                : (selectedTemplate?.setupCopy.modelHelp || t('Verify the connection first, then choose a model.'))}
+                            </p>
+                            {modelChoices.length > 0 && (
+                              <div className="mb-3 flex flex-wrap gap-1.5">
+                                {modelChoices.map((modelId) => (
+                                  <button
+                                    key={modelId}
+                                    type="button"
+                                    onClick={() => {
+                                      updateSelectedProfile({
+                                        defaultModel: modelId,
+                                        modelCatalog: normalizeModelCatalog(modelId, selectedCatalog.length > 0 ? selectedCatalog : modelChoices)
+                                      })
+                                      setValidationResult(null)
+                                    }}
+                                    className={`rounded-full border px-2.5 py-1 text-xs ${
+                                      modelId === selectedProfile.defaultModel
+                                        ? 'border-primary/45 bg-primary/10 text-primary'
+                                        : 'border-border bg-background text-muted-foreground hover:bg-secondary/40'
+                                    }`}
+                                  >
+                                    {modelId}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
                             <input
                               type="text"
                               value={selectedProfile.defaultModel}
@@ -1142,10 +1354,6 @@ export function SettingsPage() {
                               }}
                               className="w-full input-apple px-4 py-2.5 text-sm"
                             />
-                            <details className="mt-2">
-                              <summary className="cursor-pointer text-xs text-blue-600 hover:text-blue-700">{t('Common models')}</summary>
-                              <p className="mt-2 whitespace-pre-line text-xs text-muted-foreground">{t('Model examples')}</p>
-                            </details>
                           </div>
 
                           <div className="rounded-xl border border-dashed border-border/75 bg-secondary/20 p-3">
@@ -1163,7 +1371,7 @@ export function SettingsPage() {
                             {showAdvancedModelFields && (
                               <div className="mt-3 space-y-3">
                                 <div>
-                                  <label className="mb-1 block text-xs font-medium text-muted-foreground">{t('Model Catalog')}</label>
+                                  <label className="mb-1 block text-xs font-medium text-muted-foreground">{t('Extra model list')}</label>
                                   <div className="mb-2 flex flex-wrap gap-1.5">
                                     {selectedCatalog.map((modelId) => (
                                       <button
@@ -1210,7 +1418,7 @@ export function SettingsPage() {
                                 </div>
 
                                 <div>
-                                  <label className="mb-1 block text-xs font-medium text-muted-foreground">{t('Doc URL')}</label>
+                                  <label className="mb-1 block text-xs font-medium text-muted-foreground">{t('Documentation link')}</label>
                                   <input
                                     type="text"
                                     value={selectedProfile.docUrl || ''}
@@ -1231,47 +1439,48 @@ export function SettingsPage() {
                 )}
 
                 <section className="settings-action-row">
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                    <button
-                      type="button"
-                      onClick={() => selectedProfile.enabled !== false && setDefaultProfileId(selectedProfile.id)}
-                      className={`rounded-xl px-4 py-2.5 text-sm font-medium transition ${
-                        selectedProfile.id === defaultProfileId
-                          ? 'bg-secondary text-foreground ring-1 ring-border/80'
-                          : 'bg-secondary/55 text-foreground hover:bg-secondary'
-                      } disabled:cursor-not-allowed disabled:opacity-50`}
-                      disabled={selectedProfile.enabled === false}
-                    >
-                      {selectedProfile.id === defaultProfileId ? t('Default') : t('Set as Default')}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void handleValidateConnection()}
-                      className="rounded-xl bg-secondary/85 px-4 py-2.5 text-sm font-medium text-foreground transition hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-50"
-                      disabled={isValidating || !canTestConnection}
-                    >
-                      {isValidating ? t('Testing...') : t('Test Connection')}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void handleSave()}
-                      className="rounded-xl bg-foreground px-4 py-2.5 text-sm font-medium text-background transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-                      disabled={isValidating || !canSaveModel}
-                    >
-                      {isValidating ? t('Saving...') : t('Save')}
-                    </button>
+                  <div className="settings-action-main">
+                    <div className="settings-action-summary">
+                      <p className="settings-action-label">{t('Ready to apply this account?')}</p>
+                      <p className="settings-action-hint">
+                        {selectedProfile.id === defaultProfileId
+                          ? t('This account is currently the default for new conversations.')
+                          : t('You can save first, then decide whether to make it the default account.')}
+                      </p>
+                    </div>
+
+                    <div className="settings-action-buttons">
+                      <button
+                        type="button"
+                        onClick={() => selectedProfile.enabled !== false && setDefaultProfileId(selectedProfile.id)}
+                        className={`settings-action-button settings-action-button-ghost ${
+                          selectedProfile.id === defaultProfileId ? 'settings-action-button-active' : ''
+                        }`}
+                        disabled={selectedProfile.enabled === false}
+                      >
+                        <Star className="h-4 w-4" />
+                        <span>{selectedProfile.id === defaultProfileId ? t('Default') : t('Set as Default')}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleValidateConnection()}
+                        className="settings-action-button settings-action-button-secondary"
+                        disabled={isValidating || !canTestConnection}
+                      >
+                        <span>{isValidating ? t('Testing...') : t('Verify connection')}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleSave()}
+                        className="settings-action-button settings-action-button-primary"
+                        disabled={isValidating || !canSaveModel}
+                      >
+                        <span>{isValidating ? t('Saving...') : t('Save and finish')}</span>
+                      </button>
+                    </div>
                   </div>
 
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <button
-                      type="button"
-                      onClick={handleRemoveSelectedProfile}
-                      className="rounded-xl bg-red-500/12 px-4 py-2 text-sm font-medium text-red-500 transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-                      disabled={profiles.length <= 1}
-                    >
-                      {t('Delete')}
-                    </button>
-
+                  <div className="settings-action-secondary">
                     {validationResult?.valid && (
                       <button
                         type="button"
@@ -1282,6 +1491,22 @@ export function SettingsPage() {
                         {t('Return to conversation')}
                       </button>
                     )}
+                  </div>
+
+                  <div className="settings-danger-card">
+                    <div>
+                      <p className="settings-danger-title">{t('Delete this account')}</p>
+                      <p className="settings-danger-hint">{t('Only this saved account will be removed. Other accounts stay unchanged.')}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleRemoveSelectedProfile}
+                      className="settings-danger-button"
+                      disabled={profiles.length <= 1}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      <span>{t('Delete')}</span>
+                    </button>
                   </div>
 
                   {validationResult?.message && (
@@ -1857,7 +2082,7 @@ export function SettingsPage() {
             </button>
           </header>
 
-          <div className="settings-modal-content">
+          <div className={activeSection === 'model' ? 'settings-modal-content settings-modal-content-model' : 'settings-modal-content'}>
             {renderActiveSection()}
           </div>
 

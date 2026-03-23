@@ -13,8 +13,10 @@ import type { ObservabilityConfig } from '../../shared/types/observability';
 export type {
   ProviderVendor,
   ProviderProtocol,
+  ProviderPresetKey,
   ApiProfile,
-  ConversationAiConfig
+  ConversationAiConfig,
+  ApiValidationResult
 } from '../../shared/types/ai-profile';
 export type { LocaleCode } from '../../shared/i18n/locale';
 export type { ObservabilityConfig, LangfuseObservabilityConfig, LangfuseMaskMode } from '../../shared/types/observability';
