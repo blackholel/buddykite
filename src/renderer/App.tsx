@@ -14,7 +14,6 @@ import { useWorkflowsStore } from './stores/workflows.store'
 import { useSpaceStore } from './stores/space.store'
 import { useSearchStore } from './stores/search.store'
 import { SplashScreen } from './components/splash/SplashScreen'
-import { ApiSetup } from './components/setup/ApiSetup'
 import { GitBashSetup } from './components/setup/GitBashSetup'
 import { SearchPanel } from './components/search/SearchPanel'
 import { SearchHighlightBar } from './components/search/SearchHighlightBar'
@@ -601,7 +600,7 @@ export default function App() {
       setConfig(loadedConfig)  // Sync config to store (was missing, causing empty apiKey in settings)
       setView('home')
     } else {
-      setView('setup')
+      setView('home')
     }
   }
 
@@ -632,8 +631,6 @@ export default function App() {
         return <SplashScreen />
       case 'gitBashSetup':
         return renderViewWithDragStrip('gitBashSetup', <GitBashSetup onComplete={handleGitBashSetupComplete} />)
-      case 'setup':
-        return renderViewWithDragStrip('setup', <ApiSetup />)
       case 'home':
         return renderViewWithDragStrip('home', (
           <Suspense fallback={<PageLoader />}>

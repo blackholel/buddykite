@@ -65,4 +65,16 @@ describe('app.store initialize view routing', () => {
 
     expect(useAppStore.getState().view).toBe('home')
   })
+
+  it('routes config load failure to home fallback instead of setup', async () => {
+    mockGetConfig.mockResolvedValue({
+      success: false,
+      error: 'boom'
+    })
+
+    await useAppStore.getState().initialize()
+
+    expect(useAppStore.getState().view).toBe('home')
+    expect(useAppStore.getState().error).toBe('boom')
+  })
 })

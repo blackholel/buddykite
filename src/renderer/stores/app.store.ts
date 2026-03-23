@@ -68,8 +68,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Actions
   setView: (view) => {
     const currentView = get().view
-    // Save current view as previous (except for splash and setup screens)
-    if (currentView !== 'splash' && currentView !== 'setup') {
+    // Save current view as previous (except for splash screen)
+    if (currentView !== 'splash') {
       set({ previousView: currentView, view })
     } else {
       set({ view })
@@ -211,12 +211,12 @@ export const useAppStore = create<AppState>((set, get) => ({
         set({ view: 'home' })
       } else {
         set({ error: response.error || 'Failed to load configuration' })
-        set({ view: 'setup' })
+        set({ view: 'home' })
       }
     } catch (error) {
       console.error('Failed to initialize:', error)
       set({ error: 'Failed to initialize application' })
-      set({ view: 'setup' })
+      set({ view: 'home' })
     } finally {
       set({ isLoading: false })
     }

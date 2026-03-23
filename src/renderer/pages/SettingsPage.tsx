@@ -839,10 +839,11 @@ export function SettingsPage() {
         defaultProfileId: normalizedDefaultProfileId
       }
 
-      await api.setConfig({ ai: aiConfig })
+      await api.setConfig({ ai: aiConfig, isFirstLaunch: false })
       const nextConfig = {
         ...config,
-        ai: aiConfig
+        ai: aiConfig,
+        isFirstLaunch: false
       } as KiteConfig
       setConfig(nextConfig)
       setValidationResult({ valid: true, message: t('Model connected, you can start chatting') })

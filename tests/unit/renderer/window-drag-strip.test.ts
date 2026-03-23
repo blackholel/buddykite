@@ -16,7 +16,7 @@ function createPlatform(overrides: Partial<PlatformInfo>): PlatformInfo {
 describe('window-drag-strip visibility', () => {
   it('Windows Electron 在非 unified 视图显示拖拽条', () => {
     const windows = createPlatform({ platform: 'win32', isWindows: true, isLinux: false })
-    const visibleViews: AppView[] = ['gitBashSetup', 'setup', 'home', 'space', 'settings']
+    const visibleViews: AppView[] = ['gitBashSetup', 'home', 'space', 'settings']
 
     for (const view of visibleViews) {
       expect(shouldShowWindowDragStrip({
