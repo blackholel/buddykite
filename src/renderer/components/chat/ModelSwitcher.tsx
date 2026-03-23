@@ -17,11 +17,26 @@ interface ModelSwitcherProps {
   onOpenChange?: (isOpen: boolean) => void
 }
 
-interface ModelOption {
+export interface ModelOption {
   profileId: string
   profileName: string
   model: string
   displayName: string
+}
+
+export function buildModelOptions(profiles: ApiProfile[]): ModelOption[] {
+  const options: ModelOption[] = []
+  profiles.forEach(profile => {
+    const model = profile.defaultModel.trim()
+    if (!model) return
+    options.push({
+      profileId: profile.id,
+      profileName: profile.name,
+      model,
+      displayName: `${profile.name} · ${model}`
+    })
+  })
+  return options
 }
 
 export function ModelSwitcher({
@@ -43,22 +58,7 @@ export function ModelSwitcher({
     [allProfiles]
   )
 
-  const modelOptions = useMemo(() => {
-    const options: ModelOption[] = []
-    profiles.forEach(profile => {
-      const models = [profile.defaultModel, ...profile.modelCatalog]
-      const uniqueModels = Array.from(new Set(models.map(m => m.trim()).filter(Boolean)))
-      uniqueModels.forEach(model => {
-        options.push({
-          profileId: profile.id,
-          profileName: profile.name,
-          model,
-          displayName: `${profile.name} · ${model}`
-        })
-      })
-    })
-    return options
-  }, [profiles])
+  const modelOptions = useMemo(() => buildModelOptions(profiles), [profiles])
 
   const fallbackProfileId = config?.ai?.defaultProfileId || profiles[0]?.id || ''
   const profileId = conversation?.ai?.profileId || fallbackProfileId
@@ -66,10 +66,8 @@ export function ModelSwitcher({
   const modelOverride = conversation?.ai?.modelOverride?.trim() || ''
   const effectiveModel = modelOverride || activeProfile?.defaultModel || ''
 
-  const currentOption = modelOptions.find(
-    opt => opt.profileId === profileId && opt.model === effectiveModel
-  )
-  const displayLabel = currentOption?.displayName || (activeProfile?.name || t('No profile'))
+  const profileLabel = activeProfile?.name || t('No profile')
+  const displayLabel = effectiveModel ? `${profileLabel} · ${effectiveModel}` : profileLabel
 
   const disableReason = useMemo(() => {
     if (isGenerating) return t('Stop generation before switching model')
