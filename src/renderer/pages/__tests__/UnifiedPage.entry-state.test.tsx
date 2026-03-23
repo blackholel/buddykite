@@ -102,6 +102,8 @@ describe('UnifiedPage entry state', () => {
   it('renders the workbench shell without onboarding cards', () => {
     const html = renderToStaticMarkup(<UnifiedPage />)
 
+    expect(html).toContain('Unified Sidebar')
+    expect(html).toContain('Chat Surface')
     expect(html).not.toContain('What can I do')
     expect(html).not.toContain('Start in 3 simple steps')
     expect(html).not.toContain('Back to home')
