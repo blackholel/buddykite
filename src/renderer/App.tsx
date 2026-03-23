@@ -20,9 +20,13 @@ import { SearchPanel } from './components/search/SearchPanel'
 import { SearchHighlightBar } from './components/search/SearchHighlightBar'
 import { OnboardingOverlay } from './components/onboarding'
 import { UpdateNotification } from './components/updater/UpdateNotification'
+import { WindowDragStrip, shouldShowWindowDragStrip } from './components/layout/WindowDragStrip'
 import { api } from './api'
+import { isElectron } from './api/transport'
+import { getPlatformInfo } from './utils/window-chrome'
 import { shallow } from 'zustand/shallow'
 import type {
+  AppView,
   AgentEventBase,
   AgentCompleteEvent,
   AgentModeEvent,
@@ -601,6 +605,25 @@ export default function App() {
     }
   }
 
+  const renderViewWithDragStrip = (targetView: AppView, content: JSX.Element): JSX.Element => {
+    if (!shouldShowWindowDragStrip({
+      view: targetView,
+      platform: getPlatformInfo(),
+      inElectron: isElectron()
+    })) {
+      return content
+    }
+
+    return (
+      <div className="h-full w-full flex flex-col">
+        <WindowDragStrip />
+        <div className="flex-1 min-h-0">
+          {content}
+        </div>
+      </div>
+    )
+  }
+
   // Render based on current view
   // Heavy pages (HomePage, SpacePage, SettingsPage) are lazy-loaded for better initial performance
   const renderView = () => {
@@ -608,21 +631,21 @@ export default function App() {
       case 'splash':
         return <SplashScreen />
       case 'gitBashSetup':
-        return <GitBashSetup onComplete={handleGitBashSetupComplete} />
+        return renderViewWithDragStrip('gitBashSetup', <GitBashSetup onComplete={handleGitBashSetupComplete} />)
       case 'setup':
-        return <ApiSetup />
+        return renderViewWithDragStrip('setup', <ApiSetup />)
       case 'home':
-        return (
+        return renderViewWithDragStrip('home', (
           <Suspense fallback={<PageLoader />}>
             <HomePage />
           </Suspense>
-        )
+        ))
       case 'space':
-        return (
+        return renderViewWithDragStrip('space', (
           <Suspense fallback={<PageLoader />}>
             <SpacePage />
           </Suspense>
-        )
+        ))
       case 'unified':
         return (
           <Suspense fallback={<PageLoader />}>
@@ -630,11 +653,11 @@ export default function App() {
           </Suspense>
         )
       case 'settings':
-        return (
+        return renderViewWithDragStrip('settings', (
           <Suspense fallback={<PageLoader />}>
             <SettingsPage />
           </Suspense>
-        )
+        ))
       default:
         return <SplashScreen />
     }

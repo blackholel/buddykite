@@ -79,7 +79,7 @@ export function GitBashSetup({ onComplete }: GitBashSetupProps) {
   // Choice screen
   if (phase === 'choice') {
     return (
-      <div className="fixed inset-0 bg-background flex items-center justify-center">
+      <div className="h-full w-full bg-background flex items-center justify-center">
         <div className="w-[520px] p-8 rounded-2xl bg-card border border-border shadow-xl">
           <div className="flex items-center gap-3 mb-6">
             <KiteLogo size={40} animated={false} />
@@ -155,7 +155,7 @@ export function GitBashSetup({ onComplete }: GitBashSetupProps) {
   // Download/Install progress screen
   if (phase === 'downloading' || phase === 'extracting' || phase === 'configuring') {
     return (
-      <div className="fixed inset-0 bg-background flex items-center justify-center">
+      <div className="h-full w-full bg-background flex items-center justify-center">
         <div className="w-[420px] p-8 rounded-2xl bg-card border border-border shadow-xl text-center">
           <div className="mb-6">
             <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-primary/10 flex items-center justify-center">
@@ -181,7 +181,7 @@ export function GitBashSetup({ onComplete }: GitBashSetupProps) {
   // Success screen
   if (phase === 'done') {
     return (
-      <div className="fixed inset-0 bg-background flex items-center justify-center">
+      <div className="h-full w-full bg-background flex items-center justify-center">
         <div className="w-[420px] p-8 rounded-2xl bg-card border border-border shadow-xl text-center">
           <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-green-500/10 flex items-center justify-center">
             <Check className="w-10 h-10 text-green-500" />
@@ -196,7 +196,7 @@ export function GitBashSetup({ onComplete }: GitBashSetupProps) {
   // Skipped screen
   if (phase === 'skipped') {
     return (
-      <div className="fixed inset-0 bg-background flex items-center justify-center">
+      <div className="h-full w-full bg-background flex items-center justify-center">
         <div className="w-[420px] p-8 rounded-2xl bg-card border border-border shadow-xl text-center">
           <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-yellow-500/10 flex items-center justify-center">
             <AlertTriangle className="w-10 h-10 text-yellow-500" />
@@ -211,7 +211,7 @@ export function GitBashSetup({ onComplete }: GitBashSetupProps) {
   // Error screen
   if (phase === 'error') {
     return (
-      <div className="fixed inset-0 bg-background flex items-center justify-center">
+      <div className="h-full w-full bg-background flex items-center justify-center">
         <div className="w-[520px] p-8 rounded-2xl bg-card border border-border shadow-xl">
           <div className="text-center mb-6">
             <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-red-500/10 flex items-center justify-center">

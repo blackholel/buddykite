@@ -24,7 +24,6 @@ import {
   pickWorkspaceSwitchTarget,
   type WorkspaceViewMode
 } from '../utils/workspace-view-mode'
-import { getWindowChromeInsets } from '../utils/window-chrome'
 import {
   SpaceIcon,
   Sparkles,
@@ -143,7 +142,6 @@ export function HomePage(): JSX.Element {
   const [createSpaceSuccessPath, setCreateSpaceSuccessPath] = useState<string | null>(null)
   const [preferredWorkspaceView, setPreferredWorkspaceView] = useState<WorkspaceViewMode>(() => readWorkspaceViewMode())
   const aiSetupState = useMemo(() => getAiSetupState(config), [config])
-  const windowChromeInsets = useMemo(() => getWindowChromeInsets(), [])
   const starterExperienceHiddenByConfig = config?.onboarding?.starterExperienceHidden === true
     || config?.onboarding?.homeGuideHidden === true
   const starterExperienceHidden = starterExperienceHiddenForSession || starterExperienceHiddenByConfig
@@ -481,12 +479,6 @@ export function HomePage(): JSX.Element {
 
       {/* Content */}
       <div className="flex-1 flex flex-col overflow-hidden relative z-10">
-        {windowChromeInsets.top > 0 && (
-          <div
-            className="flex-shrink-0 drag-region border-b border-border/30 bg-background/90 backdrop-blur-xl"
-            style={{ height: `${windowChromeInsets.top}px` }}
-          />
-        )}
         <div className="flex-1 flex overflow-hidden">
           <HomeActivityBar
             activeTab={activeTab}
