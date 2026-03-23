@@ -625,29 +625,26 @@ export default function App() {
   // Render based on current view
   // Heavy pages (SpacePage, UnifiedPage, SettingsPage) are lazy-loaded for better initial performance
   const renderView = () => {
+    const unifiedContent = (
+      <Suspense fallback={<PageLoader />}>
+        <UnifiedPage />
+      </Suspense>
+    )
+
     switch (view) {
       case 'splash':
         return <SplashScreen />
       case 'gitBashSetup':
         return renderViewWithDragStrip('gitBashSetup', <GitBashSetup onComplete={handleGitBashSetupComplete} />)
       case 'home':
-        return renderViewWithDragStrip('home', (
-          <Suspense fallback={<PageLoader />}>
-            <UnifiedPage />
-          </Suspense>
-        ))
+      case 'unified':
+        return renderViewWithDragStrip('unified', unifiedContent)
       case 'space':
         return renderViewWithDragStrip('space', (
           <Suspense fallback={<PageLoader />}>
             <SpacePage />
           </Suspense>
         ))
-      case 'unified':
-        return (
-          <Suspense fallback={<PageLoader />}>
-            <UnifiedPage />
-          </Suspense>
-        )
       case 'settings':
         return renderViewWithDragStrip('settings', (
           <Suspense fallback={<PageLoader />}>

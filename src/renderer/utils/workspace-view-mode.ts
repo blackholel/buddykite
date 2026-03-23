@@ -14,6 +14,7 @@ export function readWorkspaceViewMode(): WorkspaceViewMode {
 
 export function persistWorkspaceViewMode(mode: WorkspaceViewMode): void {
   try {
+    void mode
     localStorage.setItem(WORKSPACE_VIEW_MODE_KEY, 'unified')
   } catch {
     // Ignore localStorage failures (private mode / quota).

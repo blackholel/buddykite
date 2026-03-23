@@ -1,21 +1,50 @@
-import { describe, expect, it } from 'vitest'
-import { pickWorkspaceSwitchTarget } from '../../../src/renderer/utils/workspace-view-mode'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import {
+  pickWorkspaceSwitchTarget,
+  persistWorkspaceViewMode,
+  readWorkspaceViewMode
+} from '../../../src/renderer/utils/workspace-view-mode'
 
 interface MockSpace {
   id: string
 }
 
-describe('workspace-view-mode pickWorkspaceSwitchTarget', () => {
-  it('defaults to the workbench entry instead of the legacy homepage', () => {
-    const target = pickWorkspaceSwitchTarget<MockSpace>({
-      currentSpace: { id: 'space-1' },
-      kiteSpace: null,
-      spaces: []
-    })
-
-    expect(target?.id).toBe('space-1')
+describe('workspace-view-mode mode lock', () => {
+  afterEach(() => {
+    Reflect.deleteProperty(globalThis, 'localStorage')
   })
 
+  it('readWorkspaceViewMode ignores localStorage and always returns unified', () => {
+    for (const rawValue of ['classic', 'unified', 'anything-else', null]) {
+      Object.defineProperty(globalThis, 'localStorage', {
+        value: {
+          getItem: vi.fn(() => rawValue)
+        },
+        configurable: true
+      })
+
+      expect(readWorkspaceViewMode()).toBe('unified')
+    }
+  })
+
+  it('persistWorkspaceViewMode always writes unified', () => {
+    const setItem = vi.fn()
+    Object.defineProperty(globalThis, 'localStorage', {
+      value: {
+        setItem
+      },
+      configurable: true
+    })
+
+    persistWorkspaceViewMode('classic')
+    persistWorkspaceViewMode('unified')
+
+    expect(setItem).toHaveBeenNthCalledWith(1, 'kite-workspace-view-mode', 'unified')
+    expect(setItem).toHaveBeenNthCalledWith(2, 'kite-workspace-view-mode', 'unified')
+  })
+})
+
+describe('workspace-view-mode pickWorkspaceSwitchTarget', () => {
   it('优先返回 currentSpace', () => {
     const currentSpace = { id: 'current' }
     const kiteSpace = { id: 'kite' }
