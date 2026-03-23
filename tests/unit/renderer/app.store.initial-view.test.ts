@@ -31,7 +31,7 @@ describe('app.store initialize view routing', () => {
     }
   })
 
-  it('routes first-launch config to home instead of setup', async () => {
+  it('routes first-launch config to unified instead of setup', async () => {
     mockGetConfig.mockResolvedValue({
       success: true,
       data: {
@@ -63,10 +63,10 @@ describe('app.store initialize view routing', () => {
 
     await useAppStore.getState().initialize()
 
-    expect(useAppStore.getState().view).toBe('home')
+    expect(useAppStore.getState().view).toBe('unified')
   })
 
-  it('routes config load failure to home fallback instead of setup', async () => {
+  it('routes config load failure to unified fallback instead of setup', async () => {
     mockGetConfig.mockResolvedValue({
       success: false,
       error: 'boom'
@@ -74,7 +74,7 @@ describe('app.store initialize view routing', () => {
 
     await useAppStore.getState().initialize()
 
-    expect(useAppStore.getState().view).toBe('home')
+    expect(useAppStore.getState().view).toBe('unified')
     expect(useAppStore.getState().error).toBe('boom')
   })
 })

@@ -2,7 +2,7 @@ import { isElectron } from '../../api/transport'
 import type { AppView } from '../../types'
 import { getPlatformInfo, type PlatformInfo } from '../../utils/window-chrome'
 
-const WINDOWS_DRAG_STRIP_VIEWS: AppView[] = ['gitBashSetup', 'home', 'space', 'settings']
+const WINDOWS_DRAG_STRIP_VIEWS: AppView[] = ['gitBashSetup', 'home', 'space', 'unified', 'settings']
 const WINDOW_DRAG_STRIP_HEIGHT = 40
 const WINDOW_DRAG_STRIP_RIGHT_INSET = 128
 

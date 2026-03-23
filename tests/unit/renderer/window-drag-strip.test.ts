@@ -14,9 +14,9 @@ function createPlatform(overrides: Partial<PlatformInfo>): PlatformInfo {
 }
 
 describe('window-drag-strip visibility', () => {
-  it('Windows Electron 在非 unified 视图显示拖拽条', () => {
+  it('Windows Electron 在支持视图显示拖拽条', () => {
     const windows = createPlatform({ platform: 'win32', isWindows: true, isLinux: false })
-    const visibleViews: AppView[] = ['gitBashSetup', 'home', 'space', 'settings']
+    const visibleViews: AppView[] = ['gitBashSetup', 'home', 'space', 'unified', 'settings']
 
     for (const view of visibleViews) {
       expect(shouldShowWindowDragStrip({
@@ -25,14 +25,6 @@ describe('window-drag-strip visibility', () => {
         inElectron: true
       })).toBe(true)
     }
-  })
-
-  it('unified 视图不显示拖拽条', () => {
-    expect(shouldShowWindowDragStrip({
-      view: 'unified',
-      platform: createPlatform({ platform: 'win32', isWindows: true, isLinux: false }),
-      inElectron: true
-    })).toBe(false)
   })
 
   it('非 Windows 或非 Electron 不显示拖拽条', () => {
