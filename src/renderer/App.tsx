@@ -37,7 +37,6 @@ import type {
 
 // Lazy load heavy page components for better initial load performance
 // These pages contain complex components (chat, markdown, code highlighting, etc.)
-const HomePage = lazy(() => import('./pages/HomePage').then(m => ({ default: m.HomePage })))
 const SpacePage = lazy(() => import('./pages/SpacePage').then(m => ({ default: m.SpacePage })))
 const UnifiedPage = lazy(() => import('./pages/UnifiedPage').then(m => ({ default: m.UnifiedPage })))
 const SettingsPage = lazy(() => import('./pages/SettingsPage').then(m => ({ default: m.SettingsPage })))
@@ -598,9 +597,9 @@ export default function App() {
     if (response.success && response.data) {
       const loadedConfig = response.data as any
       setConfig(loadedConfig)  // Sync config to store (was missing, causing empty apiKey in settings)
-      setView('home')
+      setView('unified')
     } else {
-      setView('home')
+      setView('unified')
     }
   }
 
@@ -624,7 +623,7 @@ export default function App() {
   }
 
   // Render based on current view
-  // Heavy pages (HomePage, SpacePage, SettingsPage) are lazy-loaded for better initial performance
+  // Heavy pages (SpacePage, UnifiedPage, SettingsPage) are lazy-loaded for better initial performance
   const renderView = () => {
     switch (view) {
       case 'splash':
@@ -634,7 +633,7 @@ export default function App() {
       case 'home':
         return renderViewWithDragStrip('home', (
           <Suspense fallback={<PageLoader />}>
-            <HomePage />
+            <UnifiedPage />
           </Suspense>
         ))
       case 'space':

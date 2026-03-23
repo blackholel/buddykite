@@ -78,8 +78,8 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   goBack: () => {
     const previousView = get().previousView
-    // Go back to previous view, or default to home
-    set({ view: previousView || 'home', previousView: null })
+    // Go back to previous view, or default to unified workbench
+    set({ view: previousView || 'unified', previousView: null })
   },
 
   setLoading: (isLoading) => set({ isLoading }),
@@ -207,16 +207,16 @@ export const useAppStore = create<AppState>((set, get) => ({
 
         set({ config })
 
-        // Unified first-entry experience: always land on Home.
-        set({ view: 'home' })
+        // Unified first-entry experience: always land on unified workbench.
+        set({ view: 'unified' })
       } else {
         set({ error: response.error || 'Failed to load configuration' })
-        set({ view: 'home' })
+        set({ view: 'unified' })
       }
     } catch (error) {
       console.error('Failed to initialize:', error)
       set({ error: 'Failed to initialize application' })
-      set({ view: 'home' })
+      set({ view: 'unified' })
     } finally {
       set({ isLoading: false })
     }

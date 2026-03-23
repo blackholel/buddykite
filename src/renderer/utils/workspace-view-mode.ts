@@ -9,17 +9,12 @@ interface WorkspaceSwitchTargetOptions<T> {
 }
 
 export function readWorkspaceViewMode(): WorkspaceViewMode {
-  try {
-    const raw = localStorage.getItem(WORKSPACE_VIEW_MODE_KEY)
-    return raw === 'unified' ? 'unified' : 'classic'
-  } catch {
-    return 'classic'
-  }
+  return 'unified'
 }
 
 export function persistWorkspaceViewMode(mode: WorkspaceViewMode): void {
   try {
-    localStorage.setItem(WORKSPACE_VIEW_MODE_KEY, mode)
+    localStorage.setItem(WORKSPACE_VIEW_MODE_KEY, 'unified')
   } catch {
     // Ignore localStorage failures (private mode / quota).
   }

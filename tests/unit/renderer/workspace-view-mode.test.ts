@@ -6,6 +6,16 @@ interface MockSpace {
 }
 
 describe('workspace-view-mode pickWorkspaceSwitchTarget', () => {
+  it('defaults to the workbench entry instead of the legacy homepage', () => {
+    const target = pickWorkspaceSwitchTarget<MockSpace>({
+      currentSpace: { id: 'space-1' },
+      kiteSpace: null,
+      spaces: []
+    })
+
+    expect(target?.id).toBe('space-1')
+  })
+
   it('优先返回 currentSpace', () => {
     const currentSpace = { id: 'current' }
     const kiteSpace = { id: 'kite' }
