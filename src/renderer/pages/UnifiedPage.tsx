@@ -273,8 +273,8 @@ export function UnifiedPage() {
   }, [deleteConversation])
 
   const handleBackToCurrentSpaceMode = useCallback(() => {
-    persistWorkspaceViewMode('classic')
-    setView('space')
+    persistWorkspaceViewMode('unified')
+    setView('unified')
   }, [setView])
 
   return (
@@ -282,15 +282,6 @@ export function UnifiedPage() {
       <Header
         left={(
           <>
-            <button
-              onClick={() => setView('home')}
-              className="space-studio-header-btn p-2 rounded-lg transition-all duration-200 group"
-              aria-label={t('Back to home')}
-            >
-              <svg className="w-[18px] h-[18px] text-muted-foreground group-hover:text-foreground transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-            </button>
             {currentSpace && (
               <div className="flex items-center gap-2.5">
                 <SpaceIcon iconId={currentSpace.icon} size={20} />
