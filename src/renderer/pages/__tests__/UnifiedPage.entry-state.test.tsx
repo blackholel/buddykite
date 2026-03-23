@@ -107,5 +107,6 @@ describe('UnifiedPage entry state', () => {
     expect(html).not.toContain('What can I do')
     expect(html).not.toContain('Start in 3 simple steps')
     expect(html).not.toContain('Back to home')
+    expect(html).not.toContain('All spaces')
   })
 })

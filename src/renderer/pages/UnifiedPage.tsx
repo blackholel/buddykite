@@ -278,23 +278,6 @@ export function UnifiedPage() {
         )}
         right={(
           <>
-            <div className="flex items-center rounded-lg border border-border/80 bg-card/70 p-0.5">
-              <button
-                onClick={() => setView('home')}
-                className="px-2.5 py-1 text-xs rounded-md text-muted-foreground hover:text-foreground transition-colors"
-                title={t('Home')}
-                aria-label={t('Home')}
-              >
-                {t('主页')}
-              </button>
-              <button
-                className="px-2.5 py-1 text-xs rounded-md bg-secondary text-foreground"
-                title={t('All spaces')}
-                aria-label={t('All spaces')}
-              >
-                {t('All spaces')}
-              </button>
-            </div>
             <button
               onClick={() => setView('settings')}
               className="space-studio-header-btn p-2 rounded-lg transition-all duration-200 group"
@@ -330,7 +313,7 @@ export function UnifiedPage() {
           onCreateConversation={handleCreateConversation}
           onRenameConversation={handleRenameConversation}
           onDeleteConversation={handleDeleteConversation}
-          onGoHome={() => setView('home')}
+          onGoHome={() => setView('unified')}
           onGoSettings={() => setView('settings')}
         />
 
