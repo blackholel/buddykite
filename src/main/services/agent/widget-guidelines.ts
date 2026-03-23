@@ -4,7 +4,7 @@ import { tool, createSdkMcpServer } from '@anthropic-ai/claude-agent-sdk'
 export const WIDGET_SYSTEM_PROMPT = `
 ## Widget capability (minimal)
 When user asks for visual blocks/widgets/charts/diagrams/tables/timelines/dashboards, render inline via \`show-widget\` fenced output by default.
-Before first widget output in a turn, call \`codepilot_load_widget_guidelines\` to load exact formatting rules.
+Before first widget output in a turn, call \`codepilot_load_widget_guidelines\` when that tool is available; if unavailable, output valid \`show-widget\` directly.
 Widget payload MUST be wrapped in this fence format exactly:
 \`\`\`show-widget
 { ...valid JSON... }

@@ -20,6 +20,8 @@ interface WidgetRendererProps {
 
 const MAX_IFRAME_HEIGHT = 2000
 const STREAM_DEBOUNCE = 120
+const FINALIZE_RETRY_DELAY = 180
+const MAX_FINALIZE_RETRY = 2
 const CDN_PATTERN = /cdnjs\.cloudflare\.com|cdn\.jsdelivr\.net|unpkg\.com|esm\.sh/
 
 const _heightCache = new Map<string, number>()
@@ -39,6 +41,9 @@ export function WidgetRenderer({
 }: WidgetRendererProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const finalizeRetryRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const finalizePendingRef = useRef<{ seq: number; html: string; attempt: number } | null>(null)
+  const messageSeqRef = useRef(0)
   const lastSentRef = useRef('')
   const finalizedRef = useRef(false)
   const instanceId = useMemo(
@@ -64,6 +69,32 @@ export function WidgetRenderer({
   )
 
   const hasCDN = useMemo(() => CDN_PATTERN.test(widgetCode), [widgetCode])
+
+  const clearFinalizeRetry = useCallback(() => {
+    if (finalizeRetryRef.current) {
+      clearTimeout(finalizeRetryRef.current)
+      finalizeRetryRef.current = null
+    }
+  }, [])
+
+  const armFinalizeRetry = useCallback(() => {
+    clearFinalizeRetry()
+    finalizeRetryRef.current = setTimeout(() => {
+      finalizeRetryRef.current = null
+      const pending = finalizePendingRef.current
+      const iframe = iframeRef.current
+      if (!pending || !iframe?.contentWindow) return
+      if (pending.attempt >= MAX_FINALIZE_RETRY) {
+        finalizePendingRef.current = null
+        finalizeRetryRef.current = null
+        return
+      }
+
+      pending.attempt += 1
+      iframe.contentWindow.postMessage({ type: 'widget:finalize', html: pending.html, seq: pending.seq }, '*')
+      armFinalizeRetry()
+    }, FINALIZE_RETRY_DELAY)
+  }, [clearFinalizeRetry])
 
   const srcdoc = useMemo(() => {
     const isDark = typeof document !== 'undefined'
@@ -156,12 +187,22 @@ export function WidgetRenderer({
           })
           console.warn('[WidgetRenderer] receiver error:', e.data.message || 'unknown')
           break
+        case 'widget:ack': {
+          const kind = typeof e.data.kind === 'string' ? e.data.kind : ''
+          const seqRaw = Number(e.data.seq)
+          const seq = Number.isFinite(seqRaw) ? Math.floor(seqRaw) : 0
+          if (kind === 'finalize' && seq > 0 && finalizePendingRef.current?.seq === seq) {
+            finalizePendingRef.current = null
+            clearFinalizeRetry()
+          }
+          break
+        }
       }
     }
 
     window.addEventListener('message', handleMessage)
     return () => window.removeEventListener('message', handleMessage)
-  }, [cacheKey, isPartial, stabilityEmitter])
+  }, [cacheKey, clearFinalizeRetry, isPartial, stabilityEmitter])
 
   const sendUpdate = useCallback((html: string) => {
     const iframe = iframeRef.current
@@ -169,12 +210,14 @@ export function WidgetRenderer({
     const visual = normalizeVisualWidgetHtml(html)
     if (visual === lastSentRef.current) return
     lastSentRef.current = visual
-    iframe.contentWindow.postMessage({ type: 'widget:update', html }, '*')
+    const seq = ++messageSeqRef.current
+    iframe.contentWindow.postMessage({ type: 'widget:update', html, seq }, '*')
     stabilityEmitter.emit({
       eventType: 'widget_update_sent',
       isPartial: true,
       meta: {
-        htmlLength: html.length
+        htmlLength: html.length,
+        seq
       }
     })
   }, [stabilityEmitter])
@@ -185,12 +228,14 @@ export function WidgetRenderer({
     finalizedRef.current = false
     setFinalized(false)
     heightLockedRef.current = false
+    finalizePendingRef.current = null
+    clearFinalizeRetry()
     if (debounceRef.current) clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(() => sendUpdate(sanitized), STREAM_DEBOUNCE)
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current)
     }
-  }, [widgetCode, isPartial, iframeReady, sendUpdate])
+  }, [widgetCode, isPartial, iframeReady, sendUpdate, clearFinalizeRetry])
 
   useEffect(() => {
     if (isPartial || !iframeReady || finalizedRef.current) return
@@ -198,19 +243,27 @@ export function WidgetRenderer({
     if (!iframe?.contentWindow) return
 
     const sanitized = sanitizeForIframe(widgetCode)
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current)
+      debounceRef.current = null
+    }
     finalizedRef.current = true
     lastSentRef.current = normalizeVisualWidgetHtml(sanitized)
     heightLockedRef.current = true
-    iframe.contentWindow.postMessage({ type: 'widget:finalize', html: sanitized }, '*')
+    const seq = ++messageSeqRef.current
+    finalizePendingRef.current = { seq, html: sanitized, attempt: 0 }
+    iframe.contentWindow.postMessage({ type: 'widget:finalize', html: sanitized, seq }, '*')
+    armFinalizeRetry()
     stabilityEmitter.emit({
       eventType: 'widget_finalize_sent',
       isPartial: false,
       meta: {
-        htmlLength: sanitized.length
+        htmlLength: sanitized.length,
+        seq
       }
     })
     setFinalized(true)
-  }, [isPartial, iframeReady, widgetCode, stabilityEmitter])
+  }, [armFinalizeRetry, isPartial, iframeReady, widgetCode, stabilityEmitter])
 
   useEffect(() => {
     if (!iframeReady) return
@@ -234,6 +287,13 @@ export function WidgetRenderer({
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
     return () => observer.disconnect()
   }, [iframeReady, isPartial, stabilityEmitter])
+
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+      clearFinalizeRetry()
+    }
+  }, [clearFinalizeRetry])
 
   const showLoadingOverlay = hasCDN && !isPartial && iframeReady && !finalized
   const overlayVisible = showLoadingOverlay || Boolean(showOverlay)

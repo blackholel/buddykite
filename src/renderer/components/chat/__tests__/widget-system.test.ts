@@ -78,20 +78,28 @@ describe('parseAllShowWidgets', () => {
     expect(segments.some((segment) => segment.type === 'text' && segment.content.includes('```show-widget'))).toBe(true)
   })
 
-  it('坏 JSON 场景：回退为 text segment，原始内容不丢失', () => {
+  it('坏 JSON 场景：尾逗号可容错为 widget', () => {
     const source = [
       '```show-widget',
       '{"title":"坏 JSON","widget_code":"<div>x</div>",}',
       '```'
     ].join('\n')
 
+    const widgets = widgetSegments(source)
+    expect(widgets).toHaveLength(1)
+    expect(widgets[0]).toMatchObject({ title: '坏 JSON', widgetCode: '<div>x</div>' })
+  })
+
+  it('坏 JSON 且缺少 widget_code 场景：回退为 text segment', () => {
+    const source = [
+      '```show-widget',
+      '{"title":"坏 JSON","foo":"bar",}',
+      '```'
+    ].join('\n')
+
     const segments = parseAllShowWidgets(source)
     expect(segments).toHaveLength(1)
     expect(segments[0]).toMatchObject({ type: 'text' })
-    if (segments[0].type === 'text') {
-      expect(segments[0].content).toContain('坏 JSON')
-      expect(segments[0].content).toContain(',}')
-    }
   })
 })
 
@@ -136,6 +144,7 @@ describe('widget-sanitizer', () => {
 
     expect(srcdoc).toContain("connect-src 'none'")
     expect(srcdoc).toContain('widget:ready')
+    expect(srcdoc).toContain('widget:ack')
     expect(srcdoc).toContain('widget:resize')
     expect(srcdoc).toContain('widget:error')
     expect(srcdoc).toContain('ResizeObserver')

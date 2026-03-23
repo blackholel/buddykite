@@ -104,6 +104,41 @@ describe('widget-sanitizer', () => {
     })
   })
 
+  it('streaming场景下 widget_code 含 ``` 不应被误判为已闭合围栏', () => {
+    const input = [
+      '```show-widget',
+      '{"title":"Ticks","widget_code":"<pre>```js\\nconst x = 1\\n```</pre>"}'
+    ].join('\n')
+
+    const segments = parseShowWidgetsForStreaming(input)
+    expect(segments).toHaveLength(1)
+    expect(segments[0]).toMatchObject({
+      type: 'widget',
+      isPartial: true,
+      title: 'Ticks'
+    })
+  })
+
+  it('坏JSON回退提取时会清理反斜杠续行残留，避免页面出现散落 \\\\', () => {
+    const input = [
+      '```show-widget',
+      '{',
+      '"title":"Slash","widget_code":"<div>one</div>\\\\',
+      '<div>two</div>",',
+      '}',
+      '```'
+    ].join('\n')
+
+    const segments = parseAllShowWidgets(input)
+    const widget = segments.find((segment) => segment.type === 'widget')
+    expect(widget?.type).toBe('widget')
+    if (widget?.type === 'widget') {
+      expect(widget.widgetCode).toContain('<div>one</div>')
+      expect(widget.widgetCode).toContain('<div>two</div>')
+      expect(widget.widgetCode).not.toContain('\\')
+    }
+  })
+
   it('keeps partial key stable after fence closes', () => {
     const open = [
       '```show-widget',

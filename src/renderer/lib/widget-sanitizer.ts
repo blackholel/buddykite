@@ -23,6 +23,7 @@ const DANGEROUS_URL_RE = /^\s*(javascript|data|vbscript|file|filesystem)\s*:/i
 const SHOW_WIDGET_OPEN_FALLBACK = '```show-widget'
 const SHOW_WIDGET_OPEN_RE = /```(?:show-widget|show_widget)\b/gi
 const COMPLETE_SHOW_WIDGET_RE = /```(?:show-widget|show_widget)\s*\n?([\s\S]*?)\n?\s*```/gi
+const FENCE_CLOSE_LINE_RE = /(?:^|\n)\s*```(?:\s|$)/
 
 export const CDN_WHITELIST = [
   'cdnjs.cloudflare.com',
@@ -241,9 +242,26 @@ function normalizeWidgetPayload(payload: unknown): ShowWidgetData | null {
   return renderStructuredWidgetFallback(type, title, description, record)
 }
 
+function tryParseWidgetJson(rawPayload: string): unknown {
+  try {
+    return JSON.parse(rawPayload)
+  } catch {
+    // Keep fallback local and conservative: tolerate only trailing commas.
+    const trimmed = rawPayload.trim()
+    if (!trimmed) return null
+    const withoutTrailingComma = trimmed.replace(/,\s*([}\]])/g, '$1')
+    if (withoutTrailingComma === trimmed) return null
+    try {
+      return JSON.parse(withoutTrailingComma)
+    } catch {
+      return null
+    }
+  }
+}
+
 function parseWidgetPayload(rawPayload: string): ShowWidgetData | null {
   try {
-    const parsed = JSON.parse(rawPayload)
+    const parsed = tryParseWidgetJson(rawPayload)
     return normalizeWidgetPayload(parsed)
   } catch {
     return null
@@ -299,6 +317,14 @@ function decodeJsonLikeString(input: string): string {
   }
 }
 
+function normalizeRecoveredWidgetHtml(input: string): string {
+  return input
+    // Remove JS-style line continuation left by malformed multiline JSON strings.
+    .replace(/\\\r?\n[ \t]*/g, '')
+    // Decode common escaped forward slash representation.
+    .replace(/\\\//g, '/')
+}
+
 function extractTruncatedWidget(fenceBody: string): ShowWidgetData | null {
   const parsedPayload = parseWidgetPayload(fenceBody)
   if (parsedPayload?.widget_code) {
@@ -318,7 +344,7 @@ function extractTruncatedWidget(fenceBody: string): ShowWidgetData | null {
   const titleMatch = fenceBody.match(/"title"\s*:\s*"([^"]*?)"/)
   return {
     title: titleMatch ? decodeJsonLikeString(titleMatch[1]) : undefined,
-    widget_code: decodeJsonLikeString(raw)
+    widget_code: normalizeRecoveredWidgetHtml(decodeJsonLikeString(raw))
   }
 }
 
@@ -377,12 +403,13 @@ export function parseAllShowWidgets(text: string): ShowWidgetSegment[] {
     }
 
     const parsedWidget = parseWidgetPayload(match[1])
-    if (parsedWidget?.widget_code) {
+    const recoveredWidget = parsedWidget?.widget_code ? parsedWidget : extractTruncatedWidget(match[1])
+    if (recoveredWidget?.widget_code) {
       segments.push({
         type: 'widget',
         key: `w-${match.index}`,
-        title: parsedWidget.title,
-        widgetCode: String(parsedWidget.widget_code),
+        title: recoveredWidget.title,
+        widgetCode: String(recoveredWidget.widget_code),
         isPartial: false
       })
     } else {
@@ -419,7 +446,7 @@ export function parseShowWidgetsForStreaming(content: string): ShowWidgetSegment
 
   const openFenceTokenLength = getFenceTokenLengthAt(source, openFenceIndex)
   const tailAfterFence = source.slice(openFenceIndex + openFenceTokenLength)
-  const hasClosedTail = /```/.test(tailAfterFence)
+  const hasClosedTail = FENCE_CLOSE_LINE_RE.test(tailAfterFence)
   if (hasClosedTail) {
     return completedSegments
   }
@@ -467,7 +494,15 @@ export function buildReceiverSrcdoc(styleBlock = '', isDark = false): string {
 var root=document.getElementById('__root');
 var timer=null;
 var isFirstResize=true;
+var lastSeq=0;
+var finalizedSeq=0;
 function post(msg){ parent.postMessage(msg,'*'); }
+function normalizeSeq(raw){
+var seq=Number(raw);
+if(!Number.isFinite(seq)||seq<=0)return 0;
+return Math.floor(seq);
+}
+function postAck(kind,seq){ post({type:'widget:ack',kind:kind,seq:seq}); }
 function emitResize(){
 if(timer)clearTimeout(timer);
 timer=setTimeout(function(){
@@ -477,14 +512,23 @@ isFirstResize=false;
 },50);
 }
 function emitError(message){ post({type:'widget:error',message:String(message||'Widget receiver error')}); }
-function applyHtml(html){
+function applyHtml(html,seq){
 try{
+if(seq>0&&seq<=finalizedSeq)return;
+if(seq>0&&seq<lastSeq)return;
+if(seq>0){ lastSeq=Math.max(lastSeq,seq); }
 root.innerHTML=html||'';
 emitResize();
+postAck('update',seq);
 }catch(err){ emitError(err&&err.message?err.message:err); }
 }
-function finalizeHtml(html){
+function finalizeHtml(html,seq){
 try{
+if(seq>0&&seq<=finalizedSeq)return;
+if(seq>0){
+finalizedSeq=Math.max(finalizedSeq,seq);
+lastSeq=Math.max(lastSeq,seq);
+}
 var holder=document.createElement('div');
 holder.innerHTML=html||'';
 var scripts=holder.querySelectorAll('script');
@@ -510,6 +554,7 @@ node.setAttribute(queue[k].attrs[m].name,queue[k].attrs[m].value);
 root.appendChild(node);
 }
 emitResize();
+postAck('finalize',seq);
 }catch(err){ emitError(err&&err.message?err.message:err); }
 }
 function applyTheme(vars,isDark){
@@ -527,10 +572,10 @@ var data=event&&event.data?event.data:null;
 if(!data||typeof data.type!=='string')return;
 switch(data.type){
 case 'widget:update':
-applyHtml(data.html||'');
+applyHtml(data.html||'',normalizeSeq(data.seq));
 break;
 case 'widget:finalize':
-finalizeHtml(data.html||'');
+finalizeHtml(data.html||'',normalizeSeq(data.seq));
 setTimeout(emitResize,120);
 break;
 case 'widget:theme':

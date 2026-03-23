@@ -90,6 +90,9 @@ interface MessageListProps {
   availableToolsSnapshot?: AvailableToolsSnapshot
 }
 
+const SHOW_WIDGET_OPEN_TOKEN_RE = /```(?:show-widget|show_widget)\b/gi
+const FENCE_CLOSE_LINE_RE = /(?:^|\n)\s*```(?:\s|$)/g
+
 function extractThoughtsFromProcessTrace(processTrace?: ProcessTraceNode[]): Thought[] {
   if (!processTrace || processTrace.length === 0) {
     return []
@@ -224,6 +227,97 @@ export function splitGuidedMessagesForActiveRun(
   return { mainMessages, guidedMessages }
 }
 
+interface WidgetFenceEvent {
+  index: number
+  end: number
+  type: 'open' | 'close'
+}
+
+function collectWidgetFenceEvents(content: string): WidgetFenceEvent[] {
+  const events: WidgetFenceEvent[] = []
+  SHOW_WIDGET_OPEN_TOKEN_RE.lastIndex = 0
+  FENCE_CLOSE_LINE_RE.lastIndex = 0
+
+  let openMatch: RegExpExecArray | null
+  while ((openMatch = SHOW_WIDGET_OPEN_TOKEN_RE.exec(content)) !== null) {
+    events.push({
+      index: openMatch.index,
+      end: openMatch.index + openMatch[0].length,
+      type: 'open'
+    })
+  }
+  SHOW_WIDGET_OPEN_TOKEN_RE.lastIndex = 0
+
+  let closeMatch: RegExpExecArray | null
+  while ((closeMatch = FENCE_CLOSE_LINE_RE.exec(content)) !== null) {
+    events.push({
+      index: closeMatch.index,
+      end: closeMatch.index + closeMatch[0].length,
+      type: 'close'
+    })
+  }
+  FENCE_CLOSE_LINE_RE.lastIndex = 0
+
+  events.sort((a, b) => {
+    if (a.index !== b.index) return a.index - b.index
+    if (a.type === b.type) return 0
+    return a.type === 'open' ? -1 : 1
+  })
+  return events
+}
+
+export function resolveShowWidgetSnapshotCutIndex(
+  content: string,
+  preferredIndex: number
+): number | null {
+  const source = content || ''
+  if (!source) return null
+  if (!Number.isFinite(preferredIndex)) return null
+  const preferred = Math.max(0, Math.min(source.length, Math.floor(preferredIndex)))
+  if (preferred === 0) return 0
+
+  const events = collectWidgetFenceEvents(source)
+  let depth = 0
+  let preferredResolved = false
+  let firstSafeBoundaryAfterPreferred: number | null = null
+
+  for (const event of events) {
+    if (!preferredResolved && event.index >= preferred) {
+      preferredResolved = true
+      if (depth === 0) {
+        return preferred
+      }
+    }
+
+    if (event.type === 'open') {
+      depth += 1
+      continue
+    }
+
+    if (depth > 0) {
+      depth -= 1
+      if (
+        preferredResolved &&
+        depth === 0 &&
+        firstSafeBoundaryAfterPreferred == null &&
+        event.end >= preferred
+      ) {
+        firstSafeBoundaryAfterPreferred = event.end
+      }
+    }
+  }
+
+  if (!preferredResolved) {
+    return depth === 0 ? preferred : null
+  }
+
+  if (firstSafeBoundaryAfterPreferred != null) {
+    return firstSafeBoundaryAfterPreferred
+  }
+
+  return depth === 0 ? preferred : null
+}
+
 /**
  * StreamingBubble - Displays streaming content with scroll-up animation
  *
@@ -320,11 +414,20 @@ function StreamingBubble({
   useEffect(() => {
     const pending = pendingSnapshotRef.current
     if (pending && content && content.length > pending.length) {
-      // New content has arrived, now save the snapshot
-      setSegments(prev => [...prev, pending])
+      const cutIndex = resolveShowWidgetSnapshotCutIndex(content, pending.length)
+      if (cutIndex == null || cutIndex <= activeSnapshotLen) {
+        return
+      }
+      const snapshot = content.slice(0, cutIndex)
+      // New content has arrived, now save a safe snapshot (never cut inside show-widget fence)
+      setSegments(prev => {
+        const last = prev[prev.length - 1]
+        if (last === snapshot) return prev
+        return [...prev, snapshot]
+      })
       pendingSnapshotRef.current = null
     }
-  }, [content])
+  }, [activeSnapshotLen, content])
 
   /**
    * Step 2b: Update slice position AFTER segments are in DOM

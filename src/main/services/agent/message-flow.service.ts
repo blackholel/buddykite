@@ -1933,6 +1933,7 @@ export async function sendMessage(
       enabledPluginMcps: getEnabledPluginMcpList(sessionKey),
       promptForMcpRouting: messageForSend,
       conversationHistoryTexts: historyMessages
+        .filter((item) => item?.role === 'user')
         .map((item) => (typeof item?.content === 'string' ? item.content : ''))
         .filter((item) => item.trim().length > 0)
     })
@@ -2335,6 +2336,7 @@ Proceed with explicit default assumptions and continue with a concrete plan/outp
     const forceWidgetInline = shouldEnableCodepilotWidgetMcp({
       prompt: messageForSend,
       conversationHistoryTexts: historyMessages
+        .filter((item) => item?.role === 'user')
         .map((item) => (typeof item?.content === 'string' ? item.content : ''))
         .filter((item) => item.trim().length > 0),
       spaceId,
@@ -2347,6 +2349,9 @@ The user is requesting visualization rendering in current chat.
 Render directly now, do not ask for additional confirmation.
 If you output a widget, you MUST use exactly one show-widget fenced block.
 The fenced JSON MUST use keys: "title" (optional) and "widget_code" (required HTML string).
+The fenced payload MUST be strict JSON parseable by JSON.parse (double quotes only, no trailing comma, no comments).
+Do not use single-quoted JSON keys/values.
+Do not use backslash line-continuation in widget_code (e.g. "\\\n").
 Do NOT output raw JS snippets like "const option = ..." or "return { type: 'chart', ... }" outside show-widget fence.
 Do NOT create html files or open external browser pages.
 </widget-output-policy>
