@@ -29,11 +29,9 @@ import { type TabState } from '../../services/canvas-lifecycle'
 import { useCanvasLifecycle } from '../../hooks/useCanvasLifecycle'
 import { useSpaceStore } from '../../stores/space.store'
 import { useChatStore } from '../../stores/chat.store'
-import { useAppStore } from '../../stores/app.store'
 import { FileIcon } from '../icons/ToolIcons'
 import { api } from '../../api'
 import { useTranslation } from '../../i18n'
-import { persistWorkspaceViewMode, type WorkspaceViewMode } from '../../utils/workspace-view-mode'
 
 interface CanvasTabsProps {
   tabs: TabState[]
@@ -42,8 +40,6 @@ interface CanvasTabsProps {
   onTabClose: (tabId: string) => void
   onRefresh?: (tabId: string) => void
   onNewTab?: () => void
-  workspaceMode?: WorkspaceViewMode
-  onSwitchWorkspaceMode?: (mode: WorkspaceViewMode) => void
 }
 
 export function CanvasTabs({
@@ -52,9 +48,7 @@ export function CanvasTabs({
   onTabClick,
   onTabClose,
   onRefresh,
-  onNewTab,
-  workspaceMode = 'classic',
-  onSwitchWorkspaceMode
+  onNewTab
 }: CanvasTabsProps) {
   const { t } = useTranslation()
   const { reorderTabs } = useCanvasLifecycle()
@@ -261,7 +255,12 @@ export function CanvasTabs({
   return (
     <div className="canvas-tab-bar">
       {/* Tab list - scrollable, includes new tab button */}
-      <div ref={tabListRef} className="canvas-tab-list">
+      <div
+        ref={tabListRef}
+        className="canvas-tab-list"
+        role="tablist"
+        aria-label={t('Opened content')}
+      >
         {tabs.map((tab, index) => (
           <TabItem
             key={tab.id}
@@ -292,34 +291,6 @@ export function CanvasTabs({
           >
             <Plus className="w-4 h-4" />
           </button>
-        )}
-      </div>
-
-      {/* Right-side actions */}
-      <div className="canvas-tab-bar-actions">
-        {onSwitchWorkspaceMode && (
-          <div className="canvas-tab-view-switch" role="tablist" aria-label={t('Workspace view mode')}>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={workspaceMode === 'classic'}
-              onClick={() => onSwitchWorkspaceMode('classic')}
-              className={`canvas-tab-view-switch-btn ${workspaceMode === 'classic' ? 'is-active' : ''}`}
-              title={t('Current space')}
-            >
-              {t('Current space')}
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={workspaceMode === 'unified'}
-              onClick={() => onSwitchWorkspaceMode('unified')}
-              className={`canvas-tab-view-switch-btn ${workspaceMode === 'unified' ? 'is-active' : ''}`}
-              title={t('All spaces')}
-            >
-              {t('All spaces')}
-            </button>
-          </div>
         )}
       </div>
     </div>
@@ -388,6 +359,8 @@ const TabItem = forwardRef<HTMLDivElement, TabItemProps>(function TabItem({
   return (
     <div
       ref={ref}
+      role="tab"
+      aria-selected={isActive}
       draggable
       onClick={onClick}
       onMouseDown={handleMouseDown}
@@ -457,7 +430,6 @@ export function CanvasTabBar() {
   const { tabs, activeTabId, switchTab, closeTab, refreshTab, openChat } = useCanvasLifecycle()
   const currentSpace = useSpaceStore(state => state.currentSpace)
   const createConversation = useChatStore(state => state.createConversation)
-  const setView = useAppStore(state => state.setView)
 
   // Handle new tab - create a new conversation in current space
   const handleNewTab = useCallback(() => {
@@ -470,11 +442,6 @@ export function CanvasTabBar() {
     })()
   }, [createConversation, currentSpace, openChat])
 
-  const handleSwitchWorkspaceMode = useCallback((mode: WorkspaceViewMode) => {
-    persistWorkspaceViewMode(mode)
-    setView(mode === 'unified' ? 'unified' : 'space')
-  }, [setView])
-
   return (
     <CanvasTabs
       tabs={tabs}
@@ -483,8 +450,6 @@ export function CanvasTabBar() {
       onTabClose={closeTab}
       onRefresh={refreshTab}
       onNewTab={handleNewTab}
-      workspaceMode="classic"
-      onSwitchWorkspaceMode={handleSwitchWorkspaceMode}
     />
   )
 }

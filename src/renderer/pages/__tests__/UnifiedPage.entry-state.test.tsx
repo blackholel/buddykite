@@ -25,6 +25,10 @@ vi.mock('../../components/chat/ChatView', () => ({
   ChatView: () => <section>Chat Surface</section>
 }))
 
+vi.mock('../../components/artifact/ArtifactRail', () => ({
+  ArtifactRail: () => <aside aria-label="Files and artifacts">Artifact Rail</aside>
+}))
+
 vi.mock('../../components/unified/UnifiedSidebar', () => ({
   UnifiedSidebar: () => <aside>Unified Sidebar</aside>
 }))
@@ -80,6 +84,7 @@ vi.mock('../../stores/chat.store', () => ({
   useChatStore: (selector: (state: any) => unknown) => selector({
     currentSpaceId: 'space-1',
     getCurrentConversationId: () => null,
+    getCurrentConversationMeta: () => null,
     spaceStates: new Map(),
     setCurrentSpace: vi.fn(),
     loadConversations: vi.fn(async () => {}),
@@ -104,6 +109,8 @@ describe('UnifiedPage entry state', () => {
 
     expect(html).toContain('Unified Sidebar')
     expect(html).toContain('Chat Surface')
+    expect(html).toContain('role="tablist"')
+    expect(html).toContain('Files and artifacts')
     expect(html).not.toContain('What can I do')
     expect(html).not.toContain('Start in 3 simple steps')
     expect(html).not.toContain('Back to home')
