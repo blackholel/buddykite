@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  ChevronDown,
-  ChevronRight,
   FolderPlus,
+  House,
   Loader2,
   MessageSquarePlus,
   Pencil,
+  Settings,
   Trash2
 } from 'lucide-react'
 import type { ConversationMeta, CreateSpaceInput, Space } from '../../types'
@@ -24,29 +24,8 @@ interface UnifiedSidebarProps {
   onCreateConversation: (spaceId: string) => Promise<void>
   onRenameConversation: (spaceId: string, conversationId: string, title: string) => Promise<void>
   onDeleteConversation: (spaceId: string, conversationId: string) => Promise<void>
-  onBackToCurrentSpaceMode: () => void
-}
-
-const EXPANDED_SPACES_KEY = 'kite-unified-expanded-spaces'
-
-function readExpandedSpaces(): Set<string> {
-  try {
-    const raw = localStorage.getItem(EXPANDED_SPACES_KEY)
-    if (!raw) return new Set()
-    const parsed = JSON.parse(raw) as string[]
-    if (!Array.isArray(parsed)) return new Set()
-    return new Set(parsed)
-  } catch {
-    return new Set()
-  }
-}
-
-function persistExpandedSpaces(spaceIds: Set<string>) {
-  try {
-    localStorage.setItem(EXPANDED_SPACES_KEY, JSON.stringify(Array.from(spaceIds)))
-  } catch {
-    // Ignore persistence failures in private mode / quota.
-  }
+  onGoHome: () => void
+  onGoSettings: () => void
 }
 
 function formatRelativeTime(dateString: string, t: (key: string, options?: Record<string, unknown>) => string): string {
@@ -80,10 +59,10 @@ export function UnifiedSidebar({
   onCreateConversation,
   onRenameConversation,
   onDeleteConversation,
-  onBackToCurrentSpaceMode
+  onGoHome,
+  onGoSettings
 }: UnifiedSidebarProps) {
   const { t } = useTranslation()
-  const [expandedSpaceIds, setExpandedSpaceIds] = useState<Set<string>>(() => readExpandedSpaces())
   const [loadingSpaceIds, setLoadingSpaceIds] = useState<Set<string>>(new Set())
   const loadingSpaceIdsRef = useRef<Set<string>>(new Set())
   const [hoveredSpaceId, setHoveredSpaceId] = useState<string | null>(null)
@@ -124,24 +103,9 @@ export function UnifiedSidebar({
   }, [conversationsBySpaceId, markSpaceLoading, onExpandSpace])
 
   useEffect(() => {
-    for (const spaceId of expandedSpaceIds) {
-      if (!spaces.some((space) => space.id === spaceId)) continue
-      void ensureExpandedSpaceLoaded(spaceId)
-    }
-  }, [ensureExpandedSpaceLoaded, expandedSpaceIds, spaces])
-
-  const toggleExpanded = (spaceId: string) => {
-    const next = new Set(expandedSpaceIds)
-    const willExpand = !next.has(spaceId)
-    if (willExpand) {
-      next.add(spaceId)
-      void ensureExpandedSpaceLoaded(spaceId)
-    } else {
-      next.delete(spaceId)
-    }
-    setExpandedSpaceIds(next)
-    persistExpandedSpaces(next)
-  }
+    if (!currentSpaceId) return
+    void ensureExpandedSpaceLoaded(currentSpaceId)
+  }, [currentSpaceId, ensureExpandedSpaceLoaded])
 
   const handleCreateSpace = async () => {
     const trimmed = newSpaceName.trim()
@@ -153,10 +117,6 @@ export function UnifiedSidebar({
     })
     if (!created) return
 
-    const next = new Set(expandedSpaceIds)
-    next.add(created.id)
-    setExpandedSpaceIds(next)
-    persistExpandedSpaces(next)
     setCreatingSpace(false)
     setNewSpaceName('')
   }
@@ -177,16 +137,24 @@ export function UnifiedSidebar({
     <aside className="w-[320px] h-full border-r border-border/60 bg-card/40 backdrop-blur-sm overflow-hidden">
       <div className="h-full flex flex-col">
         <div className="px-4 py-3 border-b border-border/60 flex items-center justify-between">
-          <div className="min-w-0">
-            <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">{t('All spaces')}</p>
+          <div className="min-w-0 flex items-center gap-1.5">
             <button
-              onClick={onBackToCurrentSpaceMode}
-              disabled={!currentSpaceId}
-              className="mt-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed"
-              title={t('Back to current space')}
-              aria-label={t('Back to current space')}
+              onClick={onGoHome}
+              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary/70"
+              title={t('Home')}
+              aria-label={t('Home')}
             >
-              {t('Back to current space')}
+              <House className="w-3.5 h-3.5" />
+              <span>{t('主页')}</span>
+            </button>
+            <button
+              onClick={onGoSettings}
+              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary/70"
+              title={t('Settings')}
+              aria-label={t('Settings')}
+            >
+              <Settings className="w-3.5 h-3.5" />
+              <span>{t('设置')}</span>
             </button>
           </div>
           <button
@@ -201,13 +169,17 @@ export function UnifiedSidebar({
 
         <div className="flex-1 overflow-y-auto px-2 py-2">
           {sortedSpaces.map((space) => {
-            const isExpanded = expandedSpaceIds.has(space.id)
             const hasLoadedConversations = conversationsBySpaceId.has(space.id)
             const isSpaceLoading = loadingSpaceIds.has(space.id)
             const conversations = (conversationsBySpaceId.get(space.id) || [])
               .slice()
               .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
             const isActiveSpace = currentSpaceId === space.id
+            const statusLabel = isActiveSpace
+              ? t('Current')
+              : hasLoadedConversations
+                ? t('{{count}} conversations', { count: conversations.length })
+                : formatRelativeTime(space.updatedAt, t)
 
             return (
               <div
@@ -218,27 +190,18 @@ export function UnifiedSidebar({
               >
                 <div className={`flex items-center gap-1 px-2 py-1.5 rounded-xl ${isActiveSpace ? 'bg-secondary/80' : 'hover:bg-secondary/50'}`}>
                   <button
-                    onClick={() => void toggleExpanded(space.id)}
-                    className="p-1 rounded-md hover:bg-background/60 transition-colors"
-                    aria-label={isExpanded ? t('Collapse') : t('Expand')}
-                  >
-                    {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-                  </button>
-
-                  <button
                     onClick={() => void onSelectSpace(space.id)}
                     className="flex-1 min-w-0 flex items-center gap-2 text-left"
                   >
                     <SpaceIcon iconId={space.icon} size={16} />
                     <span className="text-sm truncate">{space.isTemp ? 'Kite' : space.name}</span>
                   </button>
-                  {hasLoadedConversations && (
-                    <span className="text-[11px] text-muted-foreground bg-background/60 rounded-md px-1.5 py-0.5">
-                      {conversations.length}
-                    </span>
-                  )}
 
-                  {hoveredSpaceId === space.id && (
+                  <span className="text-[11px] text-muted-foreground bg-background/60 rounded-md px-1.5 py-0.5">
+                    {statusLabel}
+                  </span>
+
+                  {hoveredSpaceId === space.id && isActiveSpace && (
                     <button
                       onClick={() => void onCreateConversation(space.id)}
                       className="p-1 rounded-md hover:bg-background/60 transition-colors"
@@ -250,7 +213,7 @@ export function UnifiedSidebar({
                   )}
                 </div>
 
-                {isExpanded && (
+                {isActiveSpace && (
                   <div className="pl-7 pr-2 pb-1">
                     {!hasLoadedConversations || isSpaceLoading ? (
                       <div className="text-xs text-muted-foreground px-2 py-1.5">

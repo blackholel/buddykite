@@ -11,7 +11,6 @@ import { useSearchStore, type SearchScope } from '../stores/search.store'
 import { useSpaceStore } from '../stores/space.store'
 import { navigateToConversationContext, navigateToSpaceContext } from '../utils/space-conversation-navigation'
 import { pickEntryConversation } from '../utils/space-entry-conversation'
-import { persistWorkspaceViewMode } from '../utils/workspace-view-mode'
 import { useTranslation } from '../i18n'
 import type { ConversationMeta, CreateSpaceInput } from '../types'
 import { SpaceIcon } from '../components/icons/ToolIcons'
@@ -114,10 +113,6 @@ export function UnifiedPage() {
     void loadSpaces()
   }, [loadSpaces])
 
-  useEffect(() => {
-    persistWorkspaceViewMode('unified')
-  }, [])
-
   // Keep both stores aligned when entering Unified page.
   useEffect(() => {
     const preferred = pickPreferredSpace(currentSpace, kiteSpace, spaces)
@@ -143,12 +138,6 @@ export function UnifiedPage() {
     if (!currentSpaceId || spaceStates.has(currentSpaceId)) return
     void ensureSpaceConversationsLoaded(currentSpaceId)
   }, [currentSpaceId, ensureSpaceConversationsLoaded, spaceStates])
-
-  useEffect(() => {
-    for (const space of allSpaces) {
-      void ensureSpaceConversationsLoaded(space.id)
-    }
-  }, [allSpaces, ensureSpaceConversationsLoaded])
 
   useEffect(() => {
     if (!currentSpaceId) return
@@ -272,11 +261,6 @@ export function UnifiedPage() {
     await deleteConversation(spaceId, conversationId)
   }, [deleteConversation])
 
-  const handleBackToCurrentSpaceMode = useCallback(() => {
-    persistWorkspaceViewMode('unified')
-    setView('unified')
-  }, [setView])
-
   return (
     <div className="h-full w-full flex flex-col">
       <Header
@@ -296,12 +280,12 @@ export function UnifiedPage() {
           <>
             <div className="flex items-center rounded-lg border border-border/80 bg-card/70 p-0.5">
               <button
-                onClick={handleBackToCurrentSpaceMode}
+                onClick={() => setView('home')}
                 className="px-2.5 py-1 text-xs rounded-md text-muted-foreground hover:text-foreground transition-colors"
-                title={t('Current space')}
-                aria-label={t('Current space')}
+                title={t('Home')}
+                aria-label={t('Home')}
               >
-                {t('Current space')}
+                {t('主页')}
               </button>
               <button
                 className="px-2.5 py-1 text-xs rounded-md bg-secondary text-foreground"
@@ -346,7 +330,8 @@ export function UnifiedPage() {
           onCreateConversation={handleCreateConversation}
           onRenameConversation={handleRenameConversation}
           onDeleteConversation={handleDeleteConversation}
-          onBackToCurrentSpaceMode={handleBackToCurrentSpaceMode}
+          onGoHome={() => setView('home')}
+          onGoSettings={() => setView('settings')}
         />
 
         <div className="flex-1 min-w-0 bg-background">
