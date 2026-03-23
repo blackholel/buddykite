@@ -556,6 +556,7 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
   const hasMessages = displayMessages.length > 0 || Boolean(displayStreamingContent) || displayIsThinking
   const conversationProfileId = currentConversation?.ai?.profileId || currentConversationMeta?.ai?.profileId
   const aiSetupState = getAiSetupState(appConfig, conversationProfileId)
+  const showComposerGate = !aiSetupState.configured && !pendingAskUserQuestion && !failedAskUserQuestion
   const currentConversationSpaceId = currentSpaceId
   const currentChangeSets = currentConversationId ? (changeSets.get(currentConversationId) || []) : []
   const activeChangeSet = currentChangeSets.find((changeSet) => changeSet.status !== 'rolled_back')
@@ -603,12 +604,10 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
         >
           {isLoadingConversation ? (
             <LoadingState />
+          ) : !hasMessages && aiSetupState.configured ? (
+            <ChatEmptyState isCompact={isCompact} />
           ) : !hasMessages ? (
-            <EmptyState
-              isCompact={isCompact}
-              isAiConfigured={aiSetupState.configured}
-              onOpenSettings={() => setView('settings')}
-            />
+            <div className="h-full" />
           ) : (
             <>
               <MessageList
@@ -704,52 +703,59 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
           isCompact={isCompact}
         />
       )}
-      <InputArea
-        onSend={handleSend}
-        onStop={handleStop}
-        isGenerating={isGenerating}
-        hasConversationStarted={hasMessages}
-        queueItems={queueItems}
-        queueError={queueError}
-        onSendQueueItem={(turnId) => {
-          if (!currentConversationId) {
-            return Promise.resolve({
-              accepted: false,
-              guided: false,
-              fallbackToNewRun: false,
-              error: 'No active conversation'
-            })
-          }
-          return sendQueuedTurn(currentConversationId, turnId)
-        }}
-        onEditQueueItem={(turnId) => {
-          if (!currentConversationId) return
-          removeQueuedTurn(currentConversationId, turnId)
-        }}
-        onRemoveQueueItem={(turnId) => {
-          if (!currentConversationId) return
-          removeQueuedTurn(currentConversationId, turnId)
-        }}
-        onClearQueue={() => {
-          if (!currentConversationId) return
-          clearConversationQueue(currentConversationId)
-        }}
-        onClearQueueError={() => {
-          if (!currentConversationId) return
-          clearQueueError(currentConversationId)
-        }}
-        modeSwitching={modeSwitching}
-        placeholder={t('Ask Kite anything, / for commands')}
-        isCompact={isCompact}
-        spaceId={currentSpaceId}
-        workDir={resolvedConversationWorkDir}
-        mode={mode}
-        onModeChange={handleModeChange}
-        slashRuntimeMode={slashRuntimeMode}
-        slashCommandsSnapshot={slashCommandsSnapshot}
-        conversation={modelSwitcherConversation}
-        config={appConfig}
-      />
+      {showComposerGate ? (
+        <ChatComposerGate
+          isCompact={isCompact}
+          onOpenSettings={() => setView('settings')}
+        />
+      ) : (
+        <InputArea
+          onSend={handleSend}
+          onStop={handleStop}
+          isGenerating={isGenerating}
+          hasConversationStarted={hasMessages}
+          queueItems={queueItems}
+          queueError={queueError}
+          onSendQueueItem={(turnId) => {
+            if (!currentConversationId) {
+              return Promise.resolve({
+                accepted: false,
+                guided: false,
+                fallbackToNewRun: false,
+                error: 'No active conversation'
+              })
+            }
+            return sendQueuedTurn(currentConversationId, turnId)
+          }}
+          onEditQueueItem={(turnId) => {
+            if (!currentConversationId) return
+            removeQueuedTurn(currentConversationId, turnId)
+          }}
+          onRemoveQueueItem={(turnId) => {
+            if (!currentConversationId) return
+            removeQueuedTurn(currentConversationId, turnId)
+          }}
+          onClearQueue={() => {
+            if (!currentConversationId) return
+            clearConversationQueue(currentConversationId)
+          }}
+          onClearQueueError={() => {
+            if (!currentConversationId) return
+            clearQueueError(currentConversationId)
+          }}
+          modeSwitching={modeSwitching}
+          placeholder={t('Ask Kite anything, / for commands')}
+          isCompact={isCompact}
+          spaceId={currentSpaceId}
+          workDir={resolvedConversationWorkDir}
+          mode={mode}
+          onModeChange={handleModeChange}
+          slashRuntimeMode={slashRuntimeMode}
+          slashCommandsSnapshot={slashCommandsSnapshot}
+          conversation={modelSwitcherConversation}
+          config={appConfig}
+        />
+      )}
     </div>
   )
 }
@@ -765,111 +771,72 @@ function LoadingState() {
   )
 }
 
-// Empty state component - Editorial workspace style
-function EmptyState({
-  isCompact = false,
-  isAiConfigured,
-  onOpenSettings
+export function ChatEmptyState({
+  isCompact = false
 }: {
   isCompact?: boolean
-  isAiConfigured: boolean
-  onOpenSettings: () => void
 }) {
   const { t } = useTranslation()
-
-  if (!isAiConfigured) {
-    return (
-      <div className="h-full flex flex-col items-center justify-center text-center px-6">
-        <div className="w-12 h-12 rounded-2xl border border-border/70 bg-background/80 flex items-center justify-center">
-          <Sparkles className="w-5 h-5 text-foreground/80" />
-        </div>
-        <h3 className="mt-4 text-xl font-semibold tracking-tight">{t('Complete model setup before chatting')}</h3>
-        <p className="mt-2 text-sm text-muted-foreground max-w-md leading-relaxed">
-          {t('You can browse spaces now, but sending tasks requires configuring API Key first.')}
-        </p>
-        <button
-          type="button"
-          onClick={onOpenSettings}
-          className="mt-5 rounded-xl btn-apple px-4 py-2 text-sm"
-        >
-          {t('Go to model settings')}
-        </button>
-      </div>
-    )
-  }
-
-  const capabilities = [
-    { icon: '💻', title: t('Programming Development') },
-    { icon: '📄', title: t('File Processing') },
-    { icon: '🔍', title: t('Information Retrieval') },
-    { icon: '✨', title: t('Content Creation') },
-  ]
 
   return (
     <div className={`h-full flex flex-col items-center justify-center text-center relative ${
       isCompact ? 'px-4' : 'px-8'
     }`}>
       <div className="absolute inset-0 pointer-events-none">
-        <div className={`absolute top-[24%] left-1/2 -translate-x-1/2 rounded-full bg-foreground/5 blur-3xl ${
-          isCompact ? 'w-52 h-52' : 'w-80 h-80'
-        }`} />
-        <div className={`absolute bottom-[20%] left-1/2 -translate-x-1/2 rounded-full bg-[hsl(var(--space-accent)/0.08)] blur-3xl ${
-          isCompact ? 'w-72 h-28' : 'w-96 h-40'
-        }`} />
-      </div>
-
-      <div className="relative mb-7 space-studio-reveal" style={{ animationDelay: '0ms' }}>
-        <div className={`rounded-[28px] border border-border/80 bg-background/75 shadow-[0_18px_32px_rgba(24,22,20,0.12)] flex items-center justify-center ${
-          isCompact ? 'w-16 h-16' : 'w-20 h-20'
+        <div className={`absolute top-[28%] left-1/2 -translate-x-1/2 rounded-full bg-foreground/5 blur-3xl ${
+          isCompact ? 'w-48 h-48' : 'w-72 h-72'
         }`}>
-          <Sparkles className={`${isCompact ? 'w-7 h-7' : 'w-9 h-9'} text-foreground/90`} />
+          <Sparkles className={`${isCompact ? 'w-6 h-6' : 'w-8 h-8'} text-foreground/90`} />
         </div>
-        <div className="absolute -inset-3 rounded-[2.2rem] border border-border/40 animate-pulse-gentle" />
       </div>
-
-      <p className="space-studio-empty-badge text-[11px] tracking-[0.36em] uppercase text-muted-foreground/70 space-studio-reveal" style={{ animationDelay: '30ms' }}>
-        Workspace
-      </p>
 
       <h2
-        className={`mt-3 leading-none font-semibold tracking-tight text-foreground space-studio-reveal ${
-          isCompact ? 'text-[34px]' : 'text-[44px]'
+        className={`leading-none font-semibold tracking-tight text-foreground ${
+          isCompact ? 'text-[30px]' : 'text-[40px]'
         }`}
-        style={{ animationDelay: '80ms' }}
       >
-        {t('Ready to start')}
+        {t('直接开始')}
       </h2>
 
-      <p className={`mt-2 font-medium text-muted-foreground/80 space-studio-reveal ${
-        isCompact ? 'text-xl' : 'text-2xl'
-      }`} style={{ animationDelay: '120ms' }}>
-        {t('Kite Space')}
+      <p className="mt-4 text-sm text-muted-foreground max-w-md leading-relaxed">
+        {t('描述目标，Kite 会产出文件、草稿、代码和步骤。')}
       </p>
+    </div>
+  )
+}
 
-      <p className="mt-4 text-sm text-muted-foreground max-w-md leading-relaxed space-studio-reveal" style={{ animationDelay: '160ms' }}>
-        {t('Kite, not just chat, can help you get things done')}
-      </p>
+export function ChatComposerGate({
+  isCompact = false,
+  onOpenSettings
+}: {
+  isCompact?: boolean
+  onOpenSettings: () => void
+}) {
+  const { t } = useTranslation()
 
-      <div className="mt-8 flex flex-wrap items-center justify-center gap-2.5 max-w-xl space-studio-reveal" style={{ animationDelay: '220ms' }}>
-        {capabilities.map((cap, i) => (
-          <div key={i} className="space-studio-chip !cursor-default rounded-full px-3.5 py-2.5 text-left">
-            <span className="text-xs text-muted-foreground/90">
-              <span className="mr-1.5">{cap.icon}</span>
-              <span className="font-medium">{cap.title}</span>
-            </span>
+  return (
+    <div className={`
+      space-studio-input-wrap space-studio-input-dock
+      transition-[padding] duration-300 ease-out
+      ${isCompact ? 'px-3 py-2' : 'px-4 py-3'}
+    `}>
+      <div className="space-studio-thread-width">
+        <div className="space-studio-input-shell flex items-center justify-between gap-4 px-4 py-4">
+          <div className="min-w-0">
+            <h3 className="text-sm font-semibold text-foreground">{t('先完成模型配置')}</h3>
+            <p className="mt-1 text-sm text-muted-foreground leading-relaxed">
+              {t('完成模型配置后，你就可以直接向 Kite 发送任务。')}
+            </p>
           </div>
-        ))}
+          <button
+            type="button"
+            onClick={onOpenSettings}
+            className="shrink-0 rounded-xl btn-apple px-4 py-2 text-sm"
+          >
+            {t('去设置模型')}
+          </button>
+        </div>
       </div>
-
-      <div className="mt-8 space-studio-reveal" style={{ animationDelay: '260ms' }}>
-        <p className="text-[11px] tracking-[0.16em] uppercase text-muted-foreground/60">
-          {t('Powered by Claude Code with full Agent capabilities')}
-        </p>
-      </div>
-
-      <p className="mt-3 text-[11px] text-muted-foreground/45 space-studio-reveal" style={{ animationDelay: '300ms' }}>
-        {t('Kite has full access to the current space')}
-      </p>
     </div>
   )
 }
