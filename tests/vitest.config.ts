@@ -57,7 +57,8 @@ export default defineConfig({
       '../src/renderer/stores/__tests__/workflows.store.validation.test.ts',
       '../src/renderer/stores/__tests__/composer-mru.store.test.ts',
       '../src/renderer/utils/__tests__/composer-suggestion-ranking.test.ts',
-      '../src/renderer/utils/__tests__/space-entry-conversation.test.ts'
+      '../src/renderer/utils/__tests__/space-entry-conversation.test.ts',
+      '../src/renderer/pages/__tests__/UnifiedPage.entry-state.test.tsx'
     ],
 
     // Root directory for tests
