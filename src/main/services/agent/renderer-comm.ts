@@ -942,6 +942,9 @@ export function createCanUseTool(
       JSON.stringify(input).substring(0, 200)
     )
 
+    // Strict on-demand policy:
+    // proactive Chrome debug prewarm is only allowed inside the
+    // mcp__chrome-devtools__* tool execution chain.
     if (isChromeDevtoolsMcpToolName(toolName)) {
       try {
         await ensureChromeDebugModeReadyForMcp({

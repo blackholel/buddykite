@@ -13,10 +13,7 @@ import type {
 import { resolve } from 'path'
 import { cpus } from 'os'
 import { getConfig, onApiConfigChange } from '../config.service'
-import {
-  ensureChromeDebugModeReadyForMcp,
-  forceChromeDevtoolsUseBrowserUrl
-} from '../chrome-debug-launcher.service'
+import { forceChromeDevtoolsUseBrowserUrl } from '../chrome-debug-launcher.service'
 import { getSpaceConfig } from '../space-config.service'
 import { resolveResourceRuntimePolicy as resolveNormalizedRuntimePolicy } from '../resource-runtime-policy.service'
 import { clearSessionId, getConversation } from '../conversation.service'
@@ -239,14 +236,32 @@ function isChromeDevtoolsPortError(error: unknown): boolean {
   return errorMessage(error).toLowerCase().includes('devtoolsactiveport')
 }
 
-async function prepareChromeDebugEndpointForMcp(
+function buildChromeDevtoolsIsolatedFallbackOptions(
   sdkOptions: Record<string, any>
-): Promise<void> {
-  try {
-    await ensureChromeDebugModeReadyForMcp(sdkOptions)
-  } catch (error) {
-    console.warn('[Agent] Failed to prepare Chrome debugging endpoint for MCP:', error)
+): Record<string, any> | null {
+  if (!Object.prototype.hasOwnProperty.call(sdkOptions, 'mcpServers')) {
+    return null
   }
+
+  const rawMcpServers = sdkOptions.mcpServers
+  if (!rawMcpServers || typeof rawMcpServers !== 'object') {
+    return null
+  }
+
+  const mcpServers = rawMcpServers as Record<string, unknown>
+  if (!Object.prototype.hasOwnProperty.call(mcpServers, 'chrome-devtools')) {
+    return null
+  }
+
+  const remainingMcpServers = { ...mcpServers }
+  delete remainingMcpServers['chrome-devtools']
+  const fallbackOptions = { ...sdkOptions }
+  if (Object.keys(remainingMcpServers).length > 0) {
+    fallbackOptions.mcpServers = remainingMcpServers
+  } else {
+    delete fallbackOptions.mcpServers
+  }
+  return fallbackOptions
 }
 
 function buildMcpFallbackOptions(
@@ -300,7 +315,6 @@ async function initializeQuerySession(
 
 async function createV2SessionFromQuery(sdkOptions: Record<string, any>): Promise<V2SDKSession> {
   const preparedSdkOptions = forceChromeDevtoolsUseBrowserUrl(sdkOptions)
-  await prepareChromeDebugEndpointForMcp(preparedSdkOptions)
 
   try {
     const initialized = await initializeQuerySession(preparedSdkOptions)
@@ -309,15 +323,17 @@ async function createV2SessionFromQuery(sdkOptions: Record<string, any>): Promis
     let effectiveError: unknown = error
 
     if (isChromeDevtoolsPortError(error)) {
-      console.warn(
-        '[Agent] chrome-devtools MCP initialization failed with DevToolsActivePort; retrying after launching Chrome in debugging mode'
-      )
-      await prepareChromeDebugEndpointForMcp(preparedSdkOptions)
-      try {
-        const retried = await initializeQuerySession(preparedSdkOptions)
-        return createQueryBackedSession(retried.querySession, retried.inputQueue)
-      } catch (retryError) {
-        effectiveError = retryError
+      const fallbackOptions = buildChromeDevtoolsIsolatedFallbackOptions(preparedSdkOptions)
+      if (fallbackOptions) {
+        console.warn(
+          '[Agent] chrome-devtools MCP initialization failed with DevToolsActivePort; retrying without chrome-devtools MCP server'
+        )
+        try {
+          const retried = await initializeQuerySession(fallbackOptions)
+          return createQueryBackedSession(retried.querySession, retried.inputQueue)
+        } catch (retryError) {
+          effectiveError = retryError
+        }
       }
     }
 

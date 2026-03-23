@@ -218,6 +218,7 @@ describe('renderer-comm resource-dir guard', () => {
   })
 
   it('allows chrome-devtools MCP tool and prewarms debug endpoint', async () => {
+    vi.mocked(ensureChromeDebugModeReadyForMcp).mockClear()
     const canUseTool = createHandler()
     const input = { type: 'url', url: 'https://www.baidu.com' }
     const result = await canUseTool(
@@ -229,6 +230,21 @@ describe('renderer-comm resource-dir guard', () => {
     expect(result.behavior).toBe('allow')
     expect(result.updatedInput).toEqual(input)
     expect(ensureChromeDebugModeReadyForMcp).toHaveBeenCalled()
+  })
+
+  it('does not prewarm debug endpoint for non chrome-devtools tools', async () => {
+    vi.mocked(ensureChromeDebugModeReadyForMcp).mockClear()
+    const canUseTool = createHandler()
+    const input = { file_path: '/workspace/project/README.md' }
+    const result = await canUseTool(
+      'Read',
+      input,
+      { signal: new AbortController().signal }
+    )
+
+    expect(result.behavior).toBe('allow')
+    expect(result.updatedInput).toEqual(input)
+    expect(ensureChromeDebugModeReadyForMcp).not.toHaveBeenCalled()
   })
 
   it('allows Bash access to configured global path', async () => {

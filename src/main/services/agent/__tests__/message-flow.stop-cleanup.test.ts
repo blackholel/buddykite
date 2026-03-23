@@ -45,6 +45,10 @@ const dispatchThrottleMocks = vi.hoisted(() => ({
   acquireSendDispatchSlot: vi.fn()
 }))
 
+const chromeDebugLauncherMocks = vi.hoisted(() => ({
+  ensureChromeDebugModeReadyForMcp: vi.fn()
+}))
+
 vi.mock('../session.manager', () => ({
   acquireSessionWithResumeFallback: sessionManagerMocks.acquireSessionWithResumeFallback,
   closeV2Session: sessionManagerMocks.closeV2Session,
@@ -168,6 +172,10 @@ vi.mock('../dispatch-throttle.service', () => ({
   acquireSendDispatchSlot: dispatchThrottleMocks.acquireSendDispatchSlot
 }))
 
+vi.mock('../../chrome-debug-launcher.service', () => ({
+  ensureChromeDebugModeReadyForMcp: chromeDebugLauncherMocks.ensureChromeDebugModeReadyForMcp
+}))
+
 vi.mock('../runtime-journal.service', () => ({
   allocateRunEpoch: vi.fn(() => 1)
 }))
@@ -183,6 +191,7 @@ vi.mock('../observability', () => ({
 }))
 
 import { sendMessage, stopGeneration } from '../message-flow.service'
+import { ensureChromeDebugModeReadyForMcp } from '../../chrome-debug-launcher.service'
 
 function createSessionState(runId: string, conversationId = 'conv-1'): SessionState {
   return {
@@ -223,6 +232,17 @@ function createDrainableSession(): { interrupt: ReturnType<typeof vi.fn>; stream
     interrupt,
     stream: async function * () {
       yield { type: 'result' }
+    }
+  }
+}
+
+function createStreamingSession(messages: Array<Record<string, unknown>>) {
+  return {
+    send: vi.fn().mockResolvedValue(undefined),
+    stream: async function * () {
+      for (const message of messages) {
+        yield message
+      }
     }
   }
 }
@@ -348,5 +368,133 @@ describe('message-flow pre-main cleanup', () => {
     )
     expect(changeSetMocks.clearPendingChangeSet).toHaveBeenCalledWith('space-1', 'conv-1')
     expect(releaseDispatchSlotMock).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('message-flow chrome-devtools MCP recovery', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    dispatchThrottleMocks.acquireSendDispatchSlot.mockImplementation(() => () => {})
+    rendererCommMocks.sendToRenderer.mockImplementation(() => {})
+    conversationServiceMocks.getConversation.mockReturnValue({
+      id: 'conv-1',
+      spaceId: 'space-1',
+      ai: { profileId: 'profile-default' },
+      messages: []
+    })
+    chromeDebugLauncherMocks.ensureChromeDebugModeReadyForMcp.mockResolvedValue(undefined)
+    sessionManagerMocks.reconnectMcpServer.mockResolvedValue({ success: true })
+  })
+
+  it('chrome-devtools tool_result 连接错误时只触发一次恢复', async () => {
+    sessionManagerMocks.acquireSessionWithResumeFallback.mockResolvedValue({
+      session: createStreamingSession([
+        {
+          type: 'assistant',
+          message: {
+            content: [
+              {
+                type: 'tool_use',
+                id: 'tool-chrome-1',
+                name: 'mcp__chrome-devtools__navigate_page',
+                input: { url: 'https://example.com' }
+              }
+            ]
+          }
+        },
+        {
+          type: 'user',
+          message: {
+            content: [
+              {
+                type: 'tool_result',
+                tool_use_id: 'tool-chrome-1',
+                is_error: true,
+                content: 'Could not connect to Chrome: remote-debugging-port is unavailable'
+              }
+            ]
+          }
+        },
+        {
+          type: 'user',
+          message: {
+            content: [
+              {
+                type: 'tool_result',
+                tool_use_id: 'tool-chrome-1',
+                is_error: true,
+                content: 'DevToolsActivePort is missing'
+              }
+            ]
+          }
+        },
+        { type: 'result', result: 'done' }
+      ]),
+      outcome: 'new_no_resume',
+      retryCount: 0,
+      errorCode: null
+    })
+
+    await sendMessage(null, {
+      spaceId: 'space-1',
+      conversationId: 'conv-1',
+      message: 'test recovery'
+    } as any)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(ensureChromeDebugModeReadyForMcp).toHaveBeenCalledTimes(1)
+    expect(sessionManagerMocks.reconnectMcpServer).toHaveBeenCalledTimes(1)
+    expect(sessionManagerMocks.reconnectMcpServer).toHaveBeenCalledWith(
+      'space-1',
+      'conv-1',
+      'chrome-devtools'
+    )
+  })
+
+  it('非 chrome-devtools 工具即使报连接错误也不触发恢复', async () => {
+    sessionManagerMocks.acquireSessionWithResumeFallback.mockResolvedValue({
+      session: createStreamingSession([
+        {
+          type: 'assistant',
+          message: {
+            content: [
+              {
+                type: 'tool_use',
+                id: 'tool-other-1',
+                name: 'mcp__filesystem__read_file',
+                input: { path: '/tmp/demo.txt' }
+              }
+            ]
+          }
+        },
+        {
+          type: 'user',
+          message: {
+            content: [
+              {
+                type: 'tool_result',
+                tool_use_id: 'tool-other-1',
+                is_error: true,
+                content: 'Could not connect to Chrome: remote-debugging-port is unavailable'
+              }
+            ]
+          }
+        },
+        { type: 'result', result: 'done' }
+      ]),
+      outcome: 'new_no_resume',
+      retryCount: 0,
+      errorCode: null
+    })
+
+    await sendMessage(null, {
+      spaceId: 'space-1',
+      conversationId: 'conv-1',
+      message: 'test no recovery'
+    } as any)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(ensureChromeDebugModeReadyForMcp).not.toHaveBeenCalled()
+    expect(sessionManagerMocks.reconnectMcpServer).not.toHaveBeenCalled()
   })
 })

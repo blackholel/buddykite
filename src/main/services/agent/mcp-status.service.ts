@@ -17,10 +17,7 @@ import {
 } from './provider-resolver'
 import { resolveEffectiveConversationAi } from './ai-config-resolver'
 import { getEnabledMcpServers } from './sdk-config.builder'
-import {
-  ensureChromeDebugModeReadyForMcp,
-  forceChromeDevtoolsUseBrowserUrl
-} from '../chrome-debug-launcher.service'
+import { forceChromeDevtoolsUseBrowserUrl } from '../chrome-debug-launcher.service'
 import type { McpServerStatusInfo } from './types'
 
 // Cached MCP status - updated when SDK reports status during conversation
@@ -123,7 +120,6 @@ export async function testMcpConnections(
       mcpServers: enabledMcpServers
     }) as { mcpServers?: Record<string, unknown> }
     const preparedMcpServers = (preparedMcpOptions.mcpServers || enabledMcpServers) as Record<string, unknown>
-    await ensureChromeDebugModeReadyForMcp({ mcpServers: preparedMcpServers })
 
     console.log('[Agent] MCP servers to test:', Object.keys(preparedMcpServers).join(', '))
 

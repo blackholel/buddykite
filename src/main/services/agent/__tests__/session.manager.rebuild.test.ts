@@ -46,12 +46,10 @@ vi.mock('../../resource-index.service', () => ({
 }))
 
 vi.mock('../../chrome-debug-launcher.service', () => ({
-  ensureChromeDebugModeReadyForMcp: vi.fn().mockResolvedValue(undefined),
   forceChromeDevtoolsUseBrowserUrl: vi.fn((options) => options)
 }))
 
 import { query } from '@anthropic-ai/claude-agent-sdk'
-import { ensureChromeDebugModeReadyForMcp } from '../../chrome-debug-launcher.service'
 import { getConfig, onApiConfigChange } from '../../config.service'
 import { clearSessionId, getConversation } from '../../conversation.service'
 import { resolveEffectiveConversationAi } from '../ai-config-resolver'
@@ -464,7 +462,7 @@ describe('session.manager rebuild', () => {
     expect(closeRecovered).not.toHaveBeenCalled()
   })
 
-  it('初始化命中 DevToolsActivePort 时会触发 Chrome 预热后重试', async () => {
+  it('初始化命中 DevToolsActivePort 时会去掉 chrome-devtools MCP 后重试', async () => {
     const closeRetry = vi.fn()
     vi.mocked(query)
       .mockReset()
@@ -484,6 +482,10 @@ describe('session.manager rebuild', () => {
           'chrome-devtools': {
             command: 'npx',
             args: ['-y', 'chrome-devtools-mcp@latest', '--autoConnect']
+          },
+          demo: {
+            command: 'uvx',
+            args: ['demo-mcp']
           }
         }
       },
@@ -499,7 +501,24 @@ describe('session.manager rebuild', () => {
     )
 
     expect(query).toHaveBeenCalledTimes(2)
-    expect(ensureChromeDebugModeReadyForMcp).toHaveBeenCalled()
+    const firstArgs = vi.mocked(query).mock.calls[0]?.[0] as Record<string, unknown>
+    const secondArgs = vi.mocked(query).mock.calls[1]?.[0] as Record<string, unknown>
+    expect((firstArgs?.options as Record<string, unknown> | undefined)?.mcpServers).toEqual({
+      'chrome-devtools': {
+        command: 'npx',
+        args: ['-y', 'chrome-devtools-mcp@latest', '--autoConnect']
+      },
+      demo: {
+        command: 'uvx',
+        args: ['demo-mcp']
+      }
+    })
+    expect((secondArgs?.options as Record<string, unknown> | undefined)?.mcpServers).toEqual({
+      demo: {
+        command: 'uvx',
+        args: ['demo-mcp']
+      }
+    })
     expect(closeRetry).not.toHaveBeenCalled()
   })
 
