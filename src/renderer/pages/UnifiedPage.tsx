@@ -80,6 +80,7 @@ export function UnifiedPage() {
   }), shallow)
   const {
     tabs: canvasTabs,
+    activeTab,
     isOpen: isCanvasOpen,
     setOpen: setCanvasOpen,
     openChat,
@@ -106,6 +107,7 @@ export function UnifiedPage() {
     return result
   }, [spaceStates])
   const loadingSpaceIdsRef = useRef<Set<string>>(new Set())
+  const conversationSelectTicketRef = useRef(0)
   const [artifactRailExpanded, setArtifactRailExpanded] = useState(false)
 
   const ensureSpaceConversationsLoaded = useCallback(async (spaceId: string) => {
@@ -200,6 +202,7 @@ export function UnifiedPage() {
   }, [spaceById, t])
 
   const handleSelectConversation = useCallback(async (spaceId: string, conversationId: string) => {
+    const ticket = ++conversationSelectTicketRef.current
     const conversationTitle = conversationsBySpaceId
       .get(spaceId)
       ?.find((conversation) => conversation.id === conversationId)
@@ -208,20 +211,19 @@ export function UnifiedPage() {
     const targetSpace = spaceById.get(spaceId)
     const workDir = targetSpace?.path
     setCanvasOpen(false)
-    const navigationResult = await navigateToConversationContext({
+    const navigationResult = await navigateToSpaceContext({
       targetSpaceId: spaceId,
-      targetConversationId: conversationId,
       currentSpaceId,
       spaces,
       kiteSpace,
       setSpaceStoreCurrentSpace,
       setChatCurrentSpace,
-      loadConversations,
-      selectConversation
+      loadConversations
     })
-    if (!navigationResult.success) return
+    if (!navigationResult.success || ticket !== conversationSelectTicketRef.current) return
 
-    await switchSpaceSession(spaceId)
+    void selectConversation(conversationId)
+    if (ticket !== conversationSelectTicketRef.current) return
     await openChat(spaceId, conversationId, conversationTitle, workDir, resolveSpaceTabLabel(spaceId), false)
   }, [
     conversationsBySpaceId,
@@ -236,7 +238,6 @@ export function UnifiedPage() {
     setSpaceStoreCurrentSpace,
     spaceById,
     spaces,
-    switchSpaceSession,
     t
   ])
 
@@ -295,7 +296,6 @@ export function UnifiedPage() {
     const targetSpace = spaceById.get(spaceId)
     const workDir = targetSpace?.path
     setCanvasOpen(false)
-    await switchSpaceSession(spaceId)
     await openChat(spaceId, created.id, created.title, workDir, resolveSpaceTabLabel(spaceId), false)
   }, [
     currentSpaceId,
@@ -309,8 +309,7 @@ export function UnifiedPage() {
     setChatCurrentSpace,
     setSpaceStoreCurrentSpace,
     spaceById,
-    spaces,
-    switchSpaceSession
+    spaces
   ])
 
   const handleRenameConversation = useCallback(async (spaceId: string, conversationId: string, title: string) => {
@@ -327,7 +326,8 @@ export function UnifiedPage() {
     return canvasTabs.filter((tab) => !tab.spaceId || tab.spaceId === currentSpaceId)
   }, [canvasTabs, currentSpaceId])
   const hasCanvasTabs = visibleCanvasTabs.length > 0
-  const shouldSplitWithCanvas = hasCanvasTabs && isCanvasOpen
+  const shouldRenderCanvasPanel = hasCanvasTabs && isCanvasOpen && (activeTab ? activeTab.type !== 'chat' : true)
+  const shouldSplitWithCanvas = shouldRenderCanvasPanel
   const activeTabTitle = useMemo(() => {
     const title = currentConversationMeta?.title?.trim()
     if (title) return title
@@ -396,7 +396,7 @@ export function UnifiedPage() {
             </div>
           </div>
 
-          {hasCanvasTabs && <CollapsibleCanvas />}
+          {shouldRenderCanvasPanel && <CollapsibleCanvas />}
 
           {currentSpaceId && (
             <aside aria-label={t('Files and artifacts')} className="h-full">

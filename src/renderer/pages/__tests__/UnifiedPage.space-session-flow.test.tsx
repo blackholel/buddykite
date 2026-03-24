@@ -166,18 +166,18 @@ describe('UnifiedPage space session flow', () => {
     mockState.navigateToSpaceContext.mockClear()
   })
 
-  it('跨 space 打开会话时先导航上下文，再切 session，再 openChat(false)', async () => {
+  it('跨 space 打开会话时先导航到空间，再异步选中会话并 openChat(false)', async () => {
     renderToStaticMarkup(<UnifiedPage />)
 
     expect(mockState.capturedSidebarProps).toBeTruthy()
 
     await mockState.capturedSidebarProps?.onSelectConversation?.('space-2', 'conv-2')
 
-    expect(mockState.navigateToConversationContext).toHaveBeenCalledWith(expect.objectContaining({
-      targetSpaceId: 'space-2',
-      targetConversationId: 'conv-2'
+    expect(mockState.navigateToSpaceContext).toHaveBeenCalledWith(expect.objectContaining({
+      targetSpaceId: 'space-2'
     }))
-    expect(mockState.switchSpaceSession).toHaveBeenCalledWith('space-2')
+    expect(mockState.navigateToConversationContext).not.toHaveBeenCalled()
+    expect(mockState.switchSpaceSession).not.toHaveBeenCalled()
     expect(mockState.openChat).toHaveBeenCalledWith(
       'space-2',
       'conv-2',
@@ -187,11 +187,41 @@ describe('UnifiedPage space session flow', () => {
       false
     )
 
-    const navigateOrder = mockState.navigateToConversationContext.mock.invocationCallOrder[0]
-    const switchOrder = mockState.switchSpaceSession.mock.invocationCallOrder[0]
+    const navigateOrder = mockState.navigateToSpaceContext.mock.invocationCallOrder[0]
     const openOrder = mockState.openChat.mock.invocationCallOrder[0]
-    expect(navigateOrder).toBeLessThan(switchOrder)
-    expect(switchOrder).toBeLessThan(openOrder)
+    expect(navigateOrder).toBeLessThan(openOrder)
+  })
+
+  it('快速连续切换会话时仅保留最后一次点击的 openChat', async () => {
+    let resolveFirstNavigation: ((value: { success: boolean }) => void) | null = null
+    const firstNavigation = new Promise<{ success: boolean }>((resolve) => {
+      resolveFirstNavigation = resolve
+    })
+
+    mockState.navigateToSpaceContext
+      .mockImplementationOnce(async () => firstNavigation)
+      .mockImplementationOnce(async () => ({ success: true }))
+
+    renderToStaticMarkup(<UnifiedPage />)
+    expect(mockState.capturedSidebarProps).toBeTruthy()
+
+    const firstClick = mockState.capturedSidebarProps?.onSelectConversation?.('space-2', 'conv-2')
+    const secondClick = mockState.capturedSidebarProps?.onSelectConversation?.('space-1', 'conv-1')
+
+    await Promise.resolve()
+    resolveFirstNavigation?.({ success: true })
+
+    await Promise.all([firstClick, secondClick])
+
+    expect(mockState.openChat).toHaveBeenCalledTimes(1)
+    expect(mockState.openChat).toHaveBeenCalledWith(
+      'space-1',
+      'conv-1',
+      '会话 A',
+      '/tmp/space-1',
+      'Space 1',
+      false
+    )
   })
 
   it('顶部 tab 点击不会反向触发跨 space 导航', async () => {

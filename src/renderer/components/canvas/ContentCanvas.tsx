@@ -25,7 +25,6 @@
 import { useCallback, useEffect, lazy, Suspense } from 'react'
 import { X, ChevronLeft, Minimize2, Maximize2 } from 'lucide-react'
 import { useCanvasLifecycle, type TabState, type ContentType } from '../../hooks/useCanvasLifecycle'
-import { CanvasTabBar } from './CanvasTabs'
 import { ChatTabViewer } from './viewers/ChatTabViewer'
 import { useTranslation } from '../../i18n'
 import { useChatStore } from '../../stores/chat.store'
@@ -178,9 +177,6 @@ export function ContentCanvas({ className = '' }: ContentCanvasProps) {
 
   return (
     <div className={`flex flex-col h-full ${className}`}>
-      {/* Tab bar - VS Code style */}
-      <CanvasTabBar />
-
       {/* Content area - bg-card matches active tab for visual continuity */}
       <div className="flex-1 min-h-0 overflow-hidden bg-card">
         {activeTab ? (

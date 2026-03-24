@@ -1,0 +1,117 @@
+<h2>工作台状态模型：按空间隔离标签</h2>
+<p class="subtitle">推荐方案：空间是一级上下文，聊天与文件标签都属于当前空间；右侧目录树始终跟随当前空间。</p>
+
+<div class="section">
+  <div class="mockup">
+    <div class="mockup-header">推荐交互草图</div>
+    <div class="mockup-body" style="display:grid;grid-template-columns:280px 1fr 300px;gap:0;min-height:520px;background:#f5f7fb;border-radius:18px;overflow:hidden;">
+      <div style="background:#fcfcfd;border-right:1px solid #e3e8f2;padding:18px 14px;display:flex;flex-direction:column;gap:14px;">
+        <div style="font-size:12px;color:#667085;text-transform:uppercase;letter-spacing:.08em;">左侧空间与会话</div>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <div style="border:1px solid #d9e2f2;border-radius:14px;background:#fff;padding:10px 12px;">
+            <div style="font-weight:600;">Kite</div>
+            <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px;font-size:13px;color:#475467;">
+              <div style="padding:7px 10px;border-radius:10px;background:#eef2ff;color:#344054;">会话 A1</div>
+              <div style="padding:7px 10px;border-radius:10px;">会话 A2</div>
+            </div>
+          </div>
+          <div style="border:1px solid #d9e2f2;border-radius:14px;background:#fff;padding:10px 12px;">
+            <div style="font-weight:600;">测试准备</div>
+            <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px;font-size:13px;color:#475467;">
+              <div style="padding:7px 10px;border-radius:10px;">会话 B1</div>
+              <div style="padding:7px 10px;border-radius:10px;">会话 B2</div>
+            </div>
+          </div>
+        </div>
+        <div style="margin-top:auto;font-size:12px;color:#667085;">所有空间都可见，但当前空间高亮并展开。</div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;min-width:0;background:#ffffff;">
+        <div style="border-bottom:1px solid #e3e8f2;padding:10px 12px;background:#f8fafc;">
+          <div style="font-size:12px;color:#667085;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;">顶部标签：仅当前空间</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <div style="padding:8px 12px;border-radius:12px;background:#e8eefc;border:1px solid #c7d7fe;font-size:13px;font-weight:600;">会话 A1</div>
+            <div style="padding:8px 12px;border-radius:12px;background:#fff;border:1px solid #d0d5dd;font-size:13px;">需求.md</div>
+            <div style="padding:8px 12px;border-radius:12px;background:#fff;border:1px solid #d0d5dd;font-size:13px;">截图.png</div>
+          </div>
+        </div>
+        <div style="padding:18px;display:flex;flex-direction:column;gap:16px;min-height:0;flex:1;">
+          <div style="padding:14px 16px;border-radius:16px;background:linear-gradient(180deg,#f8fbff 0%,#eef4ff 100%);border:1px solid #dbe7ff;">
+            <div style="font-size:12px;color:#667085;text-transform:uppercase;letter-spacing:.08em;">当前上下文</div>
+            <div style="margin-top:6px;font-size:16px;font-weight:600;">空间：Kite</div>
+            <div style="margin-top:4px;font-size:14px;color:#475467;">激活标签：会话 A1</div>
+          </div>
+          <div style="padding:18px;border:1px dashed #c7d7fe;border-radius:16px;min-height:260px;background:#fbfdff;">
+            <div style="font-size:14px;font-weight:600;margin-bottom:8px;">主内容区</div>
+            <div style="font-size:13px;line-height:1.7;color:#475467;">
+              点击左侧其他空间的会话时：
+              <br />
+              1. 切换当前空间
+              <br />
+              2. 恢复该空间的标签集合
+              <br />
+              3. 激活对应会话标签；若不存在则新开
+              <br />
+              4. 右侧目录树同步切换到该空间
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="background:#fcfcfd;border-left:1px solid #e3e8f2;padding:18px 14px;display:flex;flex-direction:column;gap:14px;">
+        <div style="font-size:12px;color:#667085;text-transform:uppercase;letter-spacing:.08em;">右侧目录树：强联动</div>
+        <div style="padding:12px;border-radius:14px;background:#eef2ff;border:1px solid #dbe7ff;">
+          <div style="font-size:13px;color:#344054;font-weight:600;">当前目录树所属空间</div>
+          <div style="font-size:18px;font-weight:700;margin-top:4px;">Kite</div>
+          <div style="font-size:12px;color:#667085;margin-top:6px;">不会跟其它空间的标签混开</div>
+        </div>
+        <div style="padding:12px;border-radius:14px;background:#fff;border:1px solid #d0d5dd;font-size:13px;line-height:1.8;">
+          <div>docs</div>
+          <div>src</div>
+          <div>package.json</div>
+          <div>slide-1.png</div>
+        </div>
+        <div style="font-size:12px;color:#667085;">
+          文件标签与聊天标签可以混排，但仅限当前空间。切空间时，不展示其它空间的文件标签。
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="options">
+  <div class="option" data-choice="accept" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>接受这个状态模型</h3>
+      <p>按空间隔离标签，右侧目录树永远跟当前空间联动。</p>
+    </div>
+  </div>
+  <div class="option" data-choice="adjust" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>要微调</h3>
+      <p>总体方向对，但还有某个交互细节要改。</p>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="pros-cons">
+    <div class="pros">
+      <h4>优点</h4>
+      <ul>
+        <li>右侧目录树归属清楚，不会串空间。</li>
+        <li>切回某空间时能恢复原来的工作现场。</li>
+        <li>顶部标签数量与五个上限都更容易解释。</li>
+      </ul>
+    </div>
+    <div class="cons">
+      <h4>代价</h4>
+      <ul>
+        <li>顶部看不到其它空间已打开的标签。</li>
+        <li>需要把当前的全局标签状态重构成按空间存储。</li>
+      </ul>
+    </div>
+  </div>
+</div>

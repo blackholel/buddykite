@@ -243,7 +243,7 @@ export function UnifiedSidebar({
             return (
               <div
                 key={space.id}
-                className="mb-1 rounded-xl border border-transparent hover:border-border/60"
+                className="mb-1 rounded-xl"
                 onMouseEnter={() => setHoveredSpaceId(space.id)}
                 onMouseLeave={() => setHoveredSpaceId((prev) => (prev === space.id ? null : prev))}
               >

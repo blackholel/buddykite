@@ -141,7 +141,7 @@ describe('UnifiedPage entry state', () => {
     vi.mocked(navigateToSpaceContext).mockClear()
   })
 
-  it('跨 space 会话激活走 space-first：先导航上下文，再切 session，再 openChat(false)', async () => {
+  it('跨 space 会话激活先导航到空间，再异步选中会话并 openChat(false)', async () => {
     mockCanvasState.tabs = [{
       id: 'chat-tab-space-1',
       type: 'chat',
@@ -154,11 +154,11 @@ describe('UnifiedPage entry state', () => {
     expect(capturedSidebarProps).toBeTruthy()
     await capturedSidebarProps?.onSelectConversation?.('space-2', 'conv-2')
 
-    expect(vi.mocked(navigateToConversationContext)).toHaveBeenCalledWith(expect.objectContaining({
-      targetSpaceId: 'space-2',
-      targetConversationId: 'conv-2'
+    expect(vi.mocked(navigateToSpaceContext)).toHaveBeenCalledWith(expect.objectContaining({
+      targetSpaceId: 'space-2'
     }))
-    expect(mockCanvasState.switchSpaceSession).toHaveBeenCalledWith('space-2')
+    expect(vi.mocked(navigateToConversationContext)).not.toHaveBeenCalled()
+    expect(mockCanvasState.switchSpaceSession).not.toHaveBeenCalled()
     expect(mockCanvasState.openChat).toHaveBeenCalledWith(
       'space-2',
       'conv-2',
@@ -168,11 +168,9 @@ describe('UnifiedPage entry state', () => {
       false
     )
 
-    const navigateOrder = vi.mocked(navigateToConversationContext).mock.invocationCallOrder[0]
-    const switchOrder = mockCanvasState.switchSpaceSession.mock.invocationCallOrder[0]
+    const navigateOrder = vi.mocked(navigateToSpaceContext).mock.invocationCallOrder[0]
     const openOrder = mockCanvasState.openChat.mock.invocationCallOrder[0]
-    expect(navigateOrder).toBeLessThan(switchOrder)
-    expect(switchOrder).toBeLessThan(openOrder)
+    expect(navigateOrder).toBeLessThan(openOrder)
   })
 
   it('顶部 tab 点击不会反向触发跨 space 导航', async () => {
@@ -243,6 +241,23 @@ describe('UnifiedPage entry state', () => {
     expect(backToSpace1).toContain('Canvas Toggle')
   })
 
+  it('当前激活 tab 为 chat 时不渲染右侧 Canvas 内容区', () => {
+    mockCanvasState.tabs = [{
+      id: 'chat-tab-space-1',
+      type: 'chat',
+      title: '会话 A',
+      conversationId: 'conv-1',
+      spaceId: 'space-1'
+    }]
+    mockCanvasState.activeTab = mockCanvasState.tabs[0]
+    mockCanvasState.isOpen = true
+
+    const html = renderToStaticMarkup(<UnifiedPage />)
+
+    expect(html).toContain('Canvas Toggle')
+    expect(html).not.toContain('Canvas Surface')
+  })
+
   it('普通空间显示打开内容 tabs，并保留折叠的文件栏入口', () => {
     mockCanvasState.tabs = []
     mockCanvasState.activeTab = null
@@ -260,7 +275,7 @@ describe('UnifiedPage entry state', () => {
     expect(html).not.toContain('All spaces')
   })
 
-  it('temp 空间显示文件栏', () => {
+  it('temp 空间显示文件栏（chat tab 激活时不展示右侧画布）', () => {
     mockCurrentSpace.isTemp = true
     mockCanvasState.tabs = [{
       id: 'chat-tab-temp-1',
@@ -270,22 +285,26 @@ describe('UnifiedPage entry state', () => {
       spaceId: 'space-1'
     }]
     mockCanvasState.activeTab = mockCanvasState.tabs[0]
+    mockCanvasState.isOpen = true
     const html = renderToStaticMarkup(<UnifiedPage />)
 
     expect(html).toContain('Canvas Toggle')
-    expect(html).toContain('Canvas Surface')
+    expect(html).not.toContain('Canvas Surface')
     expect(html).toContain('Files and artifacts')
   })
 
-  it('普通空间有会话 tabs 时显示可切换画布区域', () => {
+  it('普通空间有文件 tab 且画布已展开时显示右侧画布区域', () => {
     mockCanvasState.tabs = [{
-      id: 'chat-tab-1',
-      type: 'chat',
-      title: '会话 A',
-      conversationId: 'conv-1',
-      spaceId: 'space-1'
+      id: 'file-tab-1',
+      type: 'markdown',
+      title: 'readme.md',
+      path: '/tmp/space-1/readme.md',
+      spaceId: 'space-1',
+      isDirty: false,
+      isLoading: false
     }]
     mockCanvasState.activeTab = mockCanvasState.tabs[0]
+    mockCanvasState.isOpen = true
 
     const html = renderToStaticMarkup(<UnifiedPage />)
     expect(html).toContain('Canvas Toggle')
