@@ -1,16 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
+  ChevronDown,
+  ChevronRight,
   FolderPlus,
   House,
   Loader2,
   MessageSquarePlus,
   Pencil,
-  Settings,
   Trash2
 } from 'lucide-react'
 import type { ConversationMeta, CreateSpaceInput, Space } from '../../types'
 import { SpaceIcon } from '../icons/ToolIcons'
 import { getCurrentLanguage, useTranslation } from '../../i18n'
+import { api } from '../../api'
 
 interface UnifiedSidebarProps {
   spaces: Space[]
@@ -26,6 +28,7 @@ interface UnifiedSidebarProps {
   onDeleteConversation: (spaceId: string, conversationId: string) => Promise<void>
   onGoHome: () => void
   onGoSettings: () => void
+  initialCreateDialogOpen?: boolean
 }
 
 function formatRelativeTime(dateString: string, t: (key: string, options?: Record<string, unknown>) => string): string {
@@ -60,14 +63,20 @@ export function UnifiedSidebar({
   onRenameConversation,
   onDeleteConversation,
   onGoHome,
-  onGoSettings
+  onGoSettings,
+  initialCreateDialogOpen = false
 }: UnifiedSidebarProps) {
   const { t } = useTranslation()
   const [loadingSpaceIds, setLoadingSpaceIds] = useState<Set<string>>(new Set())
   const loadingSpaceIdsRef = useRef<Set<string>>(new Set())
   const [hoveredSpaceId, setHoveredSpaceId] = useState<string | null>(null)
-  const [creatingSpace, setCreatingSpace] = useState(false)
+  const [expandedSpaceId, setExpandedSpaceId] = useState<string | null>(currentSpaceId)
+  const [creatingSpace, setCreatingSpace] = useState(initialCreateDialogOpen)
   const [newSpaceName, setNewSpaceName] = useState('')
+  const [createPathMode, setCreatePathMode] = useState<'default' | 'custom'>('default')
+  const [defaultSpacePath, setDefaultSpacePath] = useState('')
+  const [selectedCustomPath, setSelectedCustomPath] = useState<string | null>(null)
+  const [loadingDefaultPath, setLoadingDefaultPath] = useState(false)
   const [editingConversation, setEditingConversation] = useState<{
     spaceId: string
     conversationId: string
@@ -104,21 +113,79 @@ export function UnifiedSidebar({
 
   useEffect(() => {
     if (!currentSpaceId) return
+    setExpandedSpaceId(currentSpaceId)
     void ensureExpandedSpaceLoaded(currentSpaceId)
   }, [currentSpaceId, ensureExpandedSpaceLoaded])
+
+  useEffect(() => {
+    if (!creatingSpace) return
+    let isCancelled = false
+    setLoadingDefaultPath(true)
+    void api.getDefaultSpacePath()
+      .then((response) => {
+        if (isCancelled) return
+        if (response.success && typeof response.data === 'string') {
+          setDefaultSpacePath(response.data)
+          return
+        }
+        setDefaultSpacePath('')
+      })
+      .finally(() => {
+        if (isCancelled) return
+        setLoadingDefaultPath(false)
+      })
+    return () => {
+      isCancelled = true
+    }
+  }, [creatingSpace])
+
+  const closeCreateSpaceDialog = useCallback(() => {
+    setCreatingSpace(false)
+    setNewSpaceName('')
+    setCreatePathMode('default')
+    setSelectedCustomPath(null)
+  }, [])
+
+  const handleToggleSpaceExpanded = useCallback((spaceId: string) => {
+    const isCurrentSpace = currentSpaceId === spaceId
+    if (!isCurrentSpace) {
+      setExpandedSpaceId(spaceId)
+      void onSelectSpace(spaceId)
+      void ensureExpandedSpaceLoaded(spaceId)
+      return
+    }
+
+    setExpandedSpaceId(spaceId)
+    void ensureExpandedSpaceLoaded(spaceId)
+  }, [currentSpaceId, ensureExpandedSpaceLoaded, onSelectSpace])
+
+  const handleSelectSpace = useCallback((spaceId: string) => {
+    setExpandedSpaceId(spaceId)
+    void ensureExpandedSpaceLoaded(spaceId)
+    void onSelectSpace(spaceId)
+  }, [ensureExpandedSpaceLoaded, onSelectSpace])
+
+  const handleSelectCustomPath = useCallback(async () => {
+    const result = await api.selectFolder()
+    if (!result.success || typeof result.data !== 'string' || !result.data) return
+    setSelectedCustomPath(result.data)
+    setCreatePathMode('custom')
+  }, [])
 
   const handleCreateSpace = async () => {
     const trimmed = newSpaceName.trim()
     if (!trimmed) return
+    const customPath = createPathMode === 'custom' ? (selectedCustomPath || undefined) : undefined
+    if (createPathMode === 'custom' && !customPath) return
 
     const created = await onCreateSpace({
       name: trimmed,
-      icon: 'folder'
+      icon: 'folder',
+      customPath
     })
     if (!created) return
 
-    setCreatingSpace(false)
-    setNewSpaceName('')
+    closeCreateSpaceDialog()
   }
 
   const handleRenameSubmit = async () => {
@@ -137,7 +204,7 @@ export function UnifiedSidebar({
     <aside className="w-[320px] h-full border-r border-border/60 bg-card/40 backdrop-blur-sm overflow-hidden">
       <div className="h-full flex flex-col">
         <div className="px-4 py-3 border-b border-border/60 flex items-center justify-between">
-          <div className="min-w-0 flex items-center gap-1.5">
+          <div className="min-w-0 flex items-center">
             <button
               onClick={onGoHome}
               className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary/70"
@@ -146,15 +213,6 @@ export function UnifiedSidebar({
             >
               <House className="w-3.5 h-3.5" />
               <span>{t('主页')}</span>
-            </button>
-            <button
-              onClick={onGoSettings}
-              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary/70"
-              title={t('Settings')}
-              aria-label={t('Settings')}
-            >
-              <Settings className="w-3.5 h-3.5" />
-              <span>{t('设置')}</span>
             </button>
           </div>
           <button
@@ -171,6 +229,7 @@ export function UnifiedSidebar({
           {sortedSpaces.map((space) => {
             const hasLoadedConversations = conversationsBySpaceId.has(space.id)
             const isSpaceLoading = loadingSpaceIds.has(space.id)
+            const isExpanded = expandedSpaceId === space.id
             const conversations = (conversationsBySpaceId.get(space.id) || [])
               .slice()
               .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
@@ -190,7 +249,24 @@ export function UnifiedSidebar({
               >
                 <div className={`flex items-center gap-1 px-2 py-1.5 rounded-xl ${isActiveSpace ? 'bg-secondary/80' : 'hover:bg-secondary/50'}`}>
                   <button
-                    onClick={() => void onSelectSpace(space.id)}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      handleToggleSpaceExpanded(space.id)
+                    }}
+                    className="p-1 rounded-md hover:bg-background/60 transition-colors"
+                    title={isExpanded ? t('Collapse') : t('Expand')}
+                    aria-label={isExpanded ? t('Collapse') : t('Expand')}
+                    aria-expanded={isExpanded}
+                    aria-controls={`space-panel-${space.id}`}
+                  >
+                    {isExpanded ? (
+                      <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
+                    ) : (
+                      <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />
+                    )}
+                  </button>
+                  <button
+                    onClick={() => handleSelectSpace(space.id)}
                     className="flex-1 min-w-0 flex items-center gap-2 text-left"
                   >
                     <SpaceIcon iconId={space.icon} size={16} />
@@ -213,8 +289,8 @@ export function UnifiedSidebar({
                   )}
                 </div>
 
-                {isActiveSpace && (
-                  <div className="pl-7 pr-2 pb-1">
+                {isExpanded && (
+                  <div id={`space-panel-${space.id}`} className="pl-7 pr-2 pb-1">
                     {!hasLoadedConversations || isSpaceLoading ? (
                       <div className="text-xs text-muted-foreground px-2 py-1.5">
                         <span className="inline-flex items-center gap-1.5">
@@ -317,12 +393,23 @@ export function UnifiedSidebar({
             )
           })}
         </div>
+
+        <div className="px-4 py-3 border-t border-border/60">
+          <button
+            onClick={onGoSettings}
+            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary/70"
+            title={t('Settings')}
+            aria-label={t('Settings')}
+          >
+            <span>{t('设置')}</span>
+          </button>
+        </div>
       </div>
 
       {creatingSpace && (
         <div
           className="fixed inset-0 z-50 bg-black/35 flex items-center justify-center p-4"
-          onClick={() => setCreatingSpace(false)}
+          onClick={closeCreateSpaceDialog}
         >
           <div
             className="w-full max-w-sm rounded-xl border border-border bg-card p-4"
@@ -342,16 +429,59 @@ export function UnifiedSidebar({
               placeholder={t('Space name')}
               className="mt-3 w-full bg-background border border-border rounded-lg px-3 py-2 text-sm"
             />
+            <div className="mt-3 rounded-lg border border-border/60 p-2.5 space-y-2">
+              <div className="text-xs text-muted-foreground">{t('创建位置')}</div>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => setCreatePathMode('default')}
+                  className={`px-2 py-1.5 text-xs rounded-md border transition-colors ${
+                    createPathMode === 'default'
+                      ? 'border-primary text-primary bg-primary/10'
+                      : 'border-border hover:bg-secondary/70'
+                  }`}
+                >
+                  {t('默认目录')}
+                </button>
+                <button
+                  onClick={() => setCreatePathMode('custom')}
+                  className={`px-2 py-1.5 text-xs rounded-md border transition-colors ${
+                    createPathMode === 'custom'
+                      ? 'border-primary text-primary bg-primary/10'
+                      : 'border-border hover:bg-secondary/70'
+                  }`}
+                >
+                  {t('本地文件夹')}
+                </button>
+              </div>
+              {createPathMode === 'custom' ? (
+                <div className="space-y-2">
+                  <button
+                    onClick={() => void handleSelectCustomPath()}
+                    className="w-full px-2 py-1.5 text-xs rounded-md border border-border hover:bg-secondary/70"
+                  >
+                    {t('选择文件夹')}
+                  </button>
+                  <div className="text-xs text-muted-foreground break-all">
+                    {selectedCustomPath || t('未选择文件夹')}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-xs text-muted-foreground break-all">
+                  {loadingDefaultPath ? t('Loading...') : defaultSpacePath || t('Loading...')}
+                </div>
+              )}
+            </div>
             <div className="mt-4 flex justify-end gap-2">
               <button
-                onClick={() => setCreatingSpace(false)}
+                onClick={closeCreateSpaceDialog}
                 className="px-3 py-1.5 text-sm rounded-lg border border-border hover:bg-secondary/70"
               >
                 {t('Cancel')}
               </button>
               <button
                 onClick={() => void handleCreateSpace()}
-                className="px-3 py-1.5 text-sm rounded-lg bg-primary text-primary-foreground hover:opacity-90"
+                disabled={!newSpaceName.trim() || (createPathMode === 'custom' && !selectedCustomPath)}
+                className="px-3 py-1.5 text-sm rounded-lg bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {t('Create')}
               </button>

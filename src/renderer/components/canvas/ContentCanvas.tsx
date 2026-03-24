@@ -11,7 +11,6 @@
  * - Appropriate viewer component selected based on content type
  *
  * Keyboard shortcuts:
- * - Cmd/Ctrl+T: New conversation tab
  * - Cmd/Ctrl+W: Close current tab
  * - Cmd/Ctrl+Shift+W: Close all tabs
  * - Cmd/Ctrl+Tab: Switch to next tab
@@ -29,8 +28,6 @@ import { useCanvasLifecycle, type TabState, type ContentType } from '../../hooks
 import { CanvasTabBar } from './CanvasTabs'
 import { ChatTabViewer } from './viewers/ChatTabViewer'
 import { useTranslation } from '../../i18n'
-import { useChatStore } from '../../stores/chat.store'
-import { useSpaceStore } from '../../stores/space.store'
 
 const loadCodeEditor = () => import('./viewers/CodeEditor')
 const loadMarkdownViewer = () => import('./viewers/MarkdownViewer')
@@ -97,24 +94,10 @@ export function ContentCanvas({ className = '' }: ContentCanvasProps) {
     updateTabContent,
     saveFile,
   } = useCanvasLifecycle()
-  const currentSpace = useSpaceStore(state => state.currentSpace)
-  const createConversation = useChatStore(state => state.createConversation)
 
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Cmd/Ctrl + T: New conversation tab (works globally)
-      if ((e.metaKey || e.ctrlKey) && e.key === 't') {
-        e.preventDefault()
-        if (!currentSpace) return
-        void (async () => {
-          const newConversation = await createConversation(currentSpace.id)
-          if (!newConversation) return
-          openChat(currentSpace.id, newConversation.id, newConversation.title, currentSpace.path)
-        })()
-        return
-      }
-
       // Only handle remaining shortcuts if canvas is open
       if (!isOpen) return
 
@@ -159,7 +142,7 @@ export function ContentCanvas({ className = '' }: ContentCanvasProps) {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [activeTabId, closeAllTabs, closeTab, createConversation, currentSpace, isOpen, openChat, setOpen, switchToNextTab, switchToPrevTab, switchToTabIndex])
+  }, [activeTabId, closeAllTabs, closeTab, isOpen, setOpen, switchToNextTab, switchToPrevTab, switchToTabIndex])
 
   // Handle scroll position changes
   const handleScrollChange = useCallback((position: number) => {

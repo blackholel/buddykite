@@ -1,0 +1,126 @@
+<h2>统一工作台的信息架构</h2>
+<p class="subtitle">已锁定约束：只展开当前空间的最近聊天；其他空间默认折叠，只显示名称和状态。</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>推荐：单栏分组式左侧导航</h3>
+      <p>一个左栏，顶部是空间切换，中部是空间列表，当前空间下面内嵌最近聊天，底部是设置。</p>
+      <div class="mockup" style="margin-top:14px;">
+        <div class="mockup-header">结构预览</div>
+        <div class="mockup-body">
+          <div class="mock-sidebar" style="width:100%;">
+            当前空间 ▼ +<br><br>
+            主页<br><br>
+            当前空间 A<br>
+            ├ 最近聊天 1<br>
+            ├ 最近聊天 2<br>
+            └ 最近聊天 3<br><br>
+            空间 B · 2 条对话<br>
+            空间 C · 未配置<br>
+            空间 D · 进行中<br><br>
+            设置
+          </div>
+        </div>
+      </div>
+      <div class="pros-cons">
+        <div class="pros">
+          <h4>优点</h4>
+          <ul>
+            <li>最直观，学习成本最低</li>
+            <li>空间和聊天关系最清楚</li>
+            <li>实现成本相对可控</li>
+          </ul>
+        </div>
+        <div class="cons">
+          <h4>风险</h4>
+          <ul>
+            <li>空间很多时左栏会变长</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>双层导航：顶部空间切换 + 左栏当前空间聊天</h3>
+      <p>左栏不列所有空间，只显示当前空间聊天；所有空间通过顶部切换器打开抽屉或下拉查看。</p>
+      <div class="mockup" style="margin-top:14px;">
+        <div class="mockup-header">结构预览</div>
+        <div class="mockup-body">
+          <div class="mock-nav">当前空间 ▼ | 所有空间 | 新建空间 | 设置</div>
+          <div style="display:flex; gap:12px; margin-top:12px;">
+            <div class="mock-sidebar" style="width:30%;">
+              当前空间聊天<br>
+              Chat 1<br>
+              Chat 2<br>
+              Chat 3
+            </div>
+            <div class="mock-content" style="width:70%;">主工作区</div>
+          </div>
+        </div>
+      </div>
+      <div class="pros-cons">
+        <div class="pros">
+          <h4>优点</h4>
+          <ul>
+            <li>左栏更干净</li>
+            <li>主工作流更聚焦当前空间</li>
+          </ul>
+        </div>
+        <div class="cons">
+          <h4>风险</h4>
+          <ul>
+            <li>空间发现性变差</li>
+            <li>切换空间多一步</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>左栏空间列表 + 右侧聊天抽屉</h3>
+      <p>左栏只看空间，当前空间聊天改成右侧抽屉或顶部 tab。</p>
+      <div class="mockup" style="margin-top:14px;">
+        <div class="mockup-header">结构预览</div>
+        <div class="mockup-body">
+          <div style="display:flex; gap:12px;">
+            <div class="mock-sidebar" style="width:24%;">
+              空间 A<br>
+              空间 B<br>
+              空间 C<br><br>
+              设置
+            </div>
+            <div class="mock-content" style="width:52%;">主聊天工作区</div>
+            <div class="mock-sidebar" style="width:24%;">当前空间聊天抽屉</div>
+          </div>
+        </div>
+      </div>
+      <div class="pros-cons">
+        <div class="pros">
+          <h4>优点</h4>
+          <ul>
+            <li>空间管理感更强</li>
+          </ul>
+        </div>
+        <div class="cons">
+          <h4>风险</h4>
+          <ul>
+            <li>布局更复杂</li>
+            <li>不符合你要的“更直观”</li>
+            <li>聊天作为主任务被分散</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h3>我的建议</h3>
+<p>先选 A。它最接近真实用户心智：<strong>空间是目录，对话是目录下最近打开的工作</strong>。不要过早做 B 那种隐藏式空间抽屉，也不要做 C 那种左右双轨。</p>

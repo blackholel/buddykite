@@ -16,6 +16,7 @@ import {
   canvasLifecycle,
   type TabState,
   type ContentType,
+  type SpaceSessionState,
 } from '../services/canvas-lifecycle'
 import type { TemplateLibraryTab } from '../types/template-library'
 
@@ -29,11 +30,15 @@ export function useCanvasLifecycle() {
   const [tabs, setTabs] = useState<TabState[]>(() => canvasLifecycle.getTabs())
   const [activeTabId, setActiveTabId] = useState<string | null>(() => canvasLifecycle.getActiveTabId())
   const [isOpen, setIsOpen] = useState(() => canvasLifecycle.getIsOpen())
+  const [currentSpaceId, setCurrentSpaceId] = useState<string | null>(() => canvasLifecycle.getCurrentSpaceId())
 
   // Subscribe to state changes
   useEffect(() => {
     // Subscribe to all changes - callbacks will be called immediately with current state
-    const unsubTabs = canvasLifecycle.onTabsChange(setTabs)
+    const unsubTabs = canvasLifecycle.onTabsChange((nextTabs) => {
+      setTabs(nextTabs)
+      setCurrentSpaceId(canvasLifecycle.getCurrentSpaceId())
+    })
     const unsubActive = canvasLifecycle.onActiveTabChange(setActiveTabId)
     const unsubOpen = canvasLifecycle.onOpenStateChange(setIsOpen)
 
@@ -49,7 +54,7 @@ export function useCanvasLifecycle() {
 
   // Expose actions (bound to singleton)
   const openFile = useCallback(
-    (path: string, title?: string) => canvasLifecycle.openFile(path, title),
+    (spaceId: string, path: string, title?: string) => canvasLifecycle.openFile(spaceId, path, title),
     []
   )
 
@@ -71,8 +76,14 @@ export function useCanvasLifecycle() {
   )
 
   const openChat = useCallback(
-    (spaceId: string, conversationId: string, title: string, workDir?: string) =>
-      canvasLifecycle.openChat(spaceId, conversationId, title, workDir),
+    (
+      spaceId: string,
+      conversationId: string,
+      title: string,
+      workDir?: string,
+      spaceLabel?: string,
+      openCanvas?: boolean
+    ) => canvasLifecycle.openChat(spaceId, conversationId, title, workDir, spaceLabel, openCanvas),
     []
   )
 
@@ -147,6 +158,15 @@ export function useCanvasLifecycle() {
     []
   )
 
+  const switchSpaceSession = useCallback(
+    (spaceId: string) => canvasLifecycle.switchSpaceSession(spaceId),
+    []
+  )
+
+  const currentSpaceSession: SpaceSessionState | undefined = currentSpaceId
+    ? canvasLifecycle.getSpaceSession(currentSpaceId)
+    : undefined
+
   return {
     // State
     tabs,
@@ -155,6 +175,8 @@ export function useCanvasLifecycle() {
     isOpen,
     isTransitioning: canvasLifecycle.getIsTransitioning(),
     tabCount: tabs.length,
+    currentSpaceId,
+    currentSpaceSession,
 
     // Tab Actions
     openFile,
@@ -180,6 +202,7 @@ export function useCanvasLifecycle() {
     // Layout Actions
     setOpen,
     toggleOpen,
+    switchSpaceSession,
   }
 }
 

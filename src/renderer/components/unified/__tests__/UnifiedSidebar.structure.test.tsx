@@ -85,7 +85,7 @@ const handlers = {
 }
 
 describe('UnifiedSidebar structure', () => {
-  it('expands only the current space conversations', () => {
+  it('默认仅展开当前空间，其他空间保持折叠', () => {
     const html = renderToStaticMarkup(
       <UnifiedSidebar
         spaces={[spaceA, spaceB]}
@@ -101,5 +101,30 @@ describe('UnifiedSidebar structure', () => {
 
     expect(html).toContain('conv-1')
     expect(html).not.toContain('conv-3')
+    expect(html).toContain('aria-controls="space-panel-space-a"')
+    expect(html).toContain('aria-controls="space-panel-space-b"')
+    expect(html).toContain('aria-expanded="true"')
+    expect(html).toContain('aria-expanded="false"')
+  })
+
+  it('新建空间弹窗展示创建方式与引导文案', () => {
+    const html = renderToStaticMarkup(
+      <UnifiedSidebar
+        spaces={[spaceA, spaceB]}
+        currentSpaceId="space-a"
+        currentConversationId="conv-1"
+        conversationsBySpaceId={new Map([
+          ['space-a', [conv1, conv2]],
+          ['space-b', [conv3]]
+        ])}
+        initialCreateDialogOpen
+        {...handlers}
+      />
+    )
+
+    expect(html).toContain('创建位置')
+    expect(html).toContain('默认目录')
+    expect(html).toContain('本地文件夹')
+    expect(html).toContain('Loading...')
   })
 })

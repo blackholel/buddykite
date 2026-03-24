@@ -30,6 +30,7 @@ export interface TabState {
   id: string
   type: ContentType
   title: string
+  spaceLabel?: string
   path?: string
   url?: string
   content?: string
@@ -39,11 +40,19 @@ export interface TabState {
   isLoading: boolean
   error?: string
   scrollPosition?: number
+  lastActiveAt?: number
   // Session-bound tab fields (used by chat tabs and plan tabs)
   conversationId?: string
   spaceId?: string
   workDir?: string
   templateLibraryTab?: TemplateLibraryTab
+}
+
+export interface SpaceSessionState {
+  spaceId: string
+  tabs: TabState[]
+  activeTabId: string | null
+  lastVisitedAt: number
 }
 
 // Callback types
@@ -143,20 +152,47 @@ function getFileName(path: string): string {
   return path.split('/').pop() || path
 }
 
+function normalizePath(path: string): string {
+  const unixPath = path.replace(/\\/g, '/')
+  const isAbsolute = unixPath.startsWith('/')
+  const segments = unixPath.split('/')
+  const normalized: string[] = []
+
+  for (const segment of segments) {
+    if (!segment || segment === '.') {
+      continue
+    }
+    if (segment === '..') {
+      if (normalized.length > 0 && normalized[normalized.length - 1] !== '..') {
+        normalized.pop()
+      } else if (!isAbsolute) {
+        normalized.push('..')
+      }
+      continue
+    }
+    normalized.push(segment)
+  }
+
+  const joined = normalized.join('/')
+  if (isAbsolute) {
+    return `/${joined}` || '/'
+  }
+  return joined || '.'
+}
+
 // ============================================
 // CanvasLifecycle Class
 // ============================================
 
 class CanvasLifecycle {
+  private static readonly MAX_TABS = 5
+
   // Core state
-  private tabs: Map<string, TabState> = new Map()
+  private spaceSessions: Map<string, SpaceSessionState> = new Map()
+  private currentSpaceId: string | null = null
   private activeTabId: string | null = null
   private isOpen: boolean = false
   private isTransitioning: boolean = false
-
-  // Track which space the current tabs belong to
-  private currentSpaceId: string | null = null
-  private enterSpaceSequence: number = 0
 
   // Callback subscriptions
   private tabsChangeCallbacks: Set<TabsChangeCallback> = new Set()
@@ -180,6 +216,146 @@ class CanvasLifecycle {
     void this.closeAll()
   }
 
+  private createSession(spaceId: string): SpaceSessionState {
+    return {
+      spaceId,
+      tabs: [],
+      activeTabId: null,
+      lastVisitedAt: Date.now(),
+    }
+  }
+
+  private getOrCreateSession(spaceId: string): SpaceSessionState {
+    const existing = this.spaceSessions.get(spaceId)
+    if (existing) {
+      return existing
+    }
+    const session = this.createSession(spaceId)
+    this.spaceSessions.set(spaceId, session)
+    return session
+  }
+
+  private getCurrentSession(): SpaceSessionState | undefined {
+    if (!this.currentSpaceId) {
+      return undefined
+    }
+    return this.spaceSessions.get(this.currentSpaceId)
+  }
+
+  private ensureCurrentSession(): SpaceSessionState {
+    const spaceId = this.currentSpaceId ?? 'default-space'
+    if (!this.currentSpaceId) {
+      this.currentSpaceId = spaceId
+    }
+    return this.getOrCreateSession(spaceId)
+  }
+
+  private findTabById(tabId: string): { session: SpaceSessionState; tab: TabState } | undefined {
+    for (const session of this.spaceSessions.values()) {
+      const tab = session.tabs.find((item) => item.id === tabId)
+      if (tab) {
+        return { session, tab }
+      }
+    }
+    return undefined
+  }
+
+  private getCurrentSessionTab(tabId: string): TabState | undefined {
+    return this.getCurrentSession()?.tabs.find((tab) => tab.id === tabId)
+  }
+
+  private syncActiveTabFromCurrentSession(): void {
+    const session = this.getCurrentSession()
+    this.activeTabId = session?.activeTabId ?? null
+  }
+
+  private maybeCloseCanvasForCurrentSession(): void {
+    const visibleTabs = this.getVisibleTabs()
+    if (visibleTabs.length === 0) {
+      this.setOpen(false)
+    }
+  }
+
+  private removeTabFromSession(session: SpaceSessionState, tabId: string): void {
+    const tabIndex = session.tabs.findIndex((tab) => tab.id === tabId)
+    if (tabIndex < 0) {
+      return
+    }
+    const previousActiveTabId = session.activeTabId
+
+    session.tabs.splice(tabIndex, 1)
+
+    if (session.activeTabId === tabId) {
+      const nextActive = session.tabs[session.tabs.length - 1]
+      session.activeTabId = nextActive?.id ?? null
+    }
+
+    if (this.currentSpaceId === session.spaceId) {
+      this.syncActiveTabFromCurrentSession()
+      if (previousActiveTabId !== session.activeTabId) {
+        this.notifyActiveTabChange()
+      }
+      this.maybeCloseCanvasForCurrentSession()
+      this.notifyTabsChange()
+    }
+  }
+
+  private enforceMaxTabs(session: SpaceSessionState): void {
+    if (session.tabs.length < CanvasLifecycle.MAX_TABS) {
+      return
+    }
+
+    const sortable = session.tabs
+      .map((tab) => ({ id: tab.id, lastActiveAt: tab.lastActiveAt || 0 }))
+      .sort((a, b) => a.lastActiveAt - b.lastActiveAt)
+
+    const nonActive = sortable.find((item) => item.id !== session.activeTabId)
+    const tabToCloseId = nonActive?.id || sortable[0]?.id
+    if (!tabToCloseId) {
+      return
+    }
+
+    this.removeTabFromSession(session, tabToCloseId)
+  }
+
+  // ============================================
+  // Space Session Management
+  // ============================================
+
+  async switchSpaceSession(spaceId: string): Promise<void> {
+    const session = this.getOrCreateSession(spaceId)
+    this.currentSpaceId = spaceId
+    session.lastVisitedAt = Date.now()
+    this.syncActiveTabFromCurrentSession()
+
+    if (session.tabs.length > 0) {
+      this.setOpen(true)
+    } else {
+      this.setOpen(false)
+    }
+
+    this.notifyTabsChange()
+    this.notifyActiveTabChange()
+  }
+
+  getVisibleTabs(): TabState[] {
+    const session = this.getCurrentSession()
+    return session ? [...session.tabs] : []
+  }
+
+  getSpaceSession(spaceId: string): SpaceSessionState | undefined {
+    const session = this.spaceSessions.get(spaceId)
+    if (!session) {
+      return undefined
+    }
+    return {
+      spaceId: session.spaceId,
+      tabs: [...session.tabs],
+      activeTabId: session.activeTabId,
+      lastVisitedAt: session.lastVisitedAt,
+    }
+  }
+
   // ============================================
   // Tab Management
   // ============================================
@@ -187,13 +363,15 @@ class CanvasLifecycle {
   /**
    * Open a file in the canvas
    */
-  async openFile(path: string, title?: string): Promise<string> {
-    // Check if file is already open
-    for (const [tabId, tab] of this.tabs) {
-      if (tab.path === path) {
-        await this.switchTab(tabId)
-        return tabId
-      }
+  async openFile(spaceId: string, path: string, title?: string): Promise<string> {
+    await this.switchSpaceSession(spaceId)
+    const session = this.getOrCreateSession(spaceId)
+    const normalizedPath = normalizePath(path)
+
+    const existing = session.tabs.find((tab) => tab.path && normalizePath(tab.path) === normalizedPath)
+    if (existing) {
+      await this.switchTab(existing.id)
+      return existing.id
     }
 
     // Detect content type
@@ -204,6 +382,8 @@ class CanvasLifecycle {
       return this.openPdf(path, title)
     }
 
+    this.enforceMaxTabs(session)
+
     // Create new tab
     const tabId = generateTabId()
     const tab: TabState = {
@@ -212,11 +392,14 @@ class CanvasLifecycle {
       title: title || getFileName(path),
       path,
       language,
+      spaceId,
       isDirty: false,
       isLoading: true,
     }
 
-    this.tabs.set(tabId, tab)
+    session.tabs.push(tab)
+    session.activeTabId = tabId
+    this.activeTabId = tabId
     this.setOpen(true)
     this.notifyTabsChange()
 
@@ -249,12 +432,12 @@ class CanvasLifecycle {
    * Load file content asynchronously
    */
   private async loadFileContent(tabId: string, path: string, type: ContentType): Promise<void> {
-    const tab = this.tabs.get(tabId)
-    if (!tab) return
+    const tabEntry = this.findTabById(tabId)
+    if (!tabEntry) return
 
     // Images use kite-file:// protocol directly (no content loading needed)
     if (type === 'image') {
-      tab.isLoading = false
+      tabEntry.tab.isLoading = false
       this.notifyTabsChange()
       return
     }
@@ -263,22 +446,23 @@ class CanvasLifecycle {
       const response = await api.readArtifactContent(path)
 
       // Tab might have been closed during async operation
-      if (!this.tabs.has(tabId)) return
+      const currentTabEntry = this.findTabById(tabId)
+      if (!currentTabEntry) return
 
       if (response.success && response.data) {
         const data = response.data as { content: string; mimeType?: string }
-        tab.content = data.content
-        tab.mimeType = data.mimeType
-        tab.isLoading = false
-        tab.error = undefined
+        currentTabEntry.tab.content = data.content
+        currentTabEntry.tab.mimeType = data.mimeType
+        currentTabEntry.tab.isLoading = false
+        currentTabEntry.tab.error = undefined
       } else {
         throw new Error(response.error || 'Failed to read file')
       }
     } catch (error) {
-      const currentTab = this.tabs.get(tabId)
-      if (currentTab) {
-        currentTab.isLoading = false
-        currentTab.error = (error as Error).message
+      const currentTabEntry = this.findTabById(tabId)
+      if (currentTabEntry) {
+        currentTabEntry.tab.isLoading = false
+        currentTabEntry.tab.error = (error as Error).message
       }
     }
 
@@ -307,6 +491,9 @@ class CanvasLifecycle {
     type: ContentType,
     language?: string
   ): Promise<string> {
+    const session = this.ensureCurrentSession()
+    this.enforceMaxTabs(session)
+
     const tabId = generateTabId()
     const tab: TabState = {
       id: tabId,
@@ -314,11 +501,14 @@ class CanvasLifecycle {
       title,
       content,
       language,
+      spaceId: session.spaceId,
       isDirty: false,
       isLoading: false,
     }
 
-    this.tabs.set(tabId, tab)
+    session.tabs.push(tab)
+    session.activeTabId = tabId
+    this.activeTabId = tabId
     this.setOpen(true)
     this.notifyTabsChange()
 
@@ -338,32 +528,34 @@ class CanvasLifecycle {
     conversationId: string,
     workDir?: string
   ): Promise<string> {
-    // Find existing plan tab for this conversation in this space
-    for (const [tabId, tab] of this.tabs) {
-      if (tab.type === 'plan' && tab.spaceId === spaceId && tab.conversationId === conversationId) {
-        this.setOpen(true)
+    await this.switchSpaceSession(spaceId)
+    const session = this.getOrCreateSession(spaceId)
 
-        // If user has local edits, keep local content
-        if (tab.isDirty) {
-          await this.switchTab(tabId)
-          return tabId
-        }
+    const existing = session.tabs.find(
+      (tab) => tab.type === 'plan' && tab.conversationId === conversationId
+    )
 
-        // Immutable update: create new tab object instead of mutating in-place
-        this.tabs.set(tabId, {
-          ...tab,
-          content,
-          title,
-          language: 'markdown',
-          workDir: workDir ?? tab.workDir,
-          isDirty: false,
-          error: undefined,
-        })
-        this.notifyTabsChange()
-        await this.switchTab(tabId)
-        return tabId
+    if (existing) {
+      this.setOpen(true)
+
+      // If user has local edits, keep local content
+      if (existing.isDirty) {
+        await this.switchTab(existing.id)
+        return existing.id
       }
+
+      existing.content = content
+      existing.title = title
+      existing.language = 'markdown'
+      existing.workDir = workDir ?? existing.workDir
+      existing.isDirty = false
+      existing.error = undefined
+      this.notifyTabsChange()
+      await this.switchTab(existing.id)
+      return existing.id
     }
+
+    this.enforceMaxTabs(session)
 
     // Create new plan tab
     const tabId = generateTabId()
@@ -380,7 +572,9 @@ class CanvasLifecycle {
       isLoading: false,
     }
 
-    this.tabs.set(tabId, tab)
+    session.tabs.push(tab)
+    session.activeTabId = tabId
+    this.activeTabId = tabId
     this.setOpen(true)
     this.notifyTabsChange()
 
@@ -397,23 +591,35 @@ class CanvasLifecycle {
     spaceId: string,
     conversationId: string,
     title: string,
-    workDir?: string
+    workDir?: string,
+    spaceLabel?: string,
+    openCanvas: boolean = true
   ): Promise<string> {
-    // Check if this conversation is already open
-    for (const [tabId, tab] of this.tabs) {
-      if (tab.type === 'chat' && tab.conversationId === conversationId) {
-        if (tab.spaceId !== spaceId || (workDir && tab.workDir !== workDir)) {
-          this.tabs.set(tabId, {
-            ...tab,
-            spaceId,
-            workDir: workDir ?? tab.workDir
-          })
-          this.notifyTabsChange()
-        }
-        await this.switchTab(tabId)
-        return tabId
+    const previousIsOpen = this.isOpen
+    await this.switchSpaceSession(spaceId)
+    const session = this.getOrCreateSession(spaceId)
+
+    // Check if this conversation is already open in this space
+    const existing = session.tabs.find(
+      (tab) => tab.type === 'chat' && tab.conversationId === conversationId
+    )
+
+    if (existing) {
+      if (existing.workDir !== workDir || existing.title !== title || existing.spaceLabel !== spaceLabel) {
+        existing.spaceId = spaceId
+        existing.title = title
+        existing.workDir = workDir
+        existing.spaceLabel = spaceLabel
+        this.notifyTabsChange()
       }
+      await this.switchTab(existing.id)
+      if (!openCanvas) {
+        this.setOpen(previousIsOpen)
+      }
+      return existing.id
     }
+
+    this.enforceMaxTabs(session)
 
     // Create new chat tab
     const tabId = generateTabId()
@@ -421,18 +627,27 @@ class CanvasLifecycle {
       id: tabId,
       type: 'chat',
       title,
+      spaceLabel,
       conversationId,
       spaceId,
       workDir,
       isDirty: false,
       isLoading: false,
+      lastActiveAt: Date.now(),
     }
 
-    this.tabs.set(tabId, tab)
-    this.setOpen(true)
+    session.tabs.push(tab)
+    session.activeTabId = tabId
+    this.activeTabId = tabId
+    if (openCanvas) {
+      this.setOpen(true)
+    }
     this.notifyTabsChange()
 
     await this.switchTab(tabId)
+    if (!openCanvas) {
+      this.setOpen(previousIsOpen)
+    }
 
     return tabId
   }
@@ -446,20 +661,23 @@ class CanvasLifecycle {
     initialTab: TemplateLibraryTab,
     workDir?: string
   ): Promise<string> {
-    for (const [tabId, tab] of this.tabs) {
-      if (tab.type === 'template-library' && tab.workDir === workDir) {
-        this.tabs.set(tabId, {
-          ...tab,
-          title,
-          workDir,
-          templateLibraryTab: initialTab
-        })
-        this.setOpen(true)
-        this.notifyTabsChange()
-        await this.switchTab(tabId)
-        return tabId
-      }
+    const session = this.ensureCurrentSession()
+
+    const existing = session.tabs.find(
+      (tab) => tab.type === 'template-library' && tab.workDir === workDir
+    )
+
+    if (existing) {
+      existing.title = title
+      existing.workDir = workDir
+      existing.templateLibraryTab = initialTab
+      this.setOpen(true)
+      this.notifyTabsChange()
+      await this.switchTab(existing.id)
+      return existing.id
     }
+
+    this.enforceMaxTabs(session)
 
     const tabId = generateTabId()
     const tab: TabState = {
@@ -467,12 +685,15 @@ class CanvasLifecycle {
       type: 'template-library',
       title,
       workDir,
+      spaceId: session.spaceId,
       templateLibraryTab: initialTab,
       isDirty: false,
-      isLoading: false
+      isLoading: false,
     }
 
-    this.tabs.set(tabId, tab)
+    session.tabs.push(tab)
+    session.activeTabId = tabId
+    this.activeTabId = tabId
     this.setOpen(true)
     this.notifyTabsChange()
 
@@ -485,32 +706,23 @@ class CanvasLifecycle {
    * Close a tab
    */
   async closeTab(tabId: string): Promise<void> {
-    const tab = this.tabs.get(tabId)
-    if (!tab) return
-
-    // Remove tab
-    this.tabs.delete(tabId)
-
-    // If closing active tab, switch to another tab
-    if (this.activeTabId === tabId) {
-      const remainingTabs = Array.from(this.tabs.keys())
-      if (remainingTabs.length > 0) {
-        await this.switchTab(remainingTabs[remainingTabs.length - 1])
-      } else {
-        this.activeTabId = null
-        this.setOpen(false)
-        this.notifyActiveTabChange()
-      }
+    const session = this.getCurrentSession()
+    if (!session) {
+      return
+    }
+    if (!session.tabs.some((tab) => tab.id === tabId)) {
+      return
     }
 
-    this.notifyTabsChange()
+    this.removeTabFromSession(session, tabId)
   }
 
   /**
    * Close all tabs
    */
   async closeAll(): Promise<void> {
-    this.tabs.clear()
+    this.spaceSessions.clear()
+    this.currentSpaceId = null
     this.activeTabId = null
     this.setOpen(false)
 
@@ -522,11 +734,18 @@ class CanvasLifecycle {
    * Switch to a specific tab
    */
   async switchTab(tabId: string): Promise<void> {
-    const tab = this.tabs.get(tabId)
+    const session = this.getCurrentSession()
+    if (!session) {
+      return
+    }
+
+    const tab = session.tabs.find((item) => item.id === tabId)
     if (!tab) {
       return
     }
 
+    tab.lastActiveAt = Date.now()
+    session.activeTabId = tabId
     this.activeTabId = tabId
 
     // Notify React
@@ -537,9 +756,10 @@ class CanvasLifecycle {
    * Switch to next tab (cyclic)
    */
   async switchToNextTab(): Promise<void> {
-    if (this.tabs.size === 0) return
+    const tabs = this.getVisibleTabs()
+    if (tabs.length === 0) return
 
-    const tabIds = Array.from(this.tabs.keys())
+    const tabIds = tabs.map((tab) => tab.id)
     const currentIndex = this.activeTabId ? tabIds.indexOf(this.activeTabId) : -1
     const nextIndex = (currentIndex + 1) % tabIds.length
 
@@ -550,9 +770,10 @@ class CanvasLifecycle {
    * Switch to previous tab (cyclic)
    */
   async switchToPrevTab(): Promise<void> {
-    if (this.tabs.size === 0) return
+    const tabs = this.getVisibleTabs()
+    if (tabs.length === 0) return
 
-    const tabIds = Array.from(this.tabs.keys())
+    const tabIds = tabs.map((tab) => tab.id)
     const currentIndex = this.activeTabId ? tabIds.indexOf(this.activeTabId) : 0
     const prevIndex = currentIndex <= 0 ? tabIds.length - 1 : currentIndex - 1
 
@@ -563,7 +784,7 @@ class CanvasLifecycle {
    * Switch to tab by index (1-indexed for keyboard shortcuts)
    */
   async switchToTabIndex(index: number): Promise<void> {
-    const tabIds = Array.from(this.tabs.keys())
+    const tabIds = this.getVisibleTabs().map((tab) => tab.id)
     if (index > 0 && index <= tabIds.length) {
       await this.switchTab(tabIds[index - 1])
     }
@@ -573,11 +794,16 @@ class CanvasLifecycle {
    * Reorder tabs (for drag and drop)
    */
   reorderTabs(fromIndex: number, toIndex: number): void {
-    const tabsArray = Array.from(this.tabs.entries())
+    const session = this.getCurrentSession()
+    if (!session) {
+      return
+    }
+
+    const tabsArray = [...session.tabs]
     const [removed] = tabsArray.splice(fromIndex, 1)
     tabsArray.splice(toIndex, 0, removed)
 
-    this.tabs = new Map(tabsArray)
+    session.tabs = tabsArray
     this.notifyTabsChange()
   }
 
@@ -589,7 +815,9 @@ class CanvasLifecycle {
    * Refresh tab content
    */
   async refreshTab(tabId: string): Promise<void> {
-    const tab = this.tabs.get(tabId)
+    const session = this.getCurrentSession()
+    if (!session) return
+    const tab = session.tabs.find((item) => item.id === tabId)
     if (!tab) return
 
     if (tab.path) {
@@ -606,7 +834,7 @@ class CanvasLifecycle {
    * Update tab content (for editing)
    */
   updateTabContent(tabId: string, content: string): void {
-    const tab = this.tabs.get(tabId)
+    const tab = this.getCurrentSession()?.tabs.find((item) => item.id === tabId)
     if (tab) {
       tab.content = content
       tab.isDirty = true
@@ -618,7 +846,7 @@ class CanvasLifecycle {
    * Save scroll position
    */
   saveScrollPosition(tabId: string, position: number): void {
-    const tab = this.tabs.get(tabId)
+    const tab = this.getCurrentSession()?.tabs.find((item) => item.id === tabId)
     if (tab) {
       tab.scrollPosition = position
       // No need to notify for scroll position updates
@@ -629,7 +857,7 @@ class CanvasLifecycle {
    * Save file content to disk
    */
   async saveFile(tabId: string): Promise<boolean> {
-    const tab = this.tabs.get(tabId)
+    const tab = this.getCurrentSession()?.tabs.find((item) => item.id === tabId)
     if (!tab || !tab.path || tab.content === undefined) {
       return false
     }
@@ -652,9 +880,11 @@ class CanvasLifecycle {
    * Check if there are any unsaved changes across all tabs
    */
   hasUnsavedChanges(): boolean {
-    for (const [, tab] of this.tabs) {
-      if (tab.isDirty) {
-        return true
+    for (const session of this.spaceSessions.values()) {
+      for (const tab of session.tabs) {
+        if (tab.isDirty) {
+          return true
+        }
       }
     }
     return false
@@ -670,8 +900,8 @@ class CanvasLifecycle {
   setOpen(open: boolean): void {
     if (this.isOpen === open) return
 
-    // Can't open if no tabs
-    if (open && this.tabs.size === 0) return
+    // Can't open if no visible tabs
+    if (open && this.getVisibleTabs().length === 0) return
 
     this.isOpen = open
     this.isTransitioning = true
@@ -688,7 +918,7 @@ class CanvasLifecycle {
    * Toggle canvas visibility
    */
   toggleOpen(): void {
-    if (!this.isOpen && this.tabs.size === 0) return
+    if (!this.isOpen && this.getVisibleTabs().length === 0) return
     this.setOpen(!this.isOpen)
   }
 
@@ -697,11 +927,11 @@ class CanvasLifecycle {
   // ============================================
 
   getTabs(): TabState[] {
-    return Array.from(this.tabs.values())
+    return this.getVisibleTabs()
   }
 
   getTab(tabId: string): TabState | undefined {
-    return this.tabs.get(tabId)
+    return this.getCurrentSession()?.tabs.find((tab) => tab.id === tabId)
   }
 
   getActiveTabId(): string | null {
@@ -709,7 +939,7 @@ class CanvasLifecycle {
   }
 
   getActiveTab(): TabState | undefined {
-    return this.activeTabId ? this.tabs.get(this.activeTabId) : undefined
+    return this.activeTabId ? this.getCurrentSessionTab(this.activeTabId) : undefined
   }
 
   getIsOpen(): boolean {
@@ -721,7 +951,7 @@ class CanvasLifecycle {
   }
 
   getTabCount(): number {
-    return this.tabs.size
+    return this.getVisibleTabs().length
   }
 
   getCurrentSpaceId(): string | null {
@@ -729,44 +959,12 @@ class CanvasLifecycle {
   }
 
   /**
-   * Called when entering a space - clears tabs if switching to different space
-   * This is the single point of control for Space isolation of Canvas state.
-   * Returns true if tabs were cleared
+   * Backward compatible alias of switchSpaceSession
    */
   async enterSpace(spaceId: string): Promise<boolean> {
-    const sequence = ++this.enterSpaceSequence
     const previousSpaceId = this.currentSpaceId
-
-    const hasTabs = this.tabs.size > 0
-    const hasForeignSpaceBoundTabs = hasTabs && Array.from(this.tabs.values()).some(
-      (tab) => Boolean(tab.spaceId) && tab.spaceId !== spaceId
-    )
-    const shouldClearTabs =
-      hasTabs &&
-      (
-        // Normal space switch: clear all tabs.
-        (previousSpaceId !== null && previousSpaceId !== spaceId) ||
-        // Recovery path: lifecycle lost currentSpaceId but stale tabs still exist.
-        previousSpaceId === null ||
-        // Safety net: tab metadata already proves these tabs belong to other space.
-        hasForeignSpaceBoundTabs
-      )
-
-    if (shouldClearTabs) {
-      // Switching to different space with existing tabs - clear all
-      await this.closeAll()
-      if (sequence !== this.enterSpaceSequence) {
-        return false
-      }
-      this.currentSpaceId = spaceId
-      return true
-    }
-
-    if (sequence !== this.enterSpaceSequence) {
-      return false
-    }
-    this.currentSpaceId = spaceId
-    return false
+    await this.switchSpaceSession(spaceId)
+    return previousSpaceId !== null && previousSpaceId !== spaceId
   }
 
   // ============================================

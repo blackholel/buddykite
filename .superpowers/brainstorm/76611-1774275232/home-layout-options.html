@@ -1,0 +1,122 @@
+<h2>首页首屏方向对比</h2>
+<p class="subtitle">目标：首装用户 10 秒内知道能做什么，30 秒内发出第一条任务。</p>
+
+<div class="cards">
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">A. 聊天优先（推荐）</div>
+        <div class="mockup-body">
+          <div class="mock-nav">Logo | 当前空间 ▼ | 所有空间 | 设置</div>
+          <div style="display:flex; gap:12px; margin-top:12px;">
+            <div class="mock-sidebar" style="width:26%;">会话列表<br>空间信息<br>最近项目</div>
+            <div class="mock-content" style="width:74%;">
+              大输入框：直接描述目标<br><br>
+              快捷任务：建网页 / 分析表格 / 写文案<br><br>
+              未配模型时：输入框内联提示去设置
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>聊天就是产品入口</h3>
+      <p>首屏只做一件事：让用户马上开工。空间作为当前上下文显示，不抢第一注意力。</p>
+      <div class="pros-cons">
+        <div class="pros">
+          <h4>优点</h4>
+          <ul>
+            <li>首要价值最直接</li>
+            <li>模型未配置也容易做阻断引导</li>
+            <li>和图 3 的工作界面连续</li>
+          </ul>
+        </div>
+        <div class="cons">
+          <h4>代价</h4>
+          <ul>
+            <li>需要把空间解释放到侧边栏和创建流</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">B. 双入口并列</div>
+        <div class="mockup-body">
+          <div class="mock-nav">Logo | 当前空间 ▼ | 所有空间 | 设置</div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:12px;">
+            <div class="placeholder">左：直接开始对话</div>
+            <div class="placeholder">右：创建项目空间</div>
+          </div>
+          <div style="margin-top:12px;" class="placeholder">底部：最近空间 / 最近工作</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>两个 CTA 平级</h3>
+      <p>既告诉用户能直接用，也强调空间的长期价值，属于折中方案。</p>
+      <div class="pros-cons">
+        <div class="pros">
+          <h4>优点</h4>
+          <ul>
+            <li>兼顾短任务与长期项目</li>
+            <li>商业表达更完整</li>
+          </ul>
+        </div>
+        <div class="cons">
+          <h4>代价</h4>
+          <ul>
+            <li>首屏注意力还是会被分裂</li>
+            <li>用户仍要先理解两个概念</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">C. 空间优先</div>
+        <div class="mockup-body">
+          <div class="mock-nav">Logo | Spaces | 扩展 | 设置</div>
+          <div class="placeholder" style="margin-top:12px;">顶部大卡：进入 Kite / 创建第一个空间</div>
+          <div class="placeholder" style="margin-top:12px;">首次使用引导 3 步</div>
+          <div class="placeholder" style="margin-top:12px;">空间卡片网格</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>先卖空间概念</h3>
+      <p>用户先理解“空间是什么”，再进入聊天。接近你现在的做法。</p>
+      <div class="pros-cons">
+        <div class="pros">
+          <h4>优点</h4>
+          <ul>
+            <li>空间体系表达最完整</li>
+            <li>适合重项目管理心智</li>
+          </ul>
+        </div>
+        <div class="cons">
+          <h4>代价</h4>
+          <ul>
+            <li>首装用户不知道马上能干什么</li>
+            <li>解释成本最高</li>
+            <li>和实际工作界面断层最大</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h3>我的建议</h3>
+<p>选 A，然后把“空间是什么”从首页主叙事里移出去，改成：</p>
+<ul>
+  <li>当前空间切换器里的轻说明</li>
+  <li>创建空间弹窗里的收益说明</li>
+  <li>无空间或长期项目场景下的次级提示</li>
+</ul>

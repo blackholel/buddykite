@@ -19,7 +19,6 @@
  *
  * Keyboard shortcuts:
  * - Cmd/Ctrl+W: Close current tab
- * - Cmd/Ctrl+T: New conversation tab
  * - Middle-click: Close tab
  */
 
@@ -27,8 +26,6 @@ import { useState, useRef, useCallback, useEffect, forwardRef } from 'react'
 import { X, Loader2, AlertCircle, Plus, MessageSquare, BookOpen } from 'lucide-react'
 import { type TabState } from '../../services/canvas-lifecycle'
 import { useCanvasLifecycle } from '../../hooks/useCanvasLifecycle'
-import { useSpaceStore } from '../../stores/space.store'
-import { useChatStore } from '../../stores/chat.store'
 import { FileIcon } from '../icons/ToolIcons'
 import { api } from '../../api'
 import { useTranslation } from '../../i18n'
@@ -427,20 +424,7 @@ const TabItem = forwardRef<HTMLDivElement, TabItemProps>(function TabItem({
  * Uses canvasLifecycle for all state and actions
  */
 export function CanvasTabBar() {
-  const { tabs, activeTabId, switchTab, closeTab, refreshTab, openChat } = useCanvasLifecycle()
-  const currentSpace = useSpaceStore(state => state.currentSpace)
-  const createConversation = useChatStore(state => state.createConversation)
-
-  // Handle new tab - create a new conversation in current space
-  const handleNewTab = useCallback(() => {
-    if (!currentSpace) return
-
-    void (async () => {
-      const newConversation = await createConversation(currentSpace.id)
-      if (!newConversation) return
-      openChat(currentSpace.id, newConversation.id, newConversation.title, currentSpace.path)
-    })()
-  }, [createConversation, currentSpace, openChat])
+  const { tabs, activeTabId, switchTab, closeTab, refreshTab } = useCanvasLifecycle()
 
   return (
     <CanvasTabs
@@ -449,7 +433,6 @@ export function CanvasTabBar() {
       onTabClick={switchTab}
       onTabClose={closeTab}
       onRefresh={refreshTab}
-      onNewTab={handleNewTab}
     />
   )
 }

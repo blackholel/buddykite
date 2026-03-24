@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { shallow } from 'zustand/shallow'
-import { Header } from '../components/layout/Header'
 import { ChatView } from '../components/chat/ChatView'
 import { UnifiedSidebar } from '../components/unified/UnifiedSidebar'
 import { GitBashWarningBanner } from '../components/setup/GitBashWarningBanner'
 import { ArtifactRail } from '../components/artifact/ArtifactRail'
+import { CanvasToggleButton, CollapsibleCanvas } from '../components/canvas'
 import { useSearchShortcuts } from '../hooks/useSearchShortcuts'
+import { useCanvasLifecycle } from '../hooks/useCanvasLifecycle'
 import { useAppStore } from '../stores/app.store'
 import { useChatStore } from '../stores/chat.store'
 import { useSearchStore, type SearchScope } from '../stores/search.store'
@@ -14,7 +15,6 @@ import { navigateToConversationContext, navigateToSpaceContext } from '../utils/
 import { pickEntryConversation } from '../utils/space-entry-conversation'
 import { useTranslation } from '../i18n'
 import type { ConversationMeta, CreateSpaceInput } from '../types'
-import { SpaceIcon } from '../components/icons/ToolIcons'
 
 function pickPreferredSpace<T extends { id: string }>(
   currentSpace: T | null,
@@ -78,11 +78,19 @@ export function UnifiedPage() {
   const { openSearch } = useSearchStore((state) => ({
     openSearch: state.openSearch
   }), shallow)
+  const { isOpen: isCanvasOpen, openChat } = useCanvasLifecycle()
 
   const allSpaces = useMemo(() => {
     if (!kiteSpace) return spaces
     return [kiteSpace, ...spaces]
   }, [kiteSpace, spaces])
+  const spaceById = useMemo(() => {
+    const result = new Map<string, (typeof allSpaces)[number]>()
+    for (const space of allSpaces) {
+      result.set(space.id, space)
+    }
+    return result
+  }, [allSpaces])
 
   const conversationsBySpaceId = useMemo(() => {
     const result = new Map<string, ConversationMeta[]>()
@@ -175,6 +183,11 @@ export function UnifiedPage() {
   }, [ensureSpaceConversationsLoaded])
 
   const handleSelectConversation = useCallback(async (spaceId: string, conversationId: string) => {
+    const conversationTitle = conversationsBySpaceId
+      .get(spaceId)
+      ?.find((conversation) => conversation.id === conversationId)
+      ?.title
+      ?.trim() || t('New conversation')
     await navigateToConversationContext({
       targetSpaceId: spaceId,
       targetConversationId: conversationId,
@@ -186,14 +199,23 @@ export function UnifiedPage() {
       loadConversations,
       selectConversation
     })
+    const targetSpace = spaceById.get(spaceId)
+    if (targetSpace?.isTemp) {
+      const workDir = targetSpace.path
+      await openChat(spaceId, conversationId, conversationTitle, workDir)
+    }
   }, [
+    conversationsBySpaceId,
     currentSpaceId,
-    spaces,
     kiteSpace,
-    setSpaceStoreCurrentSpace,
-    setChatCurrentSpace,
     loadConversations,
-    selectConversation
+    openChat,
+    selectConversation,
+    setChatCurrentSpace,
+    setSpaceStoreCurrentSpace,
+    spaceById,
+    spaces,
+    t
   ])
 
   const handleCreateSpace = useCallback(async (input: CreateSpaceInput) => {
@@ -235,6 +257,12 @@ export function UnifiedPage() {
     const created = await createConversation(spaceId)
     if (!created) return
 
+    const targetSpace = spaceById.get(spaceId)
+    if (targetSpace?.isTemp) {
+      const workDir = targetSpace.path
+      await openChat(spaceId, created.id, created.title, workDir)
+    }
+
     await navigateToConversationContext({
       targetSpaceId: spaceId,
       targetConversationId: created.id,
@@ -248,13 +276,15 @@ export function UnifiedPage() {
     })
   }, [
     currentSpaceId,
-    spaces,
-    kiteSpace,
-    setSpaceStoreCurrentSpace,
-    setChatCurrentSpace,
-    loadConversations,
     createConversation,
-    selectConversation
+    kiteSpace,
+    loadConversations,
+    openChat,
+    selectConversation,
+    setChatCurrentSpace,
+    setSpaceStoreCurrentSpace,
+    spaceById,
+    spaces
   ])
 
   const handleRenameConversation = useCallback(async (spaceId: string, conversationId: string, title: string) => {
@@ -265,6 +295,7 @@ export function UnifiedPage() {
     await deleteConversation(spaceId, conversationId)
   }, [deleteConversation])
 
+  const isWorkbenchSpace = Boolean(currentSpace?.isTemp)
   const activeTabTitle = useMemo(() => {
     const title = currentConversationMeta?.title?.trim()
     if (title) return title
@@ -272,37 +303,7 @@ export function UnifiedPage() {
   }, [currentConversationMeta?.title, t])
 
   return (
-    <div className="h-full w-full flex flex-col">
-      <Header
-        left={(
-          <>
-            {currentSpace && (
-              <div className="flex items-center gap-2.5">
-                <SpaceIcon iconId={currentSpace.icon} size={20} />
-                <span className="font-medium text-sm tracking-tight">
-                  {currentSpace.isTemp ? 'Kite' : currentSpace.name}
-                </span>
-              </div>
-            )}
-          </>
-        )}
-        right={(
-          <>
-            <button
-              onClick={() => setView('settings')}
-              className="space-studio-header-btn p-2 rounded-lg transition-all duration-200 group"
-              title={t('Settings')}
-              aria-label={t('Settings')}
-            >
-              <svg className="w-[18px] h-[18px] text-muted-foreground group-hover:text-foreground transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-            </button>
-          </>
-        )}
-      />
-
+    <div className="h-full min-h-0 w-full flex flex-col">
       {mockBashMode && (
         <GitBashWarningBanner
           installProgress={gitBashInstallProgress}
@@ -327,32 +328,46 @@ export function UnifiedPage() {
           onGoSettings={() => setView('settings')}
         />
 
-        <div className="flex-1 min-w-0 flex overflow-hidden bg-background">
-          <div className="flex-1 min-w-0 flex flex-col">
-            <div className="border-b border-border/60 bg-card/50 px-3 py-2">
-              <div role="tablist" aria-label={t('Opened content')} className="flex items-center gap-2">
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={true}
-                  className="inline-flex max-w-[320px] items-center rounded-lg border border-border/70 bg-background px-3 py-1.5 text-sm font-medium text-foreground shadow-sm"
-                  title={activeTabTitle}
-                >
-                  <span className="truncate">{activeTabTitle}</span>
-                </button>
+        <div className="flex-1 min-w-0 min-h-0 flex overflow-hidden bg-background">
+          <div
+            className={`min-w-0 min-h-0 flex flex-col overflow-hidden ${
+              isWorkbenchSpace && isCanvasOpen
+                ? 'w-[44%] min-w-[360px] max-w-[860px] shrink-0 border-r border-border/50'
+                : 'flex-1'
+            }`}
+          >
+            {!isWorkbenchSpace && (
+              <div className="border-b border-border/60 bg-card/50 px-3 py-2">
+                <div role="tablist" aria-label={t('Opened content')} className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={true}
+                    className="inline-flex max-w-[320px] items-center rounded-lg border border-border/70 bg-background px-3 py-1.5 text-sm font-medium text-foreground shadow-sm"
+                    title={activeTabTitle}
+                  >
+                    <span className="truncate">{activeTabTitle}</span>
+                  </button>
+                </div>
               </div>
-            </div>
-
-            <div className="flex-1 min-w-0 bg-background">
-              <ChatView />
+            )}
+            {isWorkbenchSpace && (
+              <div className="border-b border-border/60 bg-card/50 px-3 py-2 flex justify-end">
+                <CanvasToggleButton />
+              </div>
+            )}
+            <div className="flex-1 min-w-0 min-h-0 bg-background overflow-hidden">
+              <ChatView isCompact={isWorkbenchSpace && isCanvasOpen} />
             </div>
           </div>
 
-          {currentSpaceId && currentSpace && (
+          {isWorkbenchSpace && <CollapsibleCanvas />}
+
+          {currentSpaceId && (
             <aside aria-label={t('Files and artifacts')} className="h-full">
               <ArtifactRail
                 spaceId={currentSpaceId}
-                isTemp={Boolean(currentSpace.isTemp)}
+                isTemp={isWorkbenchSpace}
                 externalExpanded={artifactRailExpanded}
                 onExpandedChange={setArtifactRailExpanded}
               />

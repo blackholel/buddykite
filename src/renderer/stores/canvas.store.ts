@@ -44,7 +44,7 @@ interface CanvasState {
   getTabCount: () => number
 
   // Tab Actions (delegate to canvasLifecycle)
-  openFile: (path: string, title?: string) => Promise<void>
+  openFile: (spaceId: string, path: string, title?: string) => Promise<void>
   openUrl: (url: string, title?: string) => Promise<void>
   openContent: (content: string, title: string, type: ContentType, language?: string) => void
   openPlan: (content: string, title: string, spaceId: string, conversationId: string, workDir?: string) => Promise<string>
@@ -119,8 +119,8 @@ export const useCanvasStore = create<CanvasState>((set, get) => {
     // Tab Actions (delegate to canvasLifecycle)
     // ============================================
 
-    openFile: async (path: string, title?: string) => {
-      await canvasLifecycle.openFile(path, title)
+    openFile: async (spaceId: string, path: string, title?: string) => {
+      await canvasLifecycle.openFile(spaceId, path, title)
     },
 
     openUrl: async (url: string, title?: string) => {
