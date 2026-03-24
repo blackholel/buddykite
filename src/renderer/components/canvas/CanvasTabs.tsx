@@ -112,6 +112,10 @@ export function CanvasTabs({
 
   // Handle tab close with animation
   const handleTabClose = useCallback((tabId: string) => {
+    if (!tabsRef.current.some((tab) => tab.id === tabId)) {
+      return
+    }
+
     // Start closing animation
     setClosingTabIds(prev => new Set(prev).add(tabId))
 
@@ -129,6 +133,10 @@ export function CanvasTabs({
   // Close others handler - with staggered animation
   // Uses tabsRef to avoid recreating this callback when tabs change
   const handleCloseOthers = useCallback((keepTabId: string) => {
+    if (!tabsRef.current.some((tab) => tab.id === keepTabId)) {
+      return
+    }
+
     const tabsToClose = tabsRef.current.filter(t => t.id !== keepTabId)
 
     // Stagger the close animations for a smoother effect
@@ -140,9 +148,18 @@ export function CanvasTabs({
   }, [handleTabClose])
 
   // Close to right handler - with staggered animation
-  // Uses tabsRef to avoid recreating this callback when tabs change
-  const handleCloseToRight = useCallback((fromIndex: number) => {
-    const tabsToClose = tabsRef.current.slice(fromIndex + 1)
+  // Uses tabId to resolve current visible index and validates optional tabIndex
+  const handleCloseToRight = useCallback((tabId: string, tabIndex?: number) => {
+    const currentIndex = tabsRef.current.findIndex((tab) => tab.id === tabId)
+    if (currentIndex < 0) {
+      return
+    }
+
+    if (tabIndex !== undefined && tabIndex !== currentIndex) {
+      return
+    }
+
+    const tabsToClose = tabsRef.current.slice(currentIndex + 1)
 
     // Stagger the close animations for a smoother effect
     tabsToClose.forEach((t, i) => {
@@ -172,13 +189,15 @@ export function CanvasTabs({
           if (data.tabId) handleCloseOthers(data.tabId)
           break
         case 'closeToRight':
-          if (data.tabId && data.tabIndex !== undefined) handleCloseToRight(data.tabIndex)
+          if (data.tabId) handleCloseToRight(data.tabId, data.tabIndex)
           break
         case 'copyPath':
           if (data.tabPath) handleCopyPath(data.tabPath)
           break
         case 'refresh':
-          if (data.tabId && onRefresh) onRefresh(data.tabId)
+          if (data.tabId && onRefresh && tabsRef.current.some((tab) => tab.id === data.tabId)) {
+            onRefresh(data.tabId)
+          }
           break
       }
     })
@@ -332,6 +351,16 @@ const TabItem = forwardRef<HTMLDivElement, TabItemProps>(function TabItem({
   const { t } = useTranslation()
   // Get file extension for icon
   const extension = tab.path?.split('.').pop() || ''
+  const hasSpaceLabel = tab.type === 'chat' && Boolean(tab.spaceLabel?.trim())
+  const spaceLabel = hasSpaceLabel ? tab.spaceLabel!.trim() : null
+  const resolvedSpacePath = tab.type === 'chat' ? tab.workDir : tab.path
+  const tooltipText = hasSpaceLabel
+    ? [
+      tab.title,
+      `${t('Space')}: ${spaceLabel}`,
+      resolvedSpacePath ? `${t('Path')}: ${resolvedSpacePath}` : null
+    ].filter(Boolean).join('\n')
+    : tab.title
 
   // Handle middle-click to close tab
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -392,8 +421,16 @@ const TabItem = forwardRef<HTMLDivElement, TabItemProps>(function TabItem({
       </div>
 
       {/* Title */}
-      <span className="canvas-tab-title">
-        {tab.title}
+      <span className="canvas-tab-title" title={tooltipText}>
+        {hasSpaceLabel ? (
+          <>
+            <span>{tab.title}</span>
+            <span className="mx-1 text-muted-foreground/70">·</span>
+            <span className="text-muted-foreground">{spaceLabel}</span>
+          </>
+        ) : (
+          tab.title
+        )}
       </span>
 
       {/* Dirty indicator (unsaved changes) */}

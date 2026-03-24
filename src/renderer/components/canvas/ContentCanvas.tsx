@@ -28,6 +28,7 @@ import { useCanvasLifecycle, type TabState, type ContentType } from '../../hooks
 import { CanvasTabBar } from './CanvasTabs'
 import { ChatTabViewer } from './viewers/ChatTabViewer'
 import { useTranslation } from '../../i18n'
+import { useChatStore } from '../../stores/chat.store'
 
 const loadCodeEditor = () => import('./viewers/CodeEditor')
 const loadMarkdownViewer = () => import('./viewers/MarkdownViewer')
@@ -80,17 +81,16 @@ interface ContentCanvasProps {
 export function ContentCanvas({ className = '' }: ContentCanvasProps) {
   const { t } = useTranslation()
   const {
+    tabs,
     activeTabId,
     activeTab,
     isOpen,
     closeTab,
-    closeAllTabs,
     setOpen,
     saveScrollPosition,
     switchToNextTab,
     switchToPrevTab,
     switchToTabIndex,
-    openChat,
     updateTabContent,
     saveFile,
   } = useCanvasLifecycle()
@@ -109,10 +109,13 @@ export function ContentCanvas({ className = '' }: ContentCanvasProps) {
         }
       }
 
-      // Cmd/Ctrl + Shift + W: Close all tabs
+      // Cmd/Ctrl + Shift + W: Close all visible tabs in current space
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'W') {
         e.preventDefault()
-        closeAllTabs()
+        const visibleTabIds = tabs.map((tab) => tab.id)
+        visibleTabIds.forEach((tabId) => {
+          closeTab(tabId)
+        })
       }
 
       // Cmd/Ctrl + Tab: Next tab
@@ -142,7 +145,7 @@ export function ContentCanvas({ className = '' }: ContentCanvasProps) {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [activeTabId, closeAllTabs, closeTab, isOpen, setOpen, switchToNextTab, switchToPrevTab, switchToTabIndex])
+  }, [activeTabId, closeTab, isOpen, setOpen, switchToNextTab, switchToPrevTab, switchToTabIndex, tabs])
 
   // Handle scroll position changes
   const handleScrollChange = useCallback((position: number) => {
