@@ -17,6 +17,8 @@ const isWebMode = api.isRemoteMode()
 
 interface ArtifactCardProps {
   artifact: Artifact
+  spaceId: string
+  isActive?: boolean
 }
 
 // Format file size
@@ -27,7 +29,7 @@ function formatSize(bytes?: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-export function ArtifactCard({ artifact }: ArtifactCardProps) {
+export function ArtifactCard({ artifact, spaceId, isActive = false }: ArtifactCardProps) {
   const { t } = useTranslation()
   const [isHovered, setIsHovered] = useState(false)
   const openFile = useCanvasStore(state => state.openFile)
@@ -41,7 +43,7 @@ export function ArtifactCard({ artifact }: ArtifactCardProps) {
   const handleClick = async () => {
     // Try to open in Canvas first for viewable files
     if (canViewInCanvas) {
-      openFile(artifact.path, artifact.name)
+      openFile(spaceId, artifact.path, artifact.name)
       return
     }
 
@@ -86,9 +88,11 @@ export function ArtifactCard({ artifact }: ArtifactCardProps) {
       onContextMenu={handleContextMenu}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
+      data-active={isActive ? 'true' : 'false'}
       className={`
         w-full artifact-card p-2.5 rounded-lg text-left
         transition-all duration-200 group cursor-pointer
+        ${isActive ? 'ring-1 ring-primary/50 bg-primary/5' : ''}
         ${isHovered
           ? 'bg-secondary shadow-sm'
           : 'bg-secondary/50 hover:bg-secondary/80'

@@ -27,13 +27,15 @@ import { useTranslation } from '../../i18n'
 
 // Context to pass openFile function to tree nodes without each node subscribing to store
 // This prevents massive re-renders when canvas state changes
-type OpenFileFn = (path: string, title?: string) => Promise<void>
+type OpenFileFn = (spaceId: string, path: string, title?: string) => Promise<void>
 const OpenFileContext = createContext<OpenFileFn | null>(null)
 
 // Context for tree operations (context menu, drag, etc.)
 interface TreeOperationsContext {
   onContextMenu: (e: React.MouseEvent, node: TreeNodeData) => void
   spaceWorkingDir: string
+  spaceId: string
+  activeFilePath: string | null
 }
 const TreeOperationsContext = createContext<TreeOperationsContext | null>(null)
 
@@ -41,6 +43,7 @@ const isWebMode = api.isRemoteMode()
 
 interface ArtifactTreeProps {
   spaceId: string
+  activeFilePath?: string | null
 }
 
 // Fixed offsets for tree height calculation (in pixels)
@@ -118,7 +121,7 @@ interface ContextMenuState {
   createTargetDir: string
 }
 
-export function ArtifactTree({ spaceId }: ArtifactTreeProps) {
+export function ArtifactTree({ spaceId, activeFilePath = null }: ArtifactTreeProps) {
   const { t } = useTranslation()
   const [treeData, setTreeData] = useState<TreeNodeData[]>([])
   const [isLoading, setIsLoading] = useState(false)
@@ -130,6 +133,12 @@ export function ArtifactTree({ spaceId }: ArtifactTreeProps) {
   const treeHeight = useTreeHeight()
   const containerRef = useRef<HTMLDivElement>(null)
   const createInputRef = useRef<HTMLInputElement>(null)
+  const latestSpaceIdRef = useRef(spaceId)
+  const loadTreeRequestIdRef = useRef(0)
+
+  useEffect(() => {
+    latestSpaceIdRef.current = spaceId
+  }, [spaceId])
 
   // Subscribe to openFile once at parent level, pass down via context
   // This prevents each TreeNodeComponent from subscribing to the store
@@ -138,16 +147,22 @@ export function ArtifactTree({ spaceId }: ArtifactTreeProps) {
   // Load tree data
   const loadTree = useCallback(async () => {
     if (!spaceId) return
+    const requestId = ++loadTreeRequestIdRef.current
+    const requestedSpaceId = spaceId
 
     try {
       setIsLoading(true)
       let resolvedSpaceDir = ''
       const spaceResponse = await api.getSpace(spaceId)
+      const isStaleAfterGetSpace = requestId !== loadTreeRequestIdRef.current || requestedSpaceId !== latestSpaceIdRef.current
+      if (isStaleAfterGetSpace) return
       if (spaceResponse.success && spaceResponse.data) {
         resolvedSpaceDir = (spaceResponse.data as { path: string }).path
         setSpaceWorkingDir(resolvedSpaceDir)
       } else if (spaceId === 'kite-temp') {
         const kiteSpaceResponse = await api.getKiteSpace()
+        const isStaleAfterGetKiteSpace = requestId !== loadTreeRequestIdRef.current || requestedSpaceId !== latestSpaceIdRef.current
+        if (isStaleAfterGetKiteSpace) return
         if (kiteSpaceResponse.success && kiteSpaceResponse.data) {
           resolvedSpaceDir = (kiteSpaceResponse.data as { path: string }).path
           setSpaceWorkingDir(resolvedSpaceDir)
@@ -155,6 +170,8 @@ export function ArtifactTree({ spaceId }: ArtifactTreeProps) {
       }
 
       const response = await api.listArtifactsTree(spaceId)
+      const isStaleAfterListTree = requestId !== loadTreeRequestIdRef.current || requestedSpaceId !== latestSpaceIdRef.current
+      if (isStaleAfterListTree) return
       if (response.success && response.data) {
         const sourceNodes = response.data as ArtifactTreeNode[]
         if (!resolvedSpaceDir && sourceNodes.length > 0) {
@@ -169,8 +186,12 @@ export function ArtifactTree({ spaceId }: ArtifactTreeProps) {
         setTreeData(transformed)
       }
     } catch (error) {
+      const isStale = requestId !== loadTreeRequestIdRef.current || requestedSpaceId !== latestSpaceIdRef.current
+      if (isStale) return
       console.error('[ArtifactTree] Failed to load tree:', error)
     } finally {
+      const isStaleRequest = requestId !== loadTreeRequestIdRef.current
+      if (isStaleRequest) return
       setIsLoading(false)
     }
   }, [spaceId])
@@ -274,7 +295,7 @@ export function ArtifactTree({ spaceId }: ArtifactTreeProps) {
         loadTree()
         if (createDraft.type === 'file' && openFile) {
           const createdPath = result.data?.path || buildChildPath(createDraft.parentPath, name)
-          await openFile(createdPath, name)
+          await openFile(spaceId, createdPath, name)
         }
         return
       }
@@ -289,7 +310,7 @@ export function ArtifactTree({ spaceId }: ArtifactTreeProps) {
         : t('Failed to create folder')
       alert((error as Error).message || fallbackError)
     }
-  }, [createDraft, loadTree, openFile, t])
+  }, [createDraft, loadTree, openFile, spaceId, t])
 
   const handleRename = useCallback(async (node: TreeNodeData) => {
     const newName = prompt(t('Enter new name:'), node.name)
@@ -397,8 +418,10 @@ export function ArtifactTree({ spaceId }: ArtifactTreeProps) {
   // Tree operations context value
   const treeOperations = useMemo(() => ({
     onContextMenu: handleContextMenu,
-    spaceWorkingDir
-  }), [handleContextMenu, spaceWorkingDir])
+    spaceWorkingDir,
+    spaceId,
+    activeFilePath
+  }), [activeFilePath, handleContextMenu, spaceId, spaceWorkingDir])
 
   const renderCreateDraftInput = () => {
     if (!createDraft) return null
@@ -724,7 +747,7 @@ function TreeNodeComponent({ node, style, dragHandle }: NodeRendererProps<TreeNo
 
     // Try to open in Canvas first for viewable files
     if (canViewInCanvas && openFile) {
-      openFile(data.path, data.name)
+      openFile(treeOps!.spaceId, data.path, data.name)
       return
     }
 
@@ -775,6 +798,8 @@ function TreeNodeComponent({ node, style, dragHandle }: NodeRendererProps<TreeNo
     e.dataTransfer.effectAllowed = 'copyMove'
   }
 
+  const isActiveFile = !isFolder && treeOps?.activeFilePath === data.path
+
   return (
     <div
       ref={dragHandle}
@@ -789,7 +814,8 @@ function TreeNodeComponent({ node, style, dragHandle }: NodeRendererProps<TreeNo
       className={`
         flex items-center h-full pr-2 cursor-pointer select-none
         transition-colors duration-75
-        ${node.isSelected ? 'bg-primary/15' : ''}
+        ${isActiveFile ? 'bg-primary/20 ring-1 ring-primary/40' : ''}
+        ${node.isSelected && !isActiveFile ? 'bg-primary/15' : ''}
         ${isHovered && !node.isSelected ? 'bg-secondary/60' : ''}
         ${node.isFocused ? 'outline outline-1 outline-primary/50 -outline-offset-1' : ''}
       `}

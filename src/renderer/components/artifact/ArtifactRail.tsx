@@ -92,23 +92,24 @@ export function ArtifactRail({
   const [mobileOverlayOpen, setMobileOverlayOpen] = useState(false)
   const previousArtifactCountRef = useRef<number | null>(null)
   const previousActiveArtifactPathRef = useRef<string | null>(null)
+  const latestSpaceIdRef = useRef(spaceId)
+  const loadArtifactsRequestIdRef = useRef(0)
   const isGenerating = useIsGenerating()
   const { isActive: isOnboarding, currentStep, completeOnboarding } = useOnboardingStore()
   const isMobile = useIsMobile()
 
   const activeArtifactPath = useCanvasStore((state) => {
     const activeTab = state.tabs.find(tab => tab.id === state.activeTabId)
-    if (!activeTab?.path) return null
-    if (activeTab.type === 'chat' || activeTab.type === 'template-library') {
-      return null
-    }
-    return activeTab.path
+    return activeTab?.spaceId === spaceId ? activeTab.path : null
   })
+
+  useEffect(() => {
+    latestSpaceIdRef.current = spaceId
+  }, [spaceId])
 
   // Handle expand/collapse toggle
   const handleToggleExpanded = useCallback(() => {
     if (isOverlayMode) return
-    console.log('[ArtifactRail] 🔴 Click! isExpanded:', isExpanded, 'time:', Date.now())
     const newExpanded = !isExpanded
 
     // Then update React state (will re-render but width is already correct)
@@ -118,11 +119,6 @@ export function ArtifactRail({
       setInternalExpanded(newExpanded)
     }
   }, [isExpanded, isControlled, isOverlayMode, onExpandedChange])
-
-  // Debug: log when isExpanded changes
-  useEffect(() => {
-    console.log('[ArtifactRail] 🟢 isExpanded changed to:', isExpanded, 'time:', Date.now())
-  }, [isExpanded])
 
   // Check if we're in onboarding view-artifact step
   const isOnboardingViewStep = isOnboarding && currentStep === 'view-artifact'
@@ -178,10 +174,14 @@ export function ArtifactRail({
   // Load artifacts from the main process
   const loadArtifacts = useCallback(async () => {
     if (!spaceId) return
+    const requestId = ++loadArtifactsRequestIdRef.current
+    const requestedSpaceId = spaceId
 
     try {
       setIsLoading(true)
       const response = await api.listArtifacts(spaceId)
+      const isStale = requestId !== loadArtifactsRequestIdRef.current || requestedSpaceId !== latestSpaceIdRef.current
+      if (isStale) return
       if (response.success && response.data) {
         const nextArtifacts = response.data as Artifact[]
         const nextCount = nextArtifacts.length
@@ -201,11 +201,20 @@ export function ArtifactRail({
         setArtifacts(nextArtifacts)
       }
     } catch (error) {
+      const isStale = requestId !== loadArtifactsRequestIdRef.current || requestedSpaceId !== latestSpaceIdRef.current
+      if (isStale) return
       console.error('[ArtifactRail] Failed to load artifacts:', error)
     } finally {
+      const isStale = requestId !== loadArtifactsRequestIdRef.current || requestedSpaceId !== latestSpaceIdRef.current
+      if (isStale) return
       setIsLoading(false)
     }
   }, [isControlled, isExpanded, isOverlayMode, onExpandedChange, spaceId, t])
+
+  useEffect(() => {
+    previousArtifactCountRef.current = null
+    previousActiveArtifactPathRef.current = null
+  }, [spaceId])
 
   // Load artifacts on mount and when space changes
   useEffect(() => {
@@ -258,7 +267,10 @@ export function ArtifactRail({
   const renderContent = () => (
     <div className="flex-1 overflow-hidden">
       {viewMode === 'tree' ? (
-        <ArtifactTree spaceId={spaceId} />
+        <ArtifactTree
+          spaceId={spaceId}
+          activeFilePath={activeArtifactPath}
+        />
       ) : (
         <div className="h-full overflow-auto p-2">
           {isLoading ? (
@@ -294,7 +306,11 @@ export function ArtifactRail({
                     data-onboarding={isOnboardingArtifact && isOnboardingViewStep ? 'artifact-card' : undefined}
                     onClick={isOnboardingArtifact && isOnboardingViewStep ? handleOnboardingArtifactClick : undefined}
                   >
-                    <ArtifactCard artifact={artifact} />
+                    <ArtifactCard
+                      artifact={artifact}
+                      spaceId={spaceId}
+                      isActive={activeArtifactPath === artifact.path}
+                    />
                   </div>
                 )
               })}
