@@ -4,7 +4,7 @@ import { ChatView } from '../components/chat/ChatView'
 import { UnifiedSidebar } from '../components/unified/UnifiedSidebar'
 import { GitBashWarningBanner } from '../components/setup/GitBashWarningBanner'
 import { ArtifactRail } from '../components/artifact/ArtifactRail'
-import { CanvasToggleButton, CollapsibleCanvas } from '../components/canvas'
+import { CanvasToggleButton, CanvasTabBar, CollapsibleCanvas } from '../components/canvas'
 import { useSearchShortcuts } from '../hooks/useSearchShortcuts'
 import { useCanvasLifecycle } from '../hooks/useCanvasLifecycle'
 import { useAppStore } from '../stores/app.store'
@@ -78,7 +78,13 @@ export function UnifiedPage() {
   const { openSearch } = useSearchStore((state) => ({
     openSearch: state.openSearch
   }), shallow)
-  const { isOpen: isCanvasOpen, openChat } = useCanvasLifecycle()
+  const {
+    tabs: canvasTabs,
+    isOpen: isCanvasOpen,
+    setOpen: setCanvasOpen,
+    openChat,
+    switchSpaceSession
+  } = useCanvasLifecycle()
 
   const allSpaces = useMemo(() => {
     if (!kiteSpace) return spaces
@@ -153,6 +159,11 @@ export function UnifiedPage() {
 
   useEffect(() => {
     if (!currentSpaceId) return
+    void switchSpaceSession(currentSpaceId)
+  }, [currentSpaceId, switchSpaceSession])
+
+  useEffect(() => {
+    if (!currentSpaceId) return
     const spaceState = spaceStates.get(currentSpaceId)
     if (!spaceState || spaceState.currentConversationId || spaceState.conversations.length === 0) return
     const entry = pickEntryConversation(spaceState.conversations) || spaceState.conversations[0]
@@ -182,13 +193,22 @@ export function UnifiedPage() {
     await ensureSpaceConversationsLoaded(spaceId)
   }, [ensureSpaceConversationsLoaded])
 
+  const resolveSpaceTabLabel = useCallback((spaceId: string) => {
+    const space = spaceById.get(spaceId)
+    if (!space) return t('Unknown space')
+    return space.isTemp ? 'Kite' : space.name
+  }, [spaceById, t])
+
   const handleSelectConversation = useCallback(async (spaceId: string, conversationId: string) => {
     const conversationTitle = conversationsBySpaceId
       .get(spaceId)
       ?.find((conversation) => conversation.id === conversationId)
       ?.title
       ?.trim() || t('New conversation')
-    await navigateToConversationContext({
+    const targetSpace = spaceById.get(spaceId)
+    const workDir = targetSpace?.path
+    setCanvasOpen(false)
+    const navigationResult = await navigateToConversationContext({
       targetSpaceId: spaceId,
       targetConversationId: conversationId,
       currentSpaceId,
@@ -199,22 +219,24 @@ export function UnifiedPage() {
       loadConversations,
       selectConversation
     })
-    const targetSpace = spaceById.get(spaceId)
-    if (targetSpace?.isTemp) {
-      const workDir = targetSpace.path
-      await openChat(spaceId, conversationId, conversationTitle, workDir)
-    }
+    if (!navigationResult.success) return
+
+    await switchSpaceSession(spaceId)
+    await openChat(spaceId, conversationId, conversationTitle, workDir, resolveSpaceTabLabel(spaceId), false)
   }, [
     conversationsBySpaceId,
     currentSpaceId,
     kiteSpace,
     loadConversations,
     openChat,
+    resolveSpaceTabLabel,
     selectConversation,
+    setCanvasOpen,
     setChatCurrentSpace,
     setSpaceStoreCurrentSpace,
     spaceById,
     spaces,
+    switchSpaceSession,
     t
   ])
 
@@ -257,13 +279,7 @@ export function UnifiedPage() {
     const created = await createConversation(spaceId)
     if (!created) return
 
-    const targetSpace = spaceById.get(spaceId)
-    if (targetSpace?.isTemp) {
-      const workDir = targetSpace.path
-      await openChat(spaceId, created.id, created.title, workDir)
-    }
-
-    await navigateToConversationContext({
+    const conversationReady = await navigateToConversationContext({
       targetSpaceId: spaceId,
       targetConversationId: created.id,
       currentSpaceId: spaceId,
@@ -274,17 +290,27 @@ export function UnifiedPage() {
       loadConversations,
       selectConversation
     })
+    if (!conversationReady.success) return
+
+    const targetSpace = spaceById.get(spaceId)
+    const workDir = targetSpace?.path
+    setCanvasOpen(false)
+    await switchSpaceSession(spaceId)
+    await openChat(spaceId, created.id, created.title, workDir, resolveSpaceTabLabel(spaceId), false)
   }, [
     currentSpaceId,
     createConversation,
     kiteSpace,
     loadConversations,
     openChat,
+    resolveSpaceTabLabel,
+    setCanvasOpen,
     selectConversation,
     setChatCurrentSpace,
     setSpaceStoreCurrentSpace,
     spaceById,
-    spaces
+    spaces,
+    switchSpaceSession
   ])
 
   const handleRenameConversation = useCallback(async (spaceId: string, conversationId: string, title: string) => {
@@ -296,6 +322,12 @@ export function UnifiedPage() {
   }, [deleteConversation])
 
   const isWorkbenchSpace = Boolean(currentSpace?.isTemp)
+  const visibleCanvasTabs = useMemo(() => {
+    if (!currentSpaceId) return []
+    return canvasTabs.filter((tab) => !tab.spaceId || tab.spaceId === currentSpaceId)
+  }, [canvasTabs, currentSpaceId])
+  const hasCanvasTabs = visibleCanvasTabs.length > 0
+  const shouldSplitWithCanvas = hasCanvasTabs && isCanvasOpen
   const activeTabTitle = useMemo(() => {
     const title = currentConversationMeta?.title?.trim()
     if (title) return title
@@ -331,12 +363,12 @@ export function UnifiedPage() {
         <div className="flex-1 min-w-0 min-h-0 flex overflow-hidden bg-background">
           <div
             className={`min-w-0 min-h-0 flex flex-col overflow-hidden ${
-              isWorkbenchSpace && isCanvasOpen
+              shouldSplitWithCanvas
                 ? 'w-[44%] min-w-[360px] max-w-[860px] shrink-0 border-r border-border/50'
                 : 'flex-1'
             }`}
           >
-            {!isWorkbenchSpace && (
+            {!isWorkbenchSpace && !hasCanvasTabs && (
               <div className="border-b border-border/60 bg-card/50 px-3 py-2">
                 <div role="tablist" aria-label={t('Opened content')} className="flex items-center gap-2">
                   <button
@@ -351,17 +383,20 @@ export function UnifiedPage() {
                 </div>
               </div>
             )}
-            {isWorkbenchSpace && (
-              <div className="border-b border-border/60 bg-card/50 px-3 py-2 flex justify-end">
+            {hasCanvasTabs && (
+              <div className="border-b border-border/60 bg-card/50 px-2 py-1 flex items-center gap-2">
+                <div className="min-w-0 flex-1">
+                  <CanvasTabBar />
+                </div>
                 <CanvasToggleButton />
               </div>
             )}
             <div className="flex-1 min-w-0 min-h-0 bg-background overflow-hidden">
-              <ChatView isCompact={isWorkbenchSpace && isCanvasOpen} />
+              <ChatView isCompact={shouldSplitWithCanvas} />
             </div>
           </div>
 
-          {isWorkbenchSpace && <CollapsibleCanvas />}
+          {hasCanvasTabs && <CollapsibleCanvas />}
 
           {currentSpaceId && (
             <aside aria-label={t('Files and artifacts')} className="h-full">
