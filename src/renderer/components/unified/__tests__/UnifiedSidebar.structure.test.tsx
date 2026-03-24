@@ -4,7 +4,12 @@ import type { ConversationMeta, CreateSpaceInput, Space } from '../../../types'
 
 vi.mock('../../../i18n', () => ({
   useTranslation: () => ({
-    t: (key: string) => key
+    t: (key: string, options?: Record<string, unknown>) => {
+      if (typeof options?.count === 'number') {
+        return key.replace('{{count}}', String(options.count))
+      }
+      return key
+    }
   }),
   getCurrentLanguage: () => 'en-US'
 }))
@@ -59,7 +64,7 @@ const conv2: ConversationMeta = {
   spaceId: 'space-a',
   title: 'conv-2',
   createdAt: now,
-  updatedAt: now,
+  updatedAt: '2026-03-23T10:00:00.000Z',
   messageCount: 1
 }
 
@@ -85,6 +90,30 @@ const handlers = {
 }
 
 describe('UnifiedSidebar structure', () => {
+  it('会话尾部共用同一区域：默认显示时间，当前会话切换为操作按钮', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(now))
+
+    const html = renderToStaticMarkup(
+      <UnifiedSidebar
+        spaces={[spaceA]}
+        currentSpaceId="space-a"
+        currentConversationId="conv-1"
+        conversationsBySpaceId={new Map([
+          ['space-a', [conv1, conv2]]
+        ])}
+        {...handlers}
+      />
+    )
+
+    expect(html).toMatch(/data-conversation-id="conv-1"[\s\S]*?data-slot="time"[^>]*is-collapsed/)
+    expect(html).toMatch(/data-conversation-id="conv-1"[\s\S]*?data-slot="actions"[^>]*is-active/)
+    expect(html).toMatch(/data-conversation-id="conv-2"[\s\S]*?data-slot="time"[^>]*is-visible[^>]*>1 days ago</)
+    expect(html).not.toMatch(/data-conversation-id="conv-2"[\s\S]*?data-slot="actions"[^>]*is-active/)
+
+    vi.useRealTimers()
+  })
+
   it('默认仅展开当前空间，其他空间保持折叠', () => {
     const html = renderToStaticMarkup(
       <UnifiedSidebar

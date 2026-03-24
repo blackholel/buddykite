@@ -351,16 +351,6 @@ const TabItem = forwardRef<HTMLDivElement, TabItemProps>(function TabItem({
   const { t } = useTranslation()
   // Get file extension for icon
   const extension = tab.path?.split('.').pop() || ''
-  const hasSpaceLabel = tab.type === 'chat' && Boolean(tab.spaceLabel?.trim())
-  const spaceLabel = hasSpaceLabel ? tab.spaceLabel!.trim() : null
-  const resolvedSpacePath = tab.type === 'chat' ? tab.workDir : tab.path
-  const tooltipText = hasSpaceLabel
-    ? [
-      tab.title,
-      `${t('Space')}: ${spaceLabel}`,
-      resolvedSpacePath ? `${t('Path')}: ${resolvedSpacePath}` : null
-    ].filter(Boolean).join('\n')
-    : tab.title
 
   // Handle middle-click to close tab
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -421,16 +411,8 @@ const TabItem = forwardRef<HTMLDivElement, TabItemProps>(function TabItem({
       </div>
 
       {/* Title */}
-      <span className="canvas-tab-title" title={tooltipText}>
-        {hasSpaceLabel ? (
-          <>
-            <span>{tab.title}</span>
-            <span className="mx-1 text-muted-foreground/70">·</span>
-            <span className="text-muted-foreground">{spaceLabel}</span>
-          </>
-        ) : (
-          tab.title
-        )}
+      <span className="canvas-tab-title" title={tab.title}>
+        {tab.title}
       </span>
 
       {/* Dirty indicator (unsaved changes) */}

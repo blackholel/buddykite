@@ -312,6 +312,7 @@ export function UnifiedSidebar({
                         return (
                           <div
                             key={`${space.id}:${conversation.id}`}
+                            data-conversation-id={conversation.id}
                             className={`group space-studio-history-simple-item unified-sidebar-history-item ${
                               isActiveSpace ? 'unified-sidebar-history-item-current-space' : ''
                             } ${isActiveConversation ? 'is-active' : ''}`}
@@ -337,53 +338,65 @@ export function UnifiedSidebar({
                                 className="flex-1 min-w-0 bg-background border border-border rounded px-2 py-0.5 text-xs"
                               />
                             ) : (
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 min-w-0">
+                              <div className="flex-1 min-w-0 flex items-center gap-2">
+                                <div className="flex-1 min-w-0">
                                   <button
                                     onClick={() => void onSelectConversation(space.id, conversation.id)}
-                                    className="space-studio-history-simple-title flex-1 min-w-0 text-left truncate"
+                                    className="space-studio-history-simple-title block w-full min-w-0 text-left truncate"
                                     title={conversation.title}
                                   >
                                     {titleText}
                                   </button>
+                                </div>
+                                <div className="unified-sidebar-history-tail">
                                   <span
-                                    className={`text-[11px] shrink-0 ${
-                                      isActiveConversation ? 'text-muted-foreground/90' : 'text-muted-foreground'
+                                    data-slot="time"
+                                    aria-hidden={isActiveConversation}
+                                    className={`unified-sidebar-history-time ${
+                                      isActiveConversation
+                                        ? 'is-collapsed'
+                                        : 'is-visible'
                                     }`}
                                     title={new Date(conversation.updatedAt).toLocaleString(getCurrentLanguage())}
                                   >
                                     {relativeTimeText}
                                   </span>
+                                  <div
+                                    data-slot="actions"
+                                    className={`unified-sidebar-history-actions ${
+                                      isActiveConversation ? 'is-active' : ''
+                                    }`}
+                                  >
+                                    <button
+                                      onClick={() => setEditingConversation({
+                                        spaceId: space.id,
+                                        conversationId: conversation.id,
+                                        title: conversation.title
+                                      })}
+                                      className={`space-studio-history-action-btn unified-sidebar-history-action ${
+                                        isActiveConversation ? 'is-visible' : ''
+                                      }`}
+                                      title={t('Rename')}
+                                      aria-label={t('Rename')}
+                                    >
+                                      <Pencil className="w-3 h-3" />
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        if (!window.confirm(t('Delete this conversation?'))) return
+                                        void onDeleteConversation(space.id, conversation.id)
+                                      }}
+                                      className={`space-studio-history-action-btn unified-sidebar-history-action text-destructive ${
+                                        isActiveConversation ? 'is-visible' : ''
+                                      }`}
+                                      title={t('Delete')}
+                                      aria-label={t('Delete')}
+                                    >
+                                      <Trash2 className="w-3 h-3" />
+                                    </button>
+                                  </div>
                                 </div>
                               </div>
-                            )}
-
-                            {!isEditing && (
-                              <>
-                                <button
-                                  onClick={() => setEditingConversation({
-                                    spaceId: space.id,
-                                    conversationId: conversation.id,
-                                    title: conversation.title
-                                  })}
-                                  className="space-studio-history-action-btn opacity-0 group-hover:opacity-100 transition-all"
-                                  title={t('Rename')}
-                                  aria-label={t('Rename')}
-                                >
-                                  <Pencil className="w-3 h-3" />
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    if (!window.confirm(t('Delete this conversation?'))) return
-                                    void onDeleteConversation(space.id, conversation.id)
-                                  }}
-                                  className="space-studio-history-action-btn opacity-0 group-hover:opacity-100 text-destructive transition-all"
-                                  title={t('Delete')}
-                                  aria-label={t('Delete')}
-                                >
-                                  <Trash2 className="w-3 h-3" />
-                                </button>
-                              </>
                             )}
                           </div>
                         )

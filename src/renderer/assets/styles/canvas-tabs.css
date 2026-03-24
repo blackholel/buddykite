@@ -6,7 +6,7 @@
 /* Tab bar container */
 .canvas-tab-bar {
   height: 40px;
-  background: hsl(var(--card));
+  background: hsl(var(--background));
   border-bottom: none;
   display: flex;
   align-items: stretch;

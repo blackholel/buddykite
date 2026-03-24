@@ -385,11 +385,9 @@ export function UnifiedPage() {
               </div>
             )}
             {hasCanvasTabs && (
-              <div className="space-studio-header border-b border-border/60 bg-card/50 px-2 py-1 flex items-center gap-2">
-                <div className="min-w-0 flex-1">
-                  <CanvasTabBar />
-                </div>
-                <CanvasToggleButton />
+              <div className="flex items-center bg-background">
+                <div className="min-w-0 flex-1"><CanvasTabBar /></div>
+                <div className="px-2"><CanvasToggleButton /></div>
               </div>
             )}
             <div className="flex-1 min-w-0 min-h-0 bg-background overflow-hidden">
