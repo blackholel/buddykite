@@ -335,7 +335,7 @@ export function UnifiedPage() {
   }, [currentConversationMeta?.title, t])
 
   return (
-    <div className="h-full min-h-0 w-full flex flex-col">
+    <div className="unified-classic-theme space-studio-root h-full min-h-0 w-full flex flex-col">
       {mockBashMode && (
         <GitBashWarningBanner
           installProgress={gitBashInstallProgress}
@@ -343,7 +343,8 @@ export function UnifiedPage() {
         />
       )}
 
-      <div className="flex-1 min-h-0 flex overflow-hidden">
+      <div className="space-studio-main flex-1 min-h-0 flex overflow-hidden">
+        <div className="space-studio-shell flex-1 min-h-0 flex overflow-hidden">
         <UnifiedSidebar
           spaces={allSpaces}
           currentSpaceId={currentSpaceId}
@@ -360,7 +361,7 @@ export function UnifiedPage() {
           onGoSettings={() => setView('settings')}
         />
 
-        <div className="flex-1 min-w-0 min-h-0 flex overflow-hidden bg-background">
+        <div className="space-studio-pane space-studio-chat-pane flex-1 min-w-0 min-h-0 flex overflow-hidden bg-background">
           <div
             className={`min-w-0 min-h-0 flex flex-col overflow-hidden ${
               shouldSplitWithCanvas
@@ -369,7 +370,7 @@ export function UnifiedPage() {
             }`}
           >
             {!isWorkbenchSpace && !hasCanvasTabs && (
-              <div className="border-b border-border/60 bg-card/50 px-3 py-2">
+              <div className="space-studio-header border-b border-border/60 bg-card/50 px-3 py-2">
                 <div role="tablist" aria-label={t('Opened content')} className="flex items-center gap-2">
                   <button
                     type="button"
@@ -384,7 +385,7 @@ export function UnifiedPage() {
               </div>
             )}
             {hasCanvasTabs && (
-              <div className="border-b border-border/60 bg-card/50 px-2 py-1 flex items-center gap-2">
+              <div className="space-studio-header border-b border-border/60 bg-card/50 px-2 py-1 flex items-center gap-2">
                 <div className="min-w-0 flex-1">
                   <CanvasTabBar />
                 </div>
@@ -396,7 +397,11 @@ export function UnifiedPage() {
             </div>
           </div>
 
-          {shouldRenderCanvasPanel && <CollapsibleCanvas />}
+          {shouldRenderCanvasPanel && (
+            <div className="space-studio-pane space-studio-canvas-pane min-w-0 overflow-hidden">
+              <CollapsibleCanvas />
+            </div>
+          )}
 
           {currentSpaceId && (
             <aside aria-label={t('Files and artifacts')} className="h-full">
@@ -408,6 +413,7 @@ export function UnifiedPage() {
               />
             </aside>
           )}
+        </div>
         </div>
       </div>
     </div>

@@ -201,9 +201,9 @@ export function UnifiedSidebar({
   }
 
   return (
-    <aside className="w-[320px] h-full border-r border-border/60 bg-card/40 backdrop-blur-sm overflow-hidden">
+    <aside className="space-studio-sidebar space-studio-conversation-panel space-studio-reveal w-[320px] h-full border-r border-border/60 bg-card backdrop-blur-sm overflow-hidden">
       <div className="h-full flex flex-col">
-        <div className="px-4 py-3 border-b border-border/60 flex items-center justify-between">
+        <div className="space-studio-conversation-head px-4 py-3 border-b border-border/60 flex items-center justify-between">
           <div className="min-w-0 flex items-center">
             <button
               onClick={onGoHome}
@@ -312,7 +312,9 @@ export function UnifiedSidebar({
                         return (
                           <div
                             key={`${space.id}:${conversation.id}`}
-                            className={`group flex items-start gap-1 px-2 py-1.5 rounded-lg ${isActiveConversation ? 'bg-primary/10 text-primary' : 'hover:bg-secondary/50'}`}
+                            className={`group space-studio-history-simple-item unified-sidebar-history-item ${
+                              isActiveSpace ? 'unified-sidebar-history-item-current-space' : ''
+                            } ${isActiveConversation ? 'is-active' : ''}`}
                           >
                             {isEditing ? (
                               <input
@@ -339,14 +341,14 @@ export function UnifiedSidebar({
                                 <div className="flex items-center gap-2 min-w-0">
                                   <button
                                     onClick={() => void onSelectConversation(space.id, conversation.id)}
-                                    className="flex-1 min-w-0 text-left text-xs truncate leading-5"
+                                    className="space-studio-history-simple-title flex-1 min-w-0 text-left truncate"
                                     title={conversation.title}
                                   >
                                     {titleText}
                                   </button>
                                   <span
                                     className={`text-[11px] shrink-0 ${
-                                      isActiveConversation ? 'text-primary/80' : 'text-muted-foreground'
+                                      isActiveConversation ? 'text-muted-foreground/90' : 'text-muted-foreground'
                                     }`}
                                     title={new Date(conversation.updatedAt).toLocaleString(getCurrentLanguage())}
                                   >
@@ -364,7 +366,7 @@ export function UnifiedSidebar({
                                     conversationId: conversation.id,
                                     title: conversation.title
                                   })}
-                                  className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-background/60 transition-all"
+                                  className="space-studio-history-action-btn opacity-0 group-hover:opacity-100 transition-all"
                                   title={t('Rename')}
                                   aria-label={t('Rename')}
                                 >
@@ -375,7 +377,7 @@ export function UnifiedSidebar({
                                     if (!window.confirm(t('Delete this conversation?'))) return
                                     void onDeleteConversation(space.id, conversation.id)
                                   }}
-                                  className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-destructive/20 text-destructive transition-all"
+                                  className="space-studio-history-action-btn opacity-0 group-hover:opacity-100 text-destructive transition-all"
                                   title={t('Delete')}
                                   aria-label={t('Delete')}
                                 >
@@ -394,7 +396,7 @@ export function UnifiedSidebar({
           })}
         </div>
 
-        <div className="px-4 py-3 border-t border-border/60">
+        <div className="space-studio-sidebar-tools px-4 py-3 border-t border-border/60">
           <button
             onClick={onGoSettings}
             className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary/70"

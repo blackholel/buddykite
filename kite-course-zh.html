@@ -1,0 +1,2145 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kite 代码库互动课程</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700;12..96,800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400;1,9..40,500&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --color-bg: #FAF7F2;
+      --color-bg-warm: #F5F0E8;
+      --color-bg-code: #1E1E2E;
+      --color-text: #2C2A28;
+      --color-text-secondary: #6B6560;
+      --color-text-muted: #9E9790;
+      --color-border: #E5DFD6;
+      --color-border-light: #EEEBE5;
+      --color-surface: #FFFFFF;
+      --color-surface-warm: #FDF9F3;
+      --color-accent: #D94F30;
+      --color-accent-hover: #C4432A;
+      --color-accent-light: #FDEEE9;
+      --color-accent-muted: #E8836C;
+      --color-success: #2D8B55;
+      --color-success-light: #E8F5EE;
+      --color-error: #C93B3B;
+      --color-error-light: #FDE8E8;
+      --color-info: #2A7B9B;
+      --color-info-light: #E4F2F7;
+      --color-actor-1: #D94F30;
+      --color-actor-2: #2A7B9B;
+      --color-actor-3: #7B6DAA;
+      --color-actor-4: #D4A843;
+      --color-actor-5: #2D8B55;
+      --font-display: 'Bricolage Grotesque', Georgia, serif;
+      --font-body: 'DM Sans', -apple-system, sans-serif;
+      --font-mono: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+      --text-xs: 0.75rem;
+      --text-sm: 0.875rem;
+      --text-base: 1rem;
+      --text-lg: 1.125rem;
+      --text-xl: 1.25rem;
+      --text-2xl: 1.5rem;
+      --text-3xl: 1.875rem;
+      --text-4xl: 2.25rem;
+      --text-5xl: 3rem;
+      --text-6xl: 3.75rem;
+      --leading-tight: 1.15;
+      --leading-snug: 1.3;
+      --leading-normal: 1.6;
+      --leading-loose: 1.8;
+      --space-1: 0.25rem;
+      --space-2: 0.5rem;
+      --space-3: 0.75rem;
+      --space-4: 1rem;
+      --space-5: 1.25rem;
+      --space-6: 1.5rem;
+      --space-8: 2rem;
+      --space-10: 2.5rem;
+      --space-12: 3rem;
+      --space-16: 4rem;
+      --space-20: 5rem;
+      --space-24: 6rem;
+      --content-width: 800px;
+      --content-width-wide: 1000px;
+      --nav-height: 50px;
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 16px;
+      --radius-full: 9999px;
+      --shadow-sm: 0 1px 2px rgba(44, 42, 40, 0.05);
+      --shadow-md: 0 4px 12px rgba(44, 42, 40, 0.08);
+      --shadow-lg: 0 8px 24px rgba(44, 42, 40, 0.1);
+      --shadow-xl: 0 16px 48px rgba(44, 42, 40, 0.12);
+      --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+      --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+      --duration-fast: 150ms;
+      --duration-normal: 300ms;
+      --duration-slow: 500ms;
+      --stagger-delay: 120ms;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html {
+      scroll-snap-type: y proximity;
+      scroll-behavior: smooth;
+    }
+
+    body {
+      font-family: var(--font-body);
+      background: var(--color-bg);
+      color: var(--color-text);
+      line-height: var(--leading-normal);
+      overflow-x: hidden;
+    }
+
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: var(--radius-full); }
+
+    .nav {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: var(--nav-height);
+      background: rgba(250, 247, 242, 0.9);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--color-border-light);
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 var(--space-6);
+    }
+
+    .nav-title {
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: var(--text-lg);
+      color: var(--color-accent);
+    }
+
+    .nav-dots {
+      display: flex;
+      gap: var(--space-2);
+    }
+
+    .nav-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      border: 2px solid var(--color-text-muted);
+      background: transparent;
+      cursor: pointer;
+      transition: all var(--duration-fast);
+    }
+
+    .nav-dot:hover { border-color: var(--color-accent-muted); }
+    .nav-dot.visited { background: var(--color-accent); border-color: var(--color-accent); }
+    .nav-dot.current { border-color: var(--color-accent); box-shadow: 0 0 0 3px var(--color-accent-light); }
+
+    .progress-bar {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      height: 2px;
+      background: var(--color-accent);
+      width: 0%;
+      transition: width var(--duration-normal);
+    }
+
+    .module {
+      min-height: 100dvh;
+      scroll-snap-align: start;
+      padding: var(--space-16) var(--space-6);
+      padding-top: calc(var(--nav-height) + var(--space-12));
+    }
+
+    .module:nth-child(even) { background: var(--color-bg); }
+    .module:nth-child(odd) { background: var(--color-bg-warm); }
+
+    .module-content {
+      max-width: var(--content-width);
+      margin: 0 auto;
+    }
+
+    .module-header {
+      margin-bottom: var(--space-12);
+    }
+
+    .module-number {
+      font-family: var(--font-display);
+      font-size: var(--text-6xl);
+      font-weight: 800;
+      color: var(--color-accent);
+      opacity: 0.15;
+      display: block;
+      line-height: 1;
+    }
+
+    .module-title {
+      font-family: var(--font-display);
+      font-size: var(--text-4xl);
+      font-weight: 700;
+      line-height: var(--leading-tight);
+      margin: var(--space-4) 0 var(--space-4);
+    }
+
+    .module-subtitle {
+      font-size: var(--text-lg);
+      color: var(--color-text-secondary);
+      line-height: var(--leading-snug);
+    }
+
+    .screen {
+      margin-bottom: var(--space-16);
+    }
+
+    .screen-heading {
+      font-family: var(--font-display);
+      font-size: var(--text-xl);
+      font-weight: 600;
+      margin-bottom: var(--space-6);
+      color: var(--color-text);
+    }
+
+    .animate-in {
+      opacity: 0;
+      transform: translateY(20px);
+      transition: opacity var(--duration-slow) var(--ease-out), transform var(--duration-slow) var(--ease-out);
+    }
+
+    .animate-in.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .stagger-children > .animate-in {
+      transition-delay: calc(var(--stagger-index, 0) * var(--stagger-delay));
+    }
+
+    p {
+      margin-bottom: var(--space-4);
+      font-size: var(--text-base);
+      max-width: 65ch;
+    }
+
+    .hero-visual {
+      background: var(--color-surface);
+      border-radius: var(--radius-lg);
+      padding: var(--space-8);
+      box-shadow: var(--shadow-md);
+      margin: var(--space-8) 0;
+      text-align: center;
+    }
+
+    .hero-icon {
+      font-size: 4rem;
+      margin-bottom: var(--space-4);
+    }
+
+    .pattern-cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: var(--space-4);
+      margin: var(--space-8) 0;
+    }
+
+    .pattern-card {
+      background: var(--color-surface);
+      border-radius: var(--radius-md);
+      padding: var(--space-6);
+      box-shadow: var(--shadow-sm);
+      border-top: 3px solid var(--color-actor-1);
+      transition: transform var(--duration-normal) var(--ease-out), box-shadow var(--duration-normal);
+    }
+
+    .pattern-card:nth-child(2) { border-top-color: var(--color-actor-2); }
+    .pattern-card:nth-child(3) { border-top-color: var(--color-actor-3); }
+    .pattern-card:nth-child(4) { border-top-color: var(--color-actor-4); }
+
+    .pattern-card:hover {
+      transform: translateY(-4px);
+      box-shadow: var(--shadow-md);
+    }
+
+    .pattern-icon {
+      font-size: 2rem;
+      margin-bottom: var(--space-3);
+    }
+
+    .pattern-title {
+      font-family: var(--font-display);
+      font-size: var(--text-lg);
+      font-weight: 600;
+      margin-bottom: var(--space-2);
+    }
+
+    .pattern-desc {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      line-height: var(--leading-normal);
+    }
+
+    .callout {
+      display: flex;
+      gap: var(--space-4);
+      padding: var(--space-5);
+      border-radius: var(--radius-md);
+      margin: var(--space-8) 0;
+      border-left: 4px solid var(--color-accent);
+      background: var(--color-accent-light);
+    }
+
+    .callout-info {
+      border-left-color: var(--color-info);
+      background: var(--color-info-light);
+    }
+
+    .callout-icon {
+      font-size: 1.5rem;
+      flex-shrink: 0;
+    }
+
+    .callout-content strong {
+      display: block;
+      margin-bottom: var(--space-2);
+      font-weight: 600;
+    }
+
+    .callout-content p {
+      margin: 0;
+      font-size: var(--text-sm);
+    }
+
+    .step-cards {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-3);
+      margin: var(--space-8) 0;
+    }
+
+    .step-card {
+      display: flex;
+      align-items: flex-start;
+      gap: var(--space-4);
+      padding: var(--space-4) var(--space-5);
+      background: var(--color-surface);
+      border-radius: var(--radius-md);
+      border-left: 3px solid var(--color-accent);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .step-num {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: var(--color-accent);
+      color: white;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-display);
+      flex-shrink: 0;
+    }
+
+    .step-body strong {
+      display: block;
+      margin-bottom: var(--space-1);
+    }
+
+    .step-body p {
+      margin: 0;
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+    }
+
+    .translation-block {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0;
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      box-shadow: var(--shadow-md);
+      margin: var(--space-8) 0;
+    }
+
+    .translation-code {
+      background: var(--color-bg-code);
+      color: #CDD6F4;
+      padding: var(--space-6);
+      font-family: var(--font-mono);
+      font-size: var(--text-sm);
+      line-height: 1.7;
+      position: relative;
+      overflow-x: hidden;
+    }
+
+    .translation-code pre, .translation-code code {
+      white-space: pre-wrap;
+      word-break: break-word;
+      overflow-x: hidden;
+    }
+
+    .translation-english {
+      background: var(--color-surface-warm);
+      padding: var(--space-6);
+      font-size: var(--text-sm);
+      line-height: 1.7;
+      border-left: 3px solid var(--color-accent);
+    }
+
+    .translation-label {
+      position: absolute;
+      top: var(--space-2);
+      right: var(--space-3);
+      font-size: var(--text-xs);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      opacity: 0.5;
+    }
+
+    .translation-english .translation-label {
+      color: var(--color-text-muted);
+    }
+
+    .tl {
+      margin-bottom: var(--space-3);
+      padding-bottom: var(--space-3);
+      border-bottom: 1px solid var(--color-border-light);
+    }
+
+    .tl:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+
+    .code-keyword { color: #CBA6F7; }
+    .code-string { color: #A6E3A1; }
+    .code-function { color: #89B4FA; }
+    .code-comment { color: #6C7086; }
+    .code-number { color: #FAB387; }
+    .code-property { color: #F9E2AF; }
+    .code-operator { color: #94E2D5; }
+
+    .term {
+      border-bottom: 1.5px dashed var(--color-accent-muted);
+      cursor: pointer;
+      position: relative;
+    }
+
+    .term:hover, .term.active {
+      border-bottom-color: var(--color-accent);
+      color: var(--color-accent);
+    }
+
+    .term-tooltip {
+      position: fixed;
+      background: var(--color-bg-code);
+      color: #CDD6F4;
+      padding: var(--space-3) var(--space-4);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-sm);
+      font-family: var(--font-body);
+      line-height: var(--leading-normal);
+      width: max(200px, min(320px, 80vw));
+      box-shadow: var(--shadow-lg);
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity var(--duration-fast);
+      z-index: 10000;
+    }
+
+    .term-tooltip.visible { opacity: 1; }
+    .term-tooltip.flip { bottom: auto; top: calc(100% + 8px); }
+    .term-tooltip.flip::after {
+      top: auto;
+      bottom: 100%;
+      border-top-color: transparent;
+      border-bottom-color: var(--color-bg-code);
+    }
+    .term-tooltip::after {
+      content: '';
+      position: absolute;
+      top: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      border: 6px solid transparent;
+      border-top-color: var(--color-bg-code);
+    }
+
+    .icon-rows { display: flex; flex-direction: column; gap: var(--space-4); margin: var(--space-8) 0; }
+
+    .icon-row {
+      display: flex;
+      align-items: center;
+      gap: var(--space-4);
+      padding: var(--space-4);
+      background: var(--color-surface);
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .icon-circle {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.25rem;
+      flex-shrink: 0;
+    }
+
+    .icon-row p { margin: 0; color: var(--color-text-secondary); font-size: var(--text-sm); }
+
+    .flow-steps {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: var(--space-4);
+      margin: var(--space-8) 0;
+      flex-wrap: wrap;
+    }
+
+    .flow-step {
+      background: var(--color-surface);
+      border-radius: var(--radius-md);
+      padding: var(--space-4) var(--space-5);
+      box-shadow: var(--shadow-sm);
+      text-align: center;
+      min-width: 120px;
+    }
+
+    .flow-step-num {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: var(--color-accent);
+      color: white;
+      font-weight: 700;
+      font-size: var(--text-sm);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto var(--space-2);
+    }
+
+    .flow-step p { margin: 0; font-size: var(--text-sm); }
+
+    .flow-arrow { color: var(--color-accent-muted); font-size: 1.5rem; }
+
+    .quiz-container { margin: var(--space-8) 0; }
+
+    .quiz-question-block { margin-bottom: var(--space-6); }
+
+    .quiz-question {
+      font-family: var(--font-display);
+      font-size: var(--text-lg);
+      font-weight: 600;
+      margin-bottom: var(--space-4);
+    }
+
+    .quiz-options { display: flex; flex-direction: column; gap: var(--space-2); }
+
+    .quiz-option {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      padding: var(--space-3) var(--space-4);
+      border: 2px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      background: var(--color-surface);
+      cursor: pointer;
+      width: 100%;
+      font-size: var(--text-base);
+      text-align: left;
+      transition: border-color var(--duration-fast), background var(--duration-fast);
+    }
+
+    .quiz-option:hover { border-color: var(--color-accent-muted); }
+    .quiz-option.selected { border-color: var(--color-accent); background: var(--color-accent-light); }
+    .quiz-option.correct { border-color: var(--color-success); background: var(--color-success-light); }
+    .quiz-option.incorrect { border-color: var(--color-error); background: var(--color-error-light); }
+    .quiz-option.disabled { cursor: default; }
+
+    .quiz-option-radio {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      border: 2px solid var(--color-border);
+      transition: all var(--duration-fast);
+      flex-shrink: 0;
+    }
+
+    .quiz-option.selected .quiz-option-radio {
+      border-color: var(--color-accent);
+      background: var(--color-accent);
+      box-shadow: inset 0 0 0 3px white;
+    }
+
+    .quiz-option.correct .quiz-option-radio { border-color: var(--color-success); background: var(--color-success); }
+    .quiz-option.incorrect .quiz-option-radio { border-color: var(--color-error); background: var(--color-error); }
+
+    .quiz-feedback {
+      max-height: 0;
+      overflow: hidden;
+      opacity: 0;
+      transition: max-height var(--duration-normal), opacity var(--duration-normal);
+      margin-top: var(--space-2);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-sm);
+    }
+
+    .quiz-feedback.show {
+      max-height: 200px;
+      opacity: 1;
+      padding: var(--space-3);
+    }
+
+    .quiz-feedback.success { background: var(--color-success-light); color: var(--color-success); }
+    .quiz-feedback.error { background: var(--color-error-light); color: var(--color-error); }
+
+    .quiz-check-btn {
+      background: var(--color-accent);
+      color: white;
+      border: none;
+      padding: var(--space-3) var(--space-6);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-base);
+      font-weight: 500;
+      cursor: pointer;
+      transition: background var(--duration-fast);
+      margin-right: var(--space-3);
+    }
+
+    .quiz-check-btn:hover { background: var(--color-accent-hover); }
+
+    .quiz-reset-btn {
+      background: transparent;
+      color: var(--color-text-secondary);
+      border: 1px solid var(--color-border);
+      padding: var(--space-3) var(--space-6);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-base);
+      cursor: pointer;
+      transition: border-color var(--duration-fast);
+    }
+
+    .quiz-reset-btn:hover { border-color: var(--color-text-muted); }
+
+    .chat-window {
+      background: var(--color-surface);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-md);
+      overflow: hidden;
+      margin: var(--space-8) 0;
+    }
+
+    .chat-header {
+      background: var(--color-bg-warm);
+      padding: var(--space-4);
+      font-weight: 600;
+      font-size: var(--text-sm);
+      border-bottom: 1px solid var(--color-border-light);
+    }
+
+    .chat-messages { padding: var(--space-4); min-height: 200px; }
+
+    .chat-message {
+      display: flex;
+      gap: var(--space-3);
+      margin-bottom: var(--space-4);
+      animation: fadeSlideUp 0.3s var(--ease-out);
+    }
+
+    @keyframes fadeSlideUp {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .chat-avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: var(--text-xs);
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+
+    .chat-bubble {
+      background: var(--color-bg-warm);
+      padding: var(--space-3) var(--space-4);
+      border-radius: var(--radius-md);
+      flex: 1;
+    }
+
+    .chat-sender {
+      font-size: var(--text-xs);
+      font-weight: 600;
+      margin-bottom: var(--space-1);
+      display: block;
+    }
+
+    .chat-bubble p { margin: 0; font-size: var(--text-sm); }
+
+    .chat-controls {
+      display: flex;
+      gap: var(--space-2);
+      padding: var(--space-3) var(--space-4);
+      background: var(--color-bg);
+      border-top: 1px solid var(--color-border-light);
+    }
+
+    .chat-controls button {
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      padding: var(--space-2) var(--space-4);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-xs);
+      cursor: pointer;
+      transition: border-color var(--duration-fast);
+    }
+
+    .chat-controls button:hover { border-color: var(--color-accent-muted); }
+    .chat-controls span { margin-left: auto; font-size: var(--text-xs); color: var(--color-text-muted); align-self: center; }
+
+    .typing-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--color-text-muted);
+      animation: typingBounce 1.4s infinite;
+      display: inline-block;
+    }
+
+    .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+    .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+    @keyframes typingBounce {
+      0%, 60%, 100% { transform: translateY(0); }
+      30% { transform: translateY(-6px); }
+    }
+
+    .chat-typing {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      padding: var(--space-3) var(--space-4);
+    }
+
+    .chat-typing-dots { display: flex; gap: 4px; align-items: center; }
+
+    .file-tree { font-family: var(--font-mono); font-size: var(--text-sm); margin: var(--space-8) 0; }
+
+    .ft-folder, .ft-file {
+      padding: var(--space-2) var(--space-3);
+      border-left: 2px solid var(--color-border-light);
+      margin-left: var(--space-4);
+    }
+
+    .ft-folder > .ft-name { color: var(--color-accent); font-weight: 600; }
+    .ft-folder > .ft-name::before { content: '📁 '; }
+    .ft-file > .ft-name::before { content: '📄 '; }
+
+    .ft-desc {
+      color: var(--color-text-secondary);
+      font-family: var(--font-body);
+      margin-left: var(--space-2);
+      font-size: var(--text-xs);
+    }
+
+    .ft-children { margin-left: var(--space-4); }
+
+    .badge-list { display: flex; flex-direction: column; gap: var(--space-3); margin: var(--space-8) 0; }
+
+    .badge-item {
+      display: flex;
+      align-items: center;
+      gap: var(--space-4);
+      padding: var(--space-3) var(--space-4);
+      border: 1px solid var(--color-border-light);
+      border-radius: var(--radius-sm);
+      transition: border-color var(--duration-fast);
+    }
+
+    .badge-item:hover { border-color: var(--color-accent-muted); }
+
+    .badge-code {
+      font-family: var(--font-mono);
+      font-size: var(--text-sm);
+      background: var(--color-bg-code);
+      color: #CBA6F7;
+      padding: var(--space-1) var(--space-3);
+      border-radius: var(--radius-sm);
+      white-space: nowrap;
+    }
+
+    .badge-desc { font-size: var(--text-sm); color: var(--color-text-secondary); }
+
+    .flow-animation {
+      background: var(--color-surface);
+      border-radius: var(--radius-lg);
+      padding: var(--space-8);
+      box-shadow: var(--shadow-md);
+      margin: var(--space-8) 0;
+      text-align: center;
+    }
+
+    .flow-actors {
+      display: flex;
+      justify-content: center;
+      gap: var(--space-6);
+      margin-bottom: var(--space-6);
+      flex-wrap: wrap;
+    }
+
+    .flow-actor {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: var(--space-2);
+      padding: var(--space-4);
+      background: var(--color-bg);
+      border-radius: var(--radius-md);
+      transition: all var(--duration-normal) var(--ease-out);
+    }
+
+    .flow-actor.active {
+      box-shadow: 0 0 0 3px var(--color-accent), 0 0 20px rgba(217, 79, 48, 0.2);
+      transform: scale(1.05);
+    }
+
+    .flow-actor-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+    }
+
+    .flow-actor span { font-size: var(--text-sm); font-weight: 500; }
+
+    .flow-packet {
+      width: 12px;
+      height: 12px;
+      background: var(--color-accent);
+      border-radius: 50%;
+      margin: var(--space-4) auto;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    .flow-packet.active { opacity: 1; }
+
+    .flow-step-label {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      margin: var(--space-4) 0;
+      min-height: 40px;
+    }
+
+    .flow-controls {
+      display: flex;
+      gap: var(--space-3);
+      justify-content: center;
+      align-items: center;
+    }
+
+    .flow-controls button {
+      background: var(--color-accent);
+      color: white;
+      border: none;
+      padding: var(--space-2) var(--space-5);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-sm);
+      cursor: pointer;
+      transition: background var(--duration-fast);
+    }
+
+    .flow-controls button:hover { background: var(--color-accent-hover); }
+
+    .flow-progress { font-size: var(--text-xs); color: var(--color-text-muted); margin-left: var(--space-3); }
+
+    @media (max-width: 768px) {
+      :root {
+        --text-4xl: 1.875rem;
+        --text-5xl: 2.25rem;
+        --text-6xl: 3rem;
+      }
+      .translation-block { grid-template-columns: 1fr; }
+      .translation-english { border-left: none; border-top: 3px solid var(--color-accent); }
+      .pattern-cards { grid-template-columns: 1fr 1fr; }
+      .flow-steps { flex-direction: column; }
+      .flow-arrow { transform: rotate(90deg); }
+    }
+
+    @media (max-width: 480px) {
+      :root {
+        --text-4xl: 1.5rem;
+        --text-5xl: 1.875rem;
+        --text-6xl: 2.25rem;
+      }
+      .module { padding: var(--space-8) var(--space-4); }
+      .pattern-cards { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <nav class="nav">
+    <span class="nav-title">Kite 互动课程</span>
+    <div class="nav-dots">
+      <button class="nav-dot" data-target="module-1" title="模块 1"></button>
+      <button class="nav-dot" data-target="module-2" title="模块 2"></button>
+      <button class="nav-dot" data-target="module-3" title="模块 3"></button>
+      <button class="nav-dot" data-target="module-4" title="模块 4"></button>
+      <button class="nav-dot" data-target="module-5" title="模块 5"></button>
+    </div>
+    <div class="progress-bar"></div>
+  </nav>
+
+  <!-- 模块 1: 介绍 -->
+  <section class="module" id="module-1">
+    <div class="module-content">
+      <header class="module-header animate-in">
+        <span class="module-number">01</span>
+        <h1 class="module-title">Kite 是什么？</h1>
+        <p class="module-subtitle">一个让每个人都能使用 AI 的桌面应用</p>
+      </header>
+
+      <div class="screen animate-in">
+        <div class="hero-visual">
+          <div class="hero-icon">🦅</div>
+          <h2 style="font-family: var(--font-display); font-size: var(--text-2xl); margin-bottom: var(--space-4);">Kite —— 面向所有人的 AI 助手</h2>
+          <p style="max-width: 600px; margin: 0 auto; color: var(--color-text-secondary);">
+            Kite 将强大的 AI 编码助手（Claude Code）包装成图形界面，让不懂编程的人也能轻松使用最前沿的 AI 技术。
+          </p>
+        </div>
+      </div>
+
+      <div class="screen animate-in">
+        <h2 class="screen-heading">你曾经遇到过这些情况吗？</h2>
+        <div class="pattern-cards stagger-children">
+          <div class="pattern-card" style="--stagger-index: 0">
+            <div class="pattern-icon">💬</div>
+            <h4 class="pattern-title">"我不知道怎么用命令行..."</h4>
+            <p class="pattern-desc">命令行让很多人望而却步，Kite 让你摆脱黑屏幕</p>
+          </div>
+          <div class="pattern-card" style="--stagger-index: 1">
+            <div class="pattern-icon">📦</div>
+            <h4 class="pattern-title">"安装 Node.js？那是什么？"</h4>
+            <p class="pattern-desc">复杂的安装步骤让人放弃，Kite 一键安装</p>
+          </div>
+          <div class="pattern-card" style="--stagger-index: 2">
+            <div class="pattern-icon">🤯</div>
+            <h4 class="pattern-title">"太复杂了，算了吧..."</h4>
+            <p class="pattern-desc">AI 工具门槛太高，Kite 把门槛降到地面</p>
+          </div>
+        </div>
+
+        <div class="callout animate-in">
+          <div class="callout-icon">💡</div>
+          <div class="callout-content">
+            <strong>核心理念</strong>
+            <p>Kite 的设计目标很简单：下载 → 打开 → 开始使用。像跟朋友聊天一样告诉 AI 你的想法，它会帮你实现。</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="screen animate-in">
+        <h2 class="screen-heading">Kite 能做什么？</h2>
+        <div class="icon-rows">
+          <div class="icon-row">
+            <div class="icon-circle" style="background: var(--color-actor-1)">🎨</div>
+            <div>
+              <strong>创意工作</strong>
+              <p>"帮我设计一个简约风格的作品集网站" —— AI 写代码、创建文件、实时预览</p>
+            </div>
+          </div>
+          <div class="icon-row">
+            <div class="icon-circle" style="background: var(--color-actor-2)">📊</div>
+            <div>
+              <strong>数据分析</strong>
+              <p>"分析这个 Excel 文件，找出销售趋势" —— 上传文件，AI 自动处理</p>
+            </div>
+          </div>
+          <div class="icon-row">
+            <div class="icon-circle" style="background: var(--color-actor-3)">📝</div>
+            <div>
+              <strong>内容创作</strong>
+              <p>"把这篇文章翻译成英文并优化 SEO" —— 支持多轮对话打磨</p>
+            </div>
+          </div>
+          <div class="icon-row">
+            <div class="icon-circle" style="background: var(--color-actor-4)">🚀</div>
+            <div>
+              <strong>快速原型</strong>
+              <p>"创建一个待办事项应用" —— 几分钟就能看到可运行的 App</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="screen animate-in">
+        <h2 class="screen-heading">技术架构一览</h2>
+        <p>Kite 是一个<span class="term" data-definition="Electron 是一个使用 JavaScript、HTML 和 CSS 构建跨平台桌面应用的框架。它让 Web 开发者能用前端技术开发桌面程序。">Electron</span>桌面应用，核心技术栈包括：</p>
+        <div class="badge-list">
+          <div class="badge-item">
+            <code class="badge-code">Electron + React 18</code>
+            <span class="badge-desc">跨平台桌面框架 + 现代前端界面</span>
+          </div>
+          <div class="badge-item">
+            <code class="badge-code">TypeScript</code>
+            <span class="badge-desc">类型安全的 JavaScript 超集</span>
+          </div>
+          <div class="badge-item">
+            <code class="badge-code">Zustand</code>
+            <span class="badge-desc">轻量级状态管理</span>
+          </div>
+          <div class="badge-item">
+            <code class="badge-code">Claude Code SDK</code>
+            <span class="badge-desc">连接 Claude AI 的核心</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="screen animate-in">
+        <h2 class="screen-heading">小测验</h2>
+        <div class="quiz-container" id="quiz-1">
+          <div class="quiz-question-block" data-question="q1" data-correct="b">
+            <h3 class="quiz-question">Kite 的主要目标用户是谁？</h3>
+            <div class="quiz-options">
+              <button class="quiz-option" data-value="a" onclick="selectOption(this)">
+                <div class="quiz-option-radio"></div>
+                <span>专业软件工程师</span>
+              </button>
+              <button class="quiz-option" data-value="b" onclick="selectOption(this)">
+                <div class="quiz-option-radio"></div>
+                <span>不懂编程但想用 AI 的人</span>
+              </button>
+              <button class="quiz-option" data-value="c" onclick="selectOption(this)">
+                <div class="quiz-option-radio"></div>
+                <span>网站开发者</span>
+              </button>
+            </div>
+            <div class="quiz-feedback" id="q1-feedback"></div>
+          </div>
+          <button class="quiz-check-btn" onclick="checkQuiz('quiz-1')">检查答案</button>
+          <button class="quiz-reset-btn" onclick="resetQuiz('quiz-1')">重试</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 模块 2: 主要角色 -->
+  <section class="module" id="module-2">
+    <div class="module-content">
+      <header class="module-header animate-in">
+        <span class="module-number">02</span>
+        <h1 class="module-title">认识主要角色</h1>
+        <p class="module-subtitle">了解 Kite 的四大核心组件</p>
+      </header>
+
+      <div class="screen animate-in">
+        <h2 class="screen-heading">应用的核心结构</h2>
+        <p>Kite 像一场演出，有四个主要"演员"各司其职：</p>
+        <div class="file-tree">
+          <div class="ft-folder open">
+            <span class="ft-name">src/main/</span>
+            <span class="ft-desc">主进程 —— 应用的大脑</span>
+            <div class="ft-children">
+              <div class="ft-file">
+                <span class="ft-name">index.ts</span>
+                <span class="ft-desc">程序入口，创建窗口</span>
+              </div>
+              <div class="ft-file">
+                <span class="ft-name">services/</span>
+                <span class="ft-desc">各种服务（配置、AI、对话等）</span>
+              </div>
+              <div class="ft-file">
+                <span class="ft-name">ipc/</span>
+                <span class="ft-desc">进程间通信处理器</span>
+              </div>
+            </div>
+          </div>
+          <div class="ft-folder">
+            <span class="ft-name">src/renderer/</span>
+            <span class="ft-desc">渲染进程 —— 你看到界面</span>
+            <div class="ft-children">
+              <div class="ft-file">
+                <span class="ft-name">App.tsx</span>
+                <span class="ft-desc">主应用组件</span>
+              </div>
+              <div class="ft-file">
+                <span class="ft-name">stores/</span>
+                <span class="ft-desc">状态管理（Zustand）</span>
+              </div>
+              <div class="ft-file">
+                <span class="ft-name">components/</span>
+                <span class="ft-desc">UI 组件</span>
+              </div>
+            </div>
+          </div>
+          <div class="ft-folder">
+            <span class="ft-name">src/preload/</span>
+            <span class="ft-desc">预加载脚本 —— 安全桥梁</span>
+          </div>
+          <div class="ft-folder">
+            <span class="ft-name">src/shared/</span>
+            <span class="ft-desc">共享代码 —— 主进程和渲染进程共用</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="screen animate-in">
+        <h2 class="screen-heading">角色 1: 主进程（Main Process）</h2>
+        <p>主进程是应用的"大脑"，它控制着一切底层操作。</p>
+
+        <div class="callout">
+          <div class="callout-icon">🧠</div>
+          <div class="callout-content">
+            <strong>什么是主进程？</strong>
+            <p>Electron 应用运行时会启动一个主进程，它拥有完整的操作系统访问权限。窗口管理、系统菜单、文件操作等都由它处理。</p>
+          </div>
+        </div>
+
+        <p>主进程负责的关键任务：</p>
+        <div class="step-cards">
+          <div class="step-card">
+            <div class="step-num">1</div>
+            <div class="step-body">
+              <strong>窗口管理</strong>
+              <p>创建和管理应用窗口，决定窗口的大小、位置和行为</p>
+            </div>
+          </div>
+          <div class="step-card">
+            <div class="step-num">2</div>
+            <div class="step-body">
+              <strong>系统菜单</strong>
+              <p>创建应用菜单（文件、编辑、视图等）</p>
+            </div>
+          </div>
+          <div class="step-card">
+            <div class="step-num">3</div>
+            <div class="step-body">
+              <strong>AI 服务集成</strong>
+              <p>与 Claude Code SDK 通信，处理 AI 对话</p>
+            </div>
+          </div>
+          <div class="step-card">
+            <div class="step-num">4</div>
+            <div class="step-body">
+              <strong>文件访问</strong>
+              <p>读取和写入本地文件，这是 Web 页面做不到的</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="screen animate-in">
+        <h2 class="screen-heading">角色 2: 渲染进程（Renderer Process）</h2>
+        <p>渲染进程就是你在窗口中看到的界面——所有按钮、输入框、聊天消息都在这里生成。</p>
+
+        <div class="callout callout-info">
+          <div class="callout-icon">🎨</div>
+          <div class="callout-content">
+            <strong>类比：剧院舞台</strong>
+            <p>如果主进程是后台导演，渲染进程就是舞台上的演员——它直接面对观众（用户），展示一切。</p>
+          </div>
+        </div>
+
+        <p>渲染进程的特点：</p>
+        <div class="icon-rows">
+          <div class="icon-row">
+            <div class="icon-circle" style="background: var(--color-actor-1)">🖥️</div>
+            <div>
+              <strong>基于 Web 技术</strong>
+              <p>使用 React、HTML、CSS 构建和渲染界面</p>
+            </div>
+          </div>
+          <div class="icon-row">
+            <div class="icon-circle" style="background: var(--color-actor-2)">🔒</div>
+            <div>
+              <strong>沙箱隔离</strong>
+              <p>运行在沙箱中，不能直接访问操作系统</p>
+            </div>
+          </div>
+          <div class="icon-row">
+            <div class="icon-circle" style="background: var(--color-actor-3)">📡</div>
+            <div>
+              <strong>通过 IPC 与主进程通信</strong>
+              <p>需要主进程帮助完成文件操作等任务</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="screen animate-in">
+        <h2 class="screen-heading">角色 3: Claude Code SDK</h2>
+        <p>SDK（软件开发工具包）是 Kite 与 AI 沟通的桥梁。</p>
+
+        <div class="translation-block">
+          <div class="translation-code">
+            <span class="translation-label">CODE</span>
+            <pre><code><span class="code-keyword">import</span> { ClaudeAgentSDK } <span class="code-keyword">from</span> <span class="code-string">'@anthropic-ai/claude-code'</span>
+
+<span class="code-keyword">const</span> agent = <span class="code-keyword">new</span> <span class="code-function">ClaudeAgentSDK</span>({
+  apiKey: config.<span class="code-property">apiKey</span>,
+  model: <span class="code-string">'claude-sonnet-4-20250514'</span>
+})</code></pre>
+          </div>
+          <div class="translation-english">
+            <span class="translation-label">通俗解释</span>
+            <p class="tl">从 Claude 的官方库导入 AI 代理工具</p>
+            <p class="tl">创建一个 AI 代理实例，配置 API 密钥和使用的模型</p>
+          </div>
+        </div>
+
+        <p>SDK 负责的核心功能：</p>
+        <div class="pattern-cards">
+          <div class="pattern-card">
+            <div class="pattern-icon">💬</div>
+            <h4 class="pattern-title">对话生成</h4>
+            <p class="pattern-desc">发送消息给 Claude AI，接收回复</p>
+          </div>
+          <div class="pattern-card">
+            <div class="pattern-icon">🛠️</div>
+            <h4 class="pattern-title">工具调用</h4>
+            <p class="pattern-desc">执行代码、读写文件、运行命令</p>
+          </div>
+          <div class="pattern-card">
+            <div class="pattern-icon">📡</div>
+            <h4 class="pattern-title">事件流</h4>
+            <p class="pattern-desc">实时推送 AI 的思考过程和工具执行</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="screen animate-in">
+        <h2 class="screen-heading">角色 4: 状态管理（Zustand）</h2>
+        <p>Zustand 是一个轻量级的状态管理库，用于在组件之间共享数据。</p>
+
+        <div class="callout callout-info">
+          <div class="callout-icon">📦</div>
+          <div class="callout-content">
+            <strong>什么是状态？</strong>
+            <p>状态就是应用中随时会变化的数据——比如当前聊天消息、用户设置、选中的对话等。</p>
+          </div>
+        </div>
+
+        <p>Kite 使用的主要状态存储：</p>
+        <div class="icon-rows">
+          <div class="icon-row">
+            <div class="icon-circle" style="background: var(--color-actor-1)">💬</div>
+            <div>
+              <strong>chat.store</strong>
+              <p>聊天消息、对话历史、当前会话</p>
+            </div>
+          </div>
+          <div class="icon-row">
+            <div class="icon-circle" style="background: var(--color-actor-2)">🗂️</div>
+            <div>
+              <strong>space.store</strong>
+              <p>工作空间管理、项目切换</p>
+            </div>
+          </div>
+          <div class="icon-row">
+            <div class="icon-circle" style="background: var(--color-actor-3)">⚙️</div>
+            <div>
+              <strong>app.store</strong>
+              <p>应用配置、主题设置、视图状态</p>
+            </div>
+          </div>
+          <div class="icon-row">
+            <div class="icon-circle" style="background: var(--color-actor-4)">🔧</div>
+            <div>
+              <strong>skills.store</strong>
+              <p>技能管理、自定义能力</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="screen animate-in">
+        <h2 class="screen-heading">小测验</h2>
+        <div class="quiz-container" id="quiz-2">
+          <div class="quiz-question-block" data-question="q1" data-correct="c">
+            <h3 class="quiz-question">以下哪个不是主进程负责的功能？</h3>
+            <div class="quiz-options">
+              <button class="quiz-option" data-value="a" onclick="selectOption(this)">
+                <div class="quiz-option-radio"></div>
+                <span>创建应用窗口</span>
+              </button>
+              <button class="quiz-option" data-value="b" onclick="selectOption(this)">
+                <div class="quiz-option-radio"></div>
+                <span>与 Claude AI 通信</span>
+              </button>
+              <button class="quiz-option" data-value="c" onclick="selectOption(this)">
+                <div class="quiz-option-radio"></div>
+                <span>渲染聊天界面</span>
+              </button>
+              <button class="quiz-option" data-value="d" onclick="selectOption(this)">
+                <div class="quiz-option-radio"></div>
+                <span>文件读写操作</span>
+              </button>
+            </div>
+            <div class="quiz-feedback" id="q1-feedback"></div>
+          </div>
+          <button class="quiz-check-btn" onclick="checkQuiz('quiz-2')">检查答案</button>
+          <button class="quiz-reset-btn" onclick="resetQuiz('quiz-2')">重试</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 模块 3: 通信机制 -->
+  <section class="module" id="module-3">
+    <div class="module-content">
+      <header class="module-header animate-in">
+        <span class="module-number">03</span>
+        <h1 class="module-title">组件之间如何对话</h1>
+        <p class="module-subtitle">IPC 通信与事件系统</p>
+      </header>
+
+      <div class="screen animate-in">
+        <h2 class="screen-heading">为什么需要通信？</h2>
+        <p>主进程和渲染进程运行在不同的上下文中，它们不能直接互相访问。当渲染进程需要执行文件操作或调用 AI 时，必须请求主进程帮忙。</p>
+
+        <div class="callout">
+          <div class="callout-icon">🏦</div>
+          <div class="callout-content">
+            <strong>类比：银行柜台</strong>
+            <p>就像你（渲染进程）不能直接打开保险库，需要通过柜员（IPC）请求主进程帮你完成。这就是为什么需要 IPC（进程间通信）。</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="screen animate-in">
+        <h2 class="screen-heading">IPC 通信流程</h2>
+        <p>当你在 Kite 中发送一条消息时，这个过程是如何工作的：</p>
+
+        <div class="flow-animation">
+          <div class="flow-actors">
+            <div class="flow-actor" id="flow-actor-1">
+              <div class="flow-actor-icon" style="background: var(--color-actor-1)">🎨</div>
+              <span>渲染进程</span>
+            </div>
+            <div class="flow-actor" id="flow-actor-2">
+              <div class="flow-actor-icon" style="background: var(--color-actor-2)">⚡</div>
+              <span>IPC 桥接</span>
+            </div>
+            <div class="flow-actor" id="flow-actor-3">
+              <div class="flow-actor-icon" style="background: var(--color-actor-3)">🧠</div>
+              <span>主进程</span>
+            </div>
+            <div class="flow-actor" id="flow-actor-4">
+              <div class="flow-actor-icon" style="background: var(--color-actor-4)">🤖</div>
+              <span>Claude SDK</span>
+            </div>
+          </div>
+          <div class="flow-packet" id="flow-packet"></div>
+          <div class="flow-step-label" id="flow-label">点击"下一步"开始探索</div>
+          <div class="flow-controls">
+            <button onclick="flowNext()">下一步</button>
+            <button onclick="flowReset()">重新开始</button>
+            <span class="flow-progress" id="flow-progress">步骤 0 / 5</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="screen animate-in">
+        <h2 class="screen-heading">真实代码：消息发送</h2>
+        <p>看看当用户发送消息时，实际的代码是如何工作的：</p>
+
+        <div class="translation-block">
+          <div class="translation-code">
+            <span class="translation-label">CODE</span>
+            <pre><code><span class="code-comment">// 渲染进程：发送消息给主进程</span>
+<span class="code-keyword">const</span> response = <span class="code-keyword">await</span> <span class="code-function">api</span>.<span class="code-function">sendMessage</span>({
+  spaceId: <span class="code-string">'workspace-1'</span>,
+  conversationId: <span class="code-string">'chat-123'</span>,
+  message: <span class="code-string">'帮我写一个 hello world'</span>
+})</code></pre>
+          </div>
+          <div class="translation-english">
+            <span class="translation-label">通俗解释</span>
+            <p class="tl">调用 API 的 sendMessage 方法</p>
+            <p class="tl">传递当前工作空间 ID，告诉 AI 在哪个项目里工作</p>
+            <p class="tl">传递当前对话 ID，标记这是哪一次对话</p>
+            <p class="tl">用户输入的具体内容——AI 需要理解的需求</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="screen animate-in">
+        <h2 class="screen-heading">IPC 处理器（主进程端）</h2>
+        <p>主进程监听这些请求并处理：</p>
+
+        <div class="translation-block">
+          <div class="translation-code">
+            <span class="translation-label">CODE</span>
+            <pre><code><span class="code-comment">// 主进程：注册消息处理器</span>
+ipcMain.<span class="code-function">handle</span>(
+  <span class="code-string">'agent:send-message'</span>,
+  <span class="code-keyword">async</span> (event, request) => {
+    <span class="code-keyword">const</span> result = <span class="code-keyword">await</span> agentController.<span class="code-function">sendMessage</span>(
+      mainWindow,
+      request
+    )
+    <span class="code-keyword">return</span> result
+  }
+)</code></pre>
+          </div>
+          <div class="translation-english">
+            <span class="translation-label">通俗解释</span>
+            <p class="tl">告诉 Electron："当我收到 'agent:send-message' 请求时..."</p>
+            <p class="tl">这是一个异步处理器，等待 AI 处理完成</p>
+            <p class="tl">调用 agentController 来处理实际的 AI 逻辑</p>
+            <p class="tl">返回结果给渲染进程</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="screen animate-in">
+        <h2 class="screen-heading">事件系统</h2>
+        <p>除了请求-响应模式，Kite 还使用<span class="term" data-definition="事件是一种通知机制，当某个动作发生时自动通知订阅者。比如'新消息到达'事件，订阅者会立即收到通知。">事件</span>进行实时通信：</p>
+
+        <div class="chat-window">
+          <div class="chat-header">AI 事件流示例</div>
+          <div class="chat-messages" id="chat-messages">
+            <div class="chat-message" data-msg="0" data-sender="ai" style="display:none">
+              <div class="chat-avatar" style="background: var(--color-actor-3)">🤖</div>
+              <div class="chat-bubble">
+                <span class="chat-sender" style="color: var(--color-actor-3)">AI</span>
+                <p>我正在思考如何帮你...</p>
+              </div>
+            </div>
+            <div class="chat-message" data-msg="1" data-sender="system" style="display:none">
+              <div class="chat-avatar" style="background: var(--color-actor-4)">⚡</div>
+              <div class="chat-bubble">
+                <span class="chat-sender" style="color: var(--color-actor-4)">系统</span>
+                <p>正在搜索相关文件...</p>
+              </div>
+            </div>
+            <div class="chat-message" data-msg="2" data-sender="tool" style="display:none">
+              <div class="chat-avatar" style="background: var(--color-actor-2)">🛠️</div>
+              <div class="chat-bubble">
+                <span class="chat-sender" style="color: var(--color-actor-2)">工具</span>
+                <p>正在读取 src/index.ts</p>
+              </div>
+            </div>
+            <div class="chat-message" data-msg="3" data-sender="ai" style="display:none">
+              <div class="chat-avatar" style="background: var(--color-actor-3)">🤖</div>
+              <div class="chat-bubble">
+                <span class="chat-sender" style="color: var(--color-actor-3)">AI</span>
+                <p>我明白了！这个文件负责应用入口...</p>
+              </div>
+            </div>
+          </div>
+          <div class="chat-typing" id="chat-typing" style="display:none">
+            <div class="chat-avatar" id="typing-avatar" style="background: var(--color-actor-3)">?</div>
+            <div class="chat-typing-dots">
+              <span class="typing-dot"></span>
+              <span class="typing-dot"></span>
+              <span class="typing-dot"></span>
+            </div>
+          </div>
+          <div class="chat-controls">
+            <button onclick="playChatNext()">下一条</button>
+            <button onclick="playChatAll()">全部播放</button>
+            <button onclick="resetChat()">重播</button>
+            <span id="chat-progress">0 / 4 条消息</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="screen animate-in">
+        <h2 class="screen-heading">小测验</h2>
+        <div class="quiz-container" id="quiz-3">
+          <div class="quiz-question-block" data-question="q1" data-correct="b">
+            <h3 class="quiz-question">为什么渲染进程不能直接读写文件？</h3>
+            <div class="quiz-options">
+              <button class="quiz-option" data-value="a" onclick="selectOption(this)">
+                <div class="quiz-option-radio"></div>
+                <span>渲染进程不支持文件 API</span>
+              </button>
+              <button class="quiz-option" data-value="b" onclick="selectOption(this)">
+                <div class="quiz-option-radio"></div>
+                <span>出于安全考虑，渲染进程运行在沙箱中隔离</span>
+              </button>
+              <button class="quiz-option" data-value="c" onclick="selectOption(this)">
+                <div class="quiz-option-radio"></div>
+                <span>Electron 不允许这样做</span>
+              </button>
+            </div>
+            <div class="quiz-feedback" id="q1-feedback"></div>
+          </div>
+          <button class="quiz-check-btn" onclick="checkQuiz('quiz-3')">检查答案</button>
+          <button class="quiz-reset-btn" onclick="resetQuiz('quiz-3')">重试</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 模块 4: AI Agent 工作原理 -->
+  <section class="module" id="module-4">
+    <div class="module-content">
+      <header class="module-header animate-in">
+        <span class="module-number">04</span>
+        <h1 class="module-title">AI Agent 的运作方式</h1>
+        <p class="module-subtitle">消息如何变成 AI 的响应</p>
+      </header>
+
+      <div class="screen animate-in">
+        <h2 class="screen-heading">从消息到响应</h2>
+        <p>当你发送一条消息给 Kite，AI 是如何工作的？整个过程就像点外卖：</p>
+
+        <div class="step-cards">
+          <div class="step-card">
+            <div class="step-num">1</div>
+            <div class="step-body">
+              <strong>你下单（发送消息）</strong>
+              <p>"帮我创建一个待办事项应用"</p>
+            </div>
+          </div>
+          <div class="step-card">
+            <div class="step-num">2</div>
+            <div class="step-body">
+              <strong>餐厅接单（Claude 理解需求）</strong>
+              <p>AI 分析你的需求，制定"菜谱"——需要哪些文件、什么功能</p>
+            </div>
+          </div>
+          <div class="step-card">
+            <div class="step-num">3</div>
+            <div class="step-body">
+              <strong>厨房做菜（执行工具）</strong>
+              <p>AI 调用工具——读写文件、运行命令、生成代码</p>
+            </div>
+          </div>
+          <div class="step-card">
+            <div class="step-num">4</div>
+            <div class="step-body">
+              <strong>送餐上门（返回结果）</strong>
+              <p>通过事件系统实时推送进度和结果</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="screen animate-in">
+        <h2 class="screen-heading">Agent 的"工具箱"</h2>
+        <p>Claude Agent 并不是只会说话，它能执行各种操作：</p>
+
+        <div class="pattern-cards">
+          <div class="pattern-card">
+            <div class="pattern-icon">📝</div>
+            <h4 class="pattern-title">读写文件</h4>
+            <p class="pattern-desc">创建、修改、读取项目文件</p>
+          </div>
+          <div class="pattern-card">
+            <div class="pattern-icon">💻</div>
+            <h4 class="pattern-title">执行命令</h4>
+            <p class="pattern-desc">运行终端命令，如 git、npm、python</p>
+          </div>
+          <div class="pattern-card">
+            <div class="pattern-icon">🔍</div>
+            <h4 class="pattern-title">搜索代码</h4>
+            <p class="pattern-desc">在项目中查找特定代码或内容</p>
+          </div>
+          <div class="pattern-card">
+            <div class="pattern-icon">🌐</div>
+            <h4 class="pattern-title">网络请求</h4>
+            <p class="pattern-desc">访问 API、获取网页内容</p>
+          </div>
+          <div class="pattern-card">
+            <div class="pattern-icon">🎨</div>
+            <h4 class="pattern-title">浏览器操作</h4>
+            <p class="pattern-desc">截图、点击、填表等</p>
+          </div>
+          <div class="pattern-card">
+            <div class="pattern-icon">📦</div>
+            <h4 class="pattern-title">MCP 工具</h4>
+            <p class="pattern-desc">通过 MCP 协议扩展更多能力</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="screen animate-in">
+        <h2 class="screen-heading">消息流程服务</h2>
+        <p><span class="term" data-definition="message-flow.service.ts 是核心服务文件，负责管理 AI 对话的全流程——从接收消息、调用 SDK、到返回响应的完整链路。">message-flow.service.ts</span> 是最关键的文件之一，它管理整个对话流程：</p>
+
+        <div class="translation-block">
+          <div class="translation-code">
+            <span class="translation-label">CODE</span>
+            <pre><code><span class="code-comment">// 消息流程的核心循环</span>
+<span class="code-keyword">async</span> <span class="code-function">processMessage</span>(request: SendMessageRequest) {
+  <span class="code-comment">// 1. 验证和准备</span>
+  <span class="code-keyword">const</span> session = <span class="code-keyword">await</span> <span class="code-function">getOrCreateSession</span>(...)
+
+  <span class="code-comment">// 2. 发送给 Claude</span>
+  <span class="code-keyword">const</span> stream = <span class="code-keyword">await</span> session.<span class="code-function">sendMessage</span>(request.message)
+
+  <span class="code-comment">// 3. 处理响应</span>
+  <span class="code-keyword">for await</span> (<span class="code-keyword">const</span> event <span class="code-keyword">of</span> stream) {
+    <span class="code-keyword">await</span> <span class="code-function">handleEvent</span>(event, mainWindow)
+  }
+}</code></pre>
+          </div>
+          <div class="translation-english">
+            <span class="translation-label">通俗解释</span>
+            <p class="tl">获取或创建一个对话会话</p>
+            <p class="tl">把用户消息发送给 Claude，得到一个"流"——数据会陆续到来</p>
+            <p class="tl">循环处理每个事件（思考、工具调用、响应等），实时更新界面</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="screen animate-in">
+        <h2 class="screen-heading">Skills 技能系统</h2>
+        <p>Kite 的强大之处在于<span class="term" data-definition="技能（Skill）是一组预定义的指令和能力，让 AI 在特定场景下表现更好。比如'代码审查技能'告诉 AI 如何做专业的代码审查。">技能（Skills）</span>系统：</p>
+
+        <div class="callout">
+          <div class="callout-icon">🧰</div>
+          <div class="callout-content">
+            <strong>什么是技能？</strong>
+            <p>技能就像给 AI 添加的专业工具箱。每个技能包含指令、示例和最佳实践，让 AI 在特定任务上表现更专业。</p>
+          </div>
+        </div>
+
+        <p>Kite 内置的技能类型：</p>
+        <div class="icon-rows">
+          <div class="icon-row">
+            <div class="icon-circle" style="background: var(--color-actor-1)">🔍</div>
+            <div>
+              <strong>代码审查技能</strong>
+              <p>专业的代码分析和建议</p>
+            </div>
+          </div>
+          <div class="icon-row">
+            <div class="icon-circle" style="background: var(--color-actor-2)">🎨</div>
+            <div>
+              <strong>前端开发技能</strong>
+              <p>React、样式、组件设计</p>
+            </div>
+          </div>
+          <div class="icon-row">
+            <div class="icon-circle" style="background: var(--color-actor-3)">📊</div>
+            <div>
+              <strong>数据分析技能</strong>
+              <p>处理文件、生成图表</p>
+            </div>
+          </div>
+          <div class="icon-row">
+            <div class="icon-circle" style="background: var(--color-actor-4)">🌐</div>
+            <div>
+              <strong>MCP 服务</strong>
+              <p>通过 Model Context Protocol 扩展能力</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="screen animate-in">
+        <h2 class="screen-heading">小测验</h2>
+        <div class="quiz-container" id="quiz-4">
+          <div class="quiz-question-block" data-question="q1" data-correct="b">
+            <h3 class="quiz-question">当你让 Kite 创建文件时，它实际上是通过什么来完成的？</h3>
+            <div class="quiz-options">
+              <button class="quiz-option" data-value="a" onclick="selectOption(this)">
+                <div class="quiz-option-radio"></div>
+                <span>直接由渲染进程写入文件系统</span>
+              </button>
+              <button class="quiz-option" data-value="b" onclick="selectOption(this)">
+                <div class="quiz-option-radio"></div>
+                <span>Claude Agent 调用工具，主进程执行实际的文件操作</span>
+              </button>
+              <button class="quiz-option" data-value="c" onclick="selectOption(this)">
+                <div class="quiz-option-radio"></div>
+                <span>Claude 直接与文件系统通信</span>
+              </button>
+            </div>
+            <div class="quiz-feedback" id="q1-feedback"></div>
+          </div>
+          <button class="quiz-check-btn" onclick="checkQuiz('quiz-4')">检查答案</button>
+          <button class="quiz-reset-btn" onclick="resetQuiz('quiz-4')">重试</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 模块 5: 架构亮点 -->
+  <section class="module" id="module-5">
+    <div class="module-content">
+      <header class="module-header animate-in">
+        <span class="module-number">05</span>
+        <h1 class="module-title">架构设计亮点</h1>
+        <p class="module-subtitle">让应用快速、稳定、易维护的设计</p>
+      </header>
+
+      <div class="screen animate-in">
+        <h2 class="screen-heading">分段初始化</h2>
+        <p>Kite 使用<span class="term" data-definition="分阶段初始化是一种启动优化策略。先加载最核心的功能让界面立即可用，再在后台加载扩展功能，避免用户等待。">分阶段初始化</span>，确保应用启动速度：</p>
+
+        <div class="flow-steps">
+          <div class="flow-step">
+            <div class="step-num">1</div>
+            <p>基础服务</p>
+          </div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step">
+            <div class="step-num">2</div>
+            <p>窗口显示</p>
+          </div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step">
+            <div class="step-num">3</div>
+            <p>扩展服务</p>
+          </div>
+        </div>
+
+        <div class="callout callout-info">
+          <div class="callout-icon">⚡</div>
+          <div class="callout-content">
+            <strong>为什么这样做？</strong>
+            <p>用户最关心的是"能用了没"。先显示界面，再加载复杂功能，让感知速度更快。</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="screen animate-in">
+        <h2 class="screen-heading">懒加载</h2>
+        <p>Kite 使用<span class="term" data-definition="懒加载是一种优化技术，延迟加载不是立即需要的组件，直到用户真正用到时才加载，减少初始加载时间。">懒加载</span>来减少初始加载时间：</p>
+
+        <div class="translation-block">
+          <div class="translation-code">
+            <span class="translation-label">CODE</span>
+            <pre><code><span class="code-comment">// App.tsx 中的懒加载</span>
+<span class="code-keyword">const</span> SpacePage = <span class="code-function">lazy</span>(
+  () => <span class="code-function">import</span>(<span class="code-string">'./pages/SpacePage'</span>)
+)
+
+<span class="code-keyword">const</span> UnifiedPage = <span class="code-function">lazy</span>(
+  () => <span class="code-function">import</span>(<span class="code-string">'./pages/UnifiedPage'</span>)
+)
+
+<span class="code-keyword">const</span> SettingsPage = <span class="code-function">lazy</span>(
+  () => <span class="code-function">import</span>(<span class="code-string">'./pages/SettingsPage'</span>)
+)</code></pre>
+          </div>
+          <div class="translation-english">
+            <span class="translation-label">通俗解释</span>
+            <p class="tl">使用 React 的 lazy 函数延迟导入</p>
+            <p class="tl">这些页面组件不会在应用启动时加载</p>
+            <p class="tl">只有当用户真正访问这些页面时才会加载</p>
+            <p class="tl">大幅减少首次打开应用的时间</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="screen animate-in">
+        <h2 class="screen-heading">安全设计</h2>
+        <p>Kite 采用多层安全措施保护用户：</p>
+
+        <div class="icon-rows">
+          <div class="icon-row">
+            <div class="icon-circle" style="background: var(--color-actor-1)">🔒</div>
+            <div>
+              <strong>上下文隔离</strong>
+              <p>渲染进程和 Node.js 完全隔离，防止恶意网页代码</p>
+            </div>
+          </div>
+          <div class="icon-row">
+            <div class="icon-circle" style="background: var(--color-actor-2)">🛡️</div>
+            <div>
+              <strong>预加载脚本桥接</strong>
+              <p>通过安全的 channel 与主进程通信</p>
+            </div>
+          </div>
+          <div class="icon-row">
+            <div class="icon-circle" style="background: var(--color-actor-3)">📁</div>
+            <div>
+              <strong>资源访问控制</strong>
+              <p>AI 只能访问工作目录下的文件，防止越权访问</p>
+            </div>
+          </div>
+          <div class="icon-row">
+            <div class="icon-circle" style="background: var(--color-actor-4)">⏸️</div>
+            <div>
+              <strong>工具执行审批</strong>
+              <p>敏感操作需要用户确认才能执行</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="screen animate-in">
+        <h2 class="screen-heading">工作空间隔离</h2>
+        <p>Kite 支持<span class="term" data-definition="工作空间（Space）是一个独立的项目环境，包含自己的文件、对话历史和配置。多工作空间让用户在不同项目间切换而不互相干扰。">多工作空间</span>，每个项目互不干扰：</p>
+
+        <div class="pattern-cards">
+          <div class="pattern-card">
+            <div class="pattern-icon">📂</div>
+            <h4 class="pattern-title">项目 A 工作空间</h4>
+            <p class="pattern-desc">独立文件、对话历史和 AI 配置</p>
+          </div>
+          <div class="pattern-card">
+            <div class="pattern-icon">📂</div>
+            <h4 class="pattern-title">项目 B 工作空间</h4>
+            <p class="pattern-desc">另一个项目的完整环境</p>
+          </div>
+          <div class="pattern-card">
+            <div class="pattern-icon">☁️</div>
+            <h4 class="pattern-title">临时空间</h4>
+            <p class="pattern-desc">快速尝试不需要保存的项目</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="screen animate-in">
+        <h2 class="screen-heading">总结：整体架构</h2>
+        <div class="callout">
+          <div class="callout-icon">🎯</div>
+          <div class="callout-content">
+            <strong>核心要点回顾</strong>
+            <p>你现在了解了：主进程和渲染进程的分工、IPC 通信机制、AI Agent 的工作方式、Skills 技能系统，以及 Kite 的关键设计亮点。</p>
+          </div>
+        </div>
+
+        <p>当你在使用 Kite 时，背后发生的事情：</p>
+        <div class="step-cards">
+          <div class="step-card">
+            <div class="step-num">1</div>
+            <div class="step-body">
+              <strong>你的消息被发送到主进程</strong>
+              <p>渲染进程通过 IPC 发送请求</p>
+            </div>
+          </div>
+          <div class="step-card">
+            <div class="step-num">2</div>
+            <div class="step-body">
+              <strong>主进程调用 Claude SDK</strong>
+              <p>AI 开始分析和规划</p>
+            </div>
+          </div>
+          <div class="step-card">
+            <div class="step-num">3</div>
+            <div class="step-body">
+              <strong>AI 执行各种工具</strong>
+              <p>读写文件、运行命令、搜索代码</p>
+            </div>
+          </div>
+          <div class="step-card">
+            <div class="step-num">4</div>
+            <div class="step-body">
+              <strong>实时更新界面</strong>
+              <p>通过事件系统推送到渲染进程</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="screen animate-in">
+        <h2 class="screen-heading">最终测验</h2>
+        <div class="quiz-container" id="quiz-5">
+          <div class="quiz-question-block" data-question="q1" data-correct="a">
+            <h3 class="quiz-question">如果你想让 AI 在特定场景下表现更好（如代码审查），应该使用什么功能？</h3>
+            <div class="quiz-options">
+              <button class="quiz-option" data-value="a" onclick="selectOption(this)">
+                <div class="quiz-option-radio"></div>
+                <span>Skills 技能系统</span>
+              </button>
+              <button class="quiz-option" data-value="b" onclick="selectOption(this)">
+                <div class="quiz-option-radio"></div>
+                <span>多工作空间</span>
+              </button>
+              <button class="quiz-option" data-value="c" onclick="selectOption(this)">
+                <div class="quiz-option-radio"></div>
+                <span>懒加载</span>
+              </button>
+            </div>
+            <div class="quiz-feedback" id="q1-feedback"></div>
+          </div>
+          <button class="quiz-check-btn" onclick="checkQuiz('quiz-5')">检查答案</button>
+          <button class="quiz-reset-btn" onclick="resetQuiz('quiz-5')">重试</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <script>
+    // 滚动动画
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('visible');
+          observer.unobserve(entry.target);
+        }
+      });
+    }, { rootMargin: '0px 0px -10% 0px', threshold: 0.1 });
+
+    document.querySelectorAll('.animate-in').forEach(el => observer.observe(el));
+
+    // 进度条
+    const progressBar = document.querySelector('.progress-bar');
+    const navDots = document.querySelectorAll('.nav-dot');
+    const modules = document.querySelectorAll('.module');
+
+    function updateProgress() {
+      const scrollTop = window.scrollY;
+      const scrollHeight = document.documentElement.scrollHeight - window.innerHeight;
+      const progress = (scrollTop / scrollHeight) * 100;
+      progressBar.style.width = progress + '%';
+
+      // 更新 nav dots
+      let currentModule = 0;
+      modules.forEach((module, index) => {
+        const rect = module.getBoundingClientRect();
+        if (rect.top < window.innerHeight / 2) {
+          currentModule = index;
+        }
+      });
+
+      navDots.forEach((dot, index) => {
+        dot.classList.remove('current');
+        if (index === currentModule) {
+          dot.classList.add('current');
+        }
+      });
+    }
+
+    window.addEventListener('scroll', () => {
+      requestAnimationFrame(updateProgress);
+    }, { passive: true });
+
+    // 导航点击
+    navDots.forEach(dot => {
+      dot.addEventListener('click', () => {
+        const target = document.getElementById(dot.dataset.target);
+        if (target) {
+          target.scrollIntoView({ behavior: 'smooth' });
+        }
+      });
+    });
+
+    // Tooltips
+    let activeTooltip = null;
+
+    function positionTooltip(term, tip) {
+      const rect = term.getBoundingClientRect();
+      const tipWidth = 300;
+      let left = rect.left + rect.width / 2 - tipWidth / 2;
+      left = Math.max(8, Math.min(left, window.innerWidth - tipWidth - 8));
+
+      let top = rect.top - 8;
+      tip.style.left = left + 'px';
+
+      document.body.appendChild(tip);
+      const tipHeight = tip.offsetHeight;
+      if (rect.top - tipHeight - 8 < 0) {
+        tip.style.top = (rect.bottom + 8) + 'px';
+        tip.classList.add('flip');
+      } else {
+        tip.style.top = (rect.top - tipHeight - 8) + 'px';
+        tip.classList.remove('flip');
+      }
+    }
+
+    document.querySelectorAll('.term').forEach(term => {
+      const tip = document.createElement('span');
+      tip.className = 'term-tooltip';
+      tip.textContent = term.dataset.definition;
+
+      term.addEventListener('mouseenter', () => {
+        if (activeTooltip && activeTooltip !== tip) {
+          activeTooltip.classList.remove('visible');
+          activeTooltip.remove();
+        }
+        positionTooltip(term, tip);
+        requestAnimationFrame(() => tip.classList.add('visible'));
+        activeTooltip = tip;
+      });
+
+      term.addEventListener('mouseleave', () => {
+        tip.classList.remove('visible');
+        setTimeout(() => { if (!tip.classList.contains('visible')) tip.remove(); }, 150);
+        activeTooltip = null;
+      });
+
+      term.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (tip.classList.contains('visible')) {
+          tip.classList.remove('visible');
+          tip.remove();
+          activeTooltip = null;
+        } else {
+          if (activeTooltip && activeTooltip !== tip) {
+            activeTooltip.classList.remove('visible');
+            activeTooltip.remove();
+          }
+          positionTooltip(term, tip);
+          requestAnimationFrame(() => tip.classList.add('visible'));
+          activeTooltip = tip;
+        }
+      });
+    });
+
+    document.addEventListener('click', () => {
+      if (activeTooltip) {
+        activeTooltip.classList.remove('visible');
+        activeTooltip.remove();
+        activeTooltip = null;
+      }
+    });
+
+    // Quiz
+    window.selectOption = function(btn) {
+      const block = btn.closest('.quiz-question-block');
+      block.querySelectorAll('.quiz-option').forEach(o => o.classList.remove('selected'));
+      btn.classList.add('selected');
+    };
+
+    window.checkQuiz = function(sectionId) {
+      const container = document.getElementById(sectionId);
+      const questions = container.querySelectorAll('.quiz-question-block');
+
+      questions.forEach(q => {
+        const selected = q.querySelector('.quiz-option.selected');
+        const feedback = q.querySelector('.quiz-feedback');
+        const correctValue = q.dataset.correct;
+
+        if (!selected) {
+          feedback.textContent = '请先选择一个答案！';
+          feedback.className = 'quiz-feedback show error';
+          return;
+        }
+
+        if (selected.dataset.value === correctValue) {
+          selected.classList.add('correct');
+          feedback.innerHTML = '<strong>正确！</strong> 太棒了！你对 Kite 的理解很深入。';
+          feedback.className = 'quiz-feedback show success';
+        } else {
+          selected.classList.add('incorrect');
+          q.querySelector(`[data-value="${correctValue}"]`).classList.add('correct');
+          feedback.innerHTML = '<strong>不太对。</strong> 想想这个章节讲的内容，再试一次！';
+          feedback.className = 'quiz-feedback show error';
+        }
+
+        q.querySelectorAll('.quiz-option').forEach(o => o.classList.add('disabled'));
+      });
+    };
+
+    window.resetQuiz = function(sectionId) {
+      const container = document.getElementById(sectionId);
+      container.querySelectorAll('.quiz-option').forEach(o => {
+        o.classList.remove('selected', 'correct', 'incorrect', 'disabled');
+      });
+      container.querySelectorAll('.quiz-feedback').forEach(f => {
+        f.className = 'quiz-feedback';
+        f.textContent = '';
+      });
+    };
+
+    // Flow animation
+    const flowSteps = [
+      { highlight: 'flow-actor-1', label: '你输入消息："帮我创建一个网页"' },
+      { highlight: 'flow-actor-1', label: '渲染进程接收你的输入' },
+      { highlight: 'flow-actor-2', label: '通过 IPC 发送到主进程', packet: true },
+      { highlight: 'flow-actor-3', label: '主进程调用 Claude AI' },
+      { highlight: 'flow-actor-4', label: 'Claude 分析需求并执行工具', packet: true },
+      { highlight: 'flow-actor-3', label: '主进程获取 AI 响应' },
+      { highlight: 'flow-actor-2', label: '通过 IPC 返回结果', packet: true },
+      { highlight: 'flow-actor-1', label: '渲染进程更新界面显示结果' }
+    ];
+
+    let flowStep = 0;
+
+    window.flowNext = function() {
+      if (flowStep >= flowSteps.length) return;
+
+      document.querySelectorAll('.flow-actor').forEach(a => a.classList.remove('active'));
+      const packet = document.getElementById('flow-packet');
+      packet.classList.remove('active');
+
+      const step = flowSteps[flowStep];
+      document.getElementById(step.highlight).classList.add('active');
+      if (step.packet) packet.classList.add('active');
+
+      document.getElementById('flow-label').textContent = step.label;
+      document.getElementById('flow-progress').textContent = `步骤 ${flowStep + 1} / ${flowSteps.length}`;
+
+      flowStep++;
+    };
+
+    window.flowReset = function() {
+      flowStep = 0;
+      document.querySelectorAll('.flow-actor').forEach(a => a.classList.remove('active'));
+      document.getElementById('flow-packet').classList.remove('active');
+      document.getElementById('flow-label').textContent = '点击"下一步"开始探索';
+      document.getElementById('flow-progress').textContent = '步骤 0 / 8';
+    };
+
+    // Chat animation
+    const chatActors = {
+      'ai': { initials: '🤖', color: 'var(--color-actor-3)' },
+      'system': { initials: '⚡', color: 'var(--color-actor-4)' },
+      'tool': { initials: '🛠️', color: 'var(--color-actor-2)' }
+    };
+
+    let chatIndex = 0;
+    const chatMessages = document.querySelectorAll('#chat-messages .chat-message');
+
+    window.playChatNext = function() {
+      if (chatIndex >= chatMessages.length) return;
+
+      const msg = chatMessages[chatIndex];
+      const sender = msg.dataset.sender;
+      const typing = document.getElementById('chat-typing');
+      const avatar = document.getElementById('typing-avatar');
+
+      avatar.textContent = chatActors[sender].initials;
+      avatar.style.background = chatActors[sender].color;
+      typing.style.display = 'flex';
+
+      setTimeout(() => {
+        typing.style.display = 'none';
+        msg.style.display = 'flex';
+        chatIndex++;
+        document.getElementById('chat-progress').textContent = `${chatIndex} / ${chatMessages.length} 条消息`;
+      }, 800);
+    };
+
+    window.playChatAll = function() {
+      const interval = setInterval(() => {
+        if (chatIndex >= chatMessages.length) {
+          clearInterval(interval);
+          return;
+        }
+        playChatNext();
+      }, 1200);
+    };
+
+    window.resetChat = function() {
+      chatIndex = 0;
+      chatMessages.forEach(m => m.style.display = 'none');
+      document.getElementById('chat-typing').style.display = 'none';
+      document.getElementById('chat-progress').textContent = `0 / ${chatMessages.length} 条消息`;
+    };
+
+    // 初始化 stagger
+    document.querySelectorAll('.stagger-children').forEach(parent => {
+      Array.from(parent.children).forEach((child, i) => {
+        child.style.setProperty('--stagger-index', i);
+      });
+    });
+  </script>
+</body>
+</html>
