@@ -99,6 +99,8 @@ describe('UnifiedSidebar structure', () => {
       />
     )
 
+    expect(html).toContain('Space A')
+    expect(html).toContain('Space B')
     expect(html).toContain('conv-1')
     expect(html).not.toContain('conv-3')
     expect(html).toContain('aria-controls="space-panel-space-a"')
