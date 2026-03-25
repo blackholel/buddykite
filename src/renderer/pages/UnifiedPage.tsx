@@ -525,9 +525,13 @@ export function UnifiedPage() {
             >
               <div className="drag-region flex-shrink-0 h-10 border-b border-border/60 bg-background/95">
                 <div className="h-full px-2 pr-16 flex items-start gap-2">
-                  <div className="no-drag min-w-0 flex-1 h-full flex items-start">
-                    {hasCanvasTabs ? <div className="min-w-0 flex-1"><CanvasTabBar /></div> : null}
-                  </div>
+                  {hasCanvasTabs ? (
+                    <div className="no-drag min-w-0 flex-1 h-full flex items-start">
+                      <div className="min-w-0 flex-1"><CanvasTabBar /></div>
+                    </div>
+                  ) : (
+                    <div className="min-w-0 flex-1 h-full" />
+                  )}
                 </div>
               </div>
 

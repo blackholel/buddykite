@@ -19,9 +19,10 @@ import { SearchPanel } from './components/search/SearchPanel'
 import { SearchHighlightBar } from './components/search/SearchHighlightBar'
 import { OnboardingOverlay } from './components/onboarding'
 import { UpdateNotification } from './components/updater/UpdateNotification'
-import { WindowDragStrip } from './components/layout/WindowDragStrip'
+import { WindowDragStrip, shouldShowWindowDragStrip } from './components/layout/WindowDragStrip'
 import { api } from './api'
 import { isElectron } from './api/transport'
+import { getPlatformInfo } from './utils/window-chrome'
 import { shallow } from 'zustand/shallow'
 import type {
   AgentEventBase,
@@ -661,11 +662,15 @@ export default function App() {
 
   const viewContent = renderView()
   const inElectron = isElectron()
-  const usePageTopBar = view === 'home' || view === 'unified' || view === 'space'
+  const shouldUseGlobalDragStrip = shouldShowWindowDragStrip({
+    view,
+    platform: getPlatformInfo(),
+    inElectron
+  })
 
   return (
     <div className="h-screen w-screen overflow-hidden bg-background">
-      {inElectron && !usePageTopBar ? (
+      {shouldUseGlobalDragStrip ? (
         <div className="h-full w-full flex flex-col">
           <WindowDragStrip />
           <div className="flex-1 min-h-0">

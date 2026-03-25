@@ -14,29 +14,39 @@ function createPlatform(overrides: Partial<PlatformInfo>): PlatformInfo {
 }
 
 describe('window-drag-strip visibility', () => {
-  it('Electron 桌面端在所有平台与视图都显示拖拽条', () => {
-    const platforms: PlatformInfo[] = [
-      createPlatform({ platform: 'win32', isWindows: true, isLinux: false }),
-      createPlatform({ platform: 'darwin', isMac: true, isLinux: false }),
-      createPlatform({ platform: 'linux', isLinux: true })
-    ]
+  it('Windows Electron 在核心工作视图显示拖拽条（与 App 顶层判定保持一致）', () => {
+    const windows = createPlatform({ platform: 'win32', isWindows: true, isLinux: false })
     const visibleViews: AppView[] = ['gitBashSetup', 'home', 'space', 'unified', 'settings']
 
-    for (const platform of platforms) {
-      for (const view of visibleViews) {
-        expect(shouldShowWindowDragStrip({
-          view,
-          platform,
-          inElectron: true
-        })).toBe(true)
-      }
+    for (const view of visibleViews) {
+      expect(shouldShowWindowDragStrip({
+        view,
+        platform: windows,
+        inElectron: true
+      })).toBe(true)
     }
+  })
+
+  it('splash 视图不显示拖拽条', () => {
+    expect(shouldShowWindowDragStrip({
+      view: 'splash',
+      platform: createPlatform({ platform: 'win32', isWindows: true, isLinux: false }),
+      inElectron: true
+    })).toBe(false)
+  })
+
+  it('非 Windows 平台不显示拖拽条', () => {
+    expect(shouldShowWindowDragStrip({
+      view: 'home',
+      platform: createPlatform({ platform: 'darwin', isMac: true, isLinux: false }),
+      inElectron: true
+    })).toBe(false)
   })
 
   it('非 Electron 不显示拖拽条', () => {
     expect(shouldShowWindowDragStrip({
       view: 'home',
-      platform: createPlatform({ platform: 'darwin', isMac: true, isLinux: false }),
+      platform: createPlatform({ platform: 'win32', isWindows: true, isLinux: false }),
       inElectron: false
     })).toBe(false)
   })

@@ -1,19 +1,24 @@
 import { isElectron } from '../../api/transport'
 import type { AppView } from '../../types'
-import { getWindowChromeInsets, type PlatformInfo } from '../../utils/window-chrome'
+import { getPlatformInfo, getWindowChromeInsets, type PlatformInfo } from '../../utils/window-chrome'
 
 const WINDOW_DRAG_STRIP_HEIGHT = 40
+const WINDOWS_DRAG_STRIP_VIEWS: AppView[] = ['gitBashSetup', 'home', 'space', 'unified', 'settings']
 
 export function shouldShowWindowDragStrip(params: {
   view: AppView
   platform: PlatformInfo
   inElectron: boolean
 }): boolean {
-  return params.inElectron
+  const { view, platform, inElectron } = params
+  if (!inElectron || !platform.isWindows) return false
+  return WINDOWS_DRAG_STRIP_VIEWS.includes(view)
 }
 
 export function WindowDragStrip(): JSX.Element | null {
   if (!isElectron()) return null
+  const platform = getPlatformInfo()
+  if (!platform.isWindows) return null
   const chromeInsets = getWindowChromeInsets()
 
   return (

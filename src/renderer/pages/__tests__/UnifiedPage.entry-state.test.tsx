@@ -302,6 +302,8 @@ describe('UnifiedPage entry state', () => {
     expect(html).toContain('Files and artifacts')
     expect(html).toContain('aria-pressed="false"')
     expect(html).toContain('显示文件面板')
+    expect(html).toContain('drag-region flex-shrink-0 h-10 border-b border-border/60 bg-background/95')
+    expect(html).not.toContain('no-drag min-w-0 flex-1 h-full flex items-start')
     expect(html).not.toContain('What can I do')
     expect(html).not.toContain('Start in 3 simple steps')
     expect(html).not.toContain('Back to home')
