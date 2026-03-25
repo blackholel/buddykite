@@ -153,7 +153,7 @@ export const useSpaceStore = create<SpaceState>((set, get) => ({
     try {
       const response = await api.deleteSpace(spaceId)
 
-      if (response.success) {
+      if (response.success && (response.data === undefined || response.data === true)) {
         // Remove from spaces list
         set((state) => ({
           spaces: state.spaces.filter((s) => s.id !== spaceId)

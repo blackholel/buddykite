@@ -163,6 +163,11 @@ export function useCanvasLifecycle() {
     []
   )
 
+  const closeSpaceSession = useCallback(
+    (spaceId: string) => canvasLifecycle.closeSpaceSession(spaceId),
+    []
+  )
+
   const currentSpaceSession: SpaceSessionState | undefined = currentSpaceId
     ? canvasLifecycle.getSpaceSession(currentSpaceId)
     : undefined
@@ -203,6 +208,7 @@ export function useCanvasLifecycle() {
     setOpen,
     toggleOpen,
     switchSpaceSession,
+    closeSpaceSession,
   }
 }
 

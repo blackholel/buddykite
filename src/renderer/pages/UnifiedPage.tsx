@@ -26,6 +26,20 @@ function pickPreferredSpace<T extends { id: string }>(
   return currentSpace || kiteSpace || spaces[0] || null
 }
 
+function pickNextSpaceAfterDelete<T extends { id: string; updatedAt: string }>(
+  deletingSpaceId: string,
+  spaces: T[],
+  kiteSpace: T | null
+): T | null {
+  const sorted = [...spaces]
+    .filter((space) => space.id !== deletingSpaceId)
+    .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
+  if (sorted.length > 0) {
+    return sorted[0]
+  }
+  return kiteSpace && kiteSpace.id !== deletingSpaceId ? kiteSpace : null
+}
+
 export function UnifiedPage() {
   const { t } = useTranslation()
   const {
@@ -45,14 +59,18 @@ export function UnifiedPage() {
     spaces,
     loadSpaces,
     setCurrentSpace: setSpaceStoreCurrentSpace,
-    createSpace
+    createSpace,
+    updateSpace,
+    deleteSpace
   } = useSpaceStore((state) => ({
     currentSpace: state.currentSpace,
     kiteSpace: state.kiteSpace,
     spaces: state.spaces,
     loadSpaces: state.loadSpaces,
     setCurrentSpace: state.setCurrentSpace,
-    createSpace: state.createSpace
+    createSpace: state.createSpace,
+    updateSpace: state.updateSpace,
+    deleteSpace: state.deleteSpace
   }), shallow)
   const {
     currentSpaceId,
@@ -61,6 +79,7 @@ export function UnifiedPage() {
     spaceStates,
     setCurrentSpace: setChatCurrentSpace,
     loadConversations,
+    createConversation,
     selectConversation,
     renameConversation,
     deleteConversation
@@ -71,6 +90,7 @@ export function UnifiedPage() {
     spaceStates: state.spaceStates,
     setCurrentSpace: state.setCurrentSpace,
     loadConversations: state.loadConversations,
+    createConversation: state.createConversation,
     selectConversation: state.selectConversation,
     renameConversation: state.renameConversation,
     deleteConversation: state.deleteConversation
@@ -84,7 +104,8 @@ export function UnifiedPage() {
     isOpen: isCanvasOpen,
     setOpen: setCanvasOpen,
     openChat,
-    switchSpaceSession
+    switchSpaceSession,
+    closeSpaceSession
   } = useCanvasLifecycle()
 
   const allSpaces = useMemo(() => {
@@ -306,6 +327,93 @@ export function UnifiedPage() {
     loadConversations
   ])
 
+  const handleCreateConversation = useCallback(async (spaceId: string) => {
+    setRightPanelMode('artifacts')
+    const targetSpace = spaceById.get(spaceId)
+    const workDir = targetSpace?.path
+
+    const navigationResult = await navigateToSpaceContext({
+      targetSpaceId: spaceId,
+      currentSpaceId,
+      spaces,
+      kiteSpace,
+      setSpaceStoreCurrentSpace,
+      setChatCurrentSpace,
+      loadConversations
+    })
+    if (!navigationResult.success) return null
+
+    const createdConversation = await createConversation(spaceId)
+    if (!createdConversation) return null
+
+    await selectConversation(createdConversation.id)
+    await openChat(
+      spaceId,
+      createdConversation.id,
+      createdConversation.title?.trim() || t('New conversation'),
+      workDir,
+      resolveSpaceTabLabel(spaceId),
+      false
+    )
+    return createdConversation
+  }, [
+    createConversation,
+    currentSpaceId,
+    kiteSpace,
+    loadConversations,
+    openChat,
+    resolveSpaceTabLabel,
+    selectConversation,
+    setChatCurrentSpace,
+    setSpaceStoreCurrentSpace,
+    spaceById,
+    spaces,
+    t
+  ])
+
+  const handleRenameSpace = useCallback(async (spaceId: string, name: string) => {
+    await updateSpace(spaceId, { name: name.trim() })
+  }, [updateSpace])
+
+  const handleDeleteSpace = useCallback(async (spaceId: string) => {
+    const isDeletingCurrentSpace = currentSpaceId === spaceId
+    const nextSpace = pickNextSpaceAfterDelete(spaceId, spaces, kiteSpace)
+
+    const deleted = await deleteSpace(spaceId)
+    if (!deleted) return false
+
+    closeSpaceSession(spaceId)
+
+    if (!isDeletingCurrentSpace || !nextSpace) {
+      return true
+    }
+
+    const navigationResult = await navigateToSpaceContext({
+      targetSpaceId: nextSpace.id,
+      currentSpaceId: spaceId,
+      spaces: spaces.filter((space) => space.id !== spaceId),
+      kiteSpace: nextSpace.id === kiteSpace?.id ? kiteSpace : null,
+      setSpaceStoreCurrentSpace,
+      setChatCurrentSpace,
+      loadConversations
+    })
+
+    if (navigationResult.success) {
+      setRightPanelMode('artifacts')
+    }
+
+    return true
+  }, [
+    closeSpaceSession,
+    currentSpaceId,
+    deleteSpace,
+    kiteSpace,
+    loadConversations,
+    setChatCurrentSpace,
+    setSpaceStoreCurrentSpace,
+    spaces
+  ])
+
   const handleRenameConversation = useCallback(async (spaceId: string, conversationId: string, title: string) => {
     await renameConversation(spaceId, conversationId, title)
   }, [renameConversation])
@@ -367,6 +475,9 @@ export function UnifiedPage() {
           onExpandSpace={handleExpandSpace}
           onSelectConversation={handleSelectConversation}
           onCreateSpace={handleCreateSpace}
+          onCreateConversation={handleCreateConversation}
+          onRenameSpace={handleRenameSpace}
+          onDeleteSpace={handleDeleteSpace}
           onRenameConversation={handleRenameConversation}
           onDeleteConversation={handleDeleteConversation}
           onOpenAbilities={handleOpenAbilities}

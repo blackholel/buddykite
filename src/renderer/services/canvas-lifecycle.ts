@@ -356,6 +356,26 @@ class CanvasLifecycle {
     }
   }
 
+  closeSpaceSession(spaceId: string): void {
+    const session = this.spaceSessions.get(spaceId)
+    if (!session) {
+      return
+    }
+
+    this.spaceSessions.delete(spaceId)
+
+    if (this.currentSpaceId === spaceId) {
+      this.currentSpaceId = null
+      this.activeTabId = null
+      this.setOpen(false)
+      this.notifyTabsChange()
+      this.notifyActiveTabChange()
+      return
+    }
+
+    this.notifyTabsChange()
+  }
+
   // ============================================
   // Tab Management
   // ============================================

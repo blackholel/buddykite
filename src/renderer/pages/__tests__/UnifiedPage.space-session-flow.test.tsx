@@ -31,8 +31,19 @@ const mockState = vi.hoisted(() => ({
   openChat: vi.fn(async () => {}),
   switchTab: vi.fn(async () => {}),
   switchSpaceSession: vi.fn(async () => {}),
+  closeSpaceSession: vi.fn(),
   navigateToConversationContext: vi.fn(async () => ({ success: true })),
   navigateToSpaceContext: vi.fn(async () => ({ success: true })),
+  createConversation: vi.fn(async (_spaceId: string) => ({
+    id: 'conv-new',
+    spaceId: 'space-1',
+    title: '会话新建',
+    createdAt: '2026-03-25T09:00:00.000Z',
+    updatedAt: '2026-03-25T09:00:00.000Z'
+  })),
+  selectConversation: vi.fn(async () => {}),
+  updateSpace: vi.fn(async () => null),
+  deleteSpace: vi.fn(async () => true),
   spaceStates: new Map([
     ['space-1', {
       currentConversationId: 'conv-1',
@@ -63,7 +74,8 @@ vi.mock('../../hooks/useCanvasLifecycle', () => ({
     setOpen: vi.fn(),
     openChat: mockState.openChat,
     switchTab: mockState.switchTab,
-    switchSpaceSession: mockState.switchSpaceSession
+    switchSpaceSession: mockState.switchSpaceSession,
+    closeSpaceSession: mockState.closeSpaceSession
   })
 }))
 
@@ -122,12 +134,28 @@ vi.mock('../../stores/space.store', () => ({
     currentSpace: mockState.mockCurrentSpace,
     kiteSpace: null,
     spaces: [
-      mockState.mockCurrentSpace,
-      { id: 'space-2', name: 'Space 2', icon: 'folder', isTemp: false, path: '/tmp/space-2' }
+      {
+        ...mockState.mockCurrentSpace,
+        createdAt: '2026-03-25T08:00:00.000Z',
+        updatedAt: '2026-03-25T09:00:00.000Z',
+        stats: { artifactCount: 0, conversationCount: 1 }
+      },
+      {
+        id: 'space-2',
+        name: 'Space 2',
+        icon: 'folder',
+        isTemp: false,
+        path: '/tmp/space-2',
+        createdAt: '2026-03-25T07:00:00.000Z',
+        updatedAt: '2026-03-25T10:00:00.000Z',
+        stats: { artifactCount: 0, conversationCount: 1 }
+      }
     ],
     loadSpaces: vi.fn(async () => {}),
     setCurrentSpace: vi.fn(),
-    createSpace: vi.fn(async () => null)
+    createSpace: vi.fn(async () => null),
+    updateSpace: mockState.updateSpace,
+    deleteSpace: mockState.deleteSpace
   })
 }))
 
@@ -139,8 +167,8 @@ vi.mock('../../stores/chat.store', () => ({
     spaceStates: mockState.spaceStates,
     setCurrentSpace: vi.fn(),
     loadConversations: vi.fn(async () => {}),
-    createConversation: vi.fn(async () => null),
-    selectConversation: vi.fn(async () => {}),
+    createConversation: mockState.createConversation,
+    selectConversation: mockState.selectConversation,
     renameConversation: vi.fn(async () => {}),
     deleteConversation: vi.fn(async () => {})
   })
@@ -162,8 +190,13 @@ describe('UnifiedPage space session flow', () => {
     mockState.openChat.mockClear()
     mockState.switchTab.mockClear()
     mockState.switchSpaceSession.mockClear()
+    mockState.closeSpaceSession.mockClear()
     mockState.navigateToConversationContext.mockClear()
     mockState.navigateToSpaceContext.mockClear()
+    mockState.createConversation.mockClear()
+    mockState.selectConversation.mockClear()
+    mockState.updateSpace.mockClear()
+    mockState.deleteSpace.mockClear()
   })
 
   it('跨 space 打开会话时先导航到空间，再异步选中会话并 openChat(false)', async () => {
@@ -237,5 +270,36 @@ describe('UnifiedPage space session flow', () => {
     expect(mockState.switchTab).toHaveBeenCalledWith('tab-space-2')
     expect(mockState.navigateToConversationContext).not.toHaveBeenCalled()
     expect(mockState.navigateToSpaceContext).not.toHaveBeenCalled()
+  })
+
+  it('点击工作区新建会话会创建并自动打开 chat tab', async () => {
+    renderToStaticMarkup(<UnifiedPage />)
+
+    expect(mockState.capturedSidebarProps).toBeTruthy()
+    await mockState.capturedSidebarProps?.onCreateConversation?.('space-1')
+
+    expect(mockState.createConversation).toHaveBeenCalledWith('space-1')
+    expect(mockState.selectConversation).toHaveBeenCalledWith('conv-new')
+    expect(mockState.openChat).toHaveBeenCalledWith(
+      'space-1',
+      'conv-new',
+      '会话新建',
+      '/tmp/space-1',
+      'Space 1',
+      false
+    )
+  })
+
+  it('删除当前工作区会关闭该工作区会话并切换到最近更新工作区', async () => {
+    renderToStaticMarkup(<UnifiedPage />)
+
+    expect(mockState.capturedSidebarProps).toBeTruthy()
+    await mockState.capturedSidebarProps?.onDeleteSpace?.('space-1')
+
+    expect(mockState.deleteSpace).toHaveBeenCalledWith('space-1')
+    expect(mockState.closeSpaceSession).toHaveBeenCalledWith('space-1')
+    expect(mockState.navigateToSpaceContext).toHaveBeenCalledWith(expect.objectContaining({
+      targetSpaceId: 'space-2'
+    }))
   })
 })

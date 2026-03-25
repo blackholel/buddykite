@@ -14,12 +14,16 @@ let capturedSidebarProps: Record<string, any> | null = null
 let triggerTopTabClick: null | (() => Promise<void>) = null
 let rightPanelModeOverride: 'artifacts' | 'abilities' | null = null
 const setRightPanelModeMock = vi.fn()
+const mockUpdateSpace = vi.fn(async () => null)
+const mockDeleteSpace = vi.fn(async () => true)
+const mockCreateConversation = vi.fn(async () => null)
 const mockCanvasState = {
   tabs: [] as Array<Record<string, unknown>>,
   activeTab: null as Record<string, unknown> | null,
   isOpen: false,
   openChat: vi.fn(async () => {}),
   switchSpaceSession: vi.fn(async () => {}),
+  closeSpaceSession: vi.fn(),
   switchTab: vi.fn(async () => {}),
   setOpen: vi.fn()
 }
@@ -116,7 +120,9 @@ vi.mock('../../stores/space.store', () => ({
     spaces: [],
     loadSpaces: vi.fn(async () => {}),
     setCurrentSpace: vi.fn(),
-    createSpace: vi.fn(async () => null)
+    createSpace: vi.fn(async () => null),
+    updateSpace: mockUpdateSpace,
+    deleteSpace: mockDeleteSpace
   })
 }))
 
@@ -128,7 +134,7 @@ vi.mock('../../stores/chat.store', () => ({
     spaceStates: new Map(),
     setCurrentSpace: vi.fn(),
     loadConversations: vi.fn(async () => {}),
-    createConversation: vi.fn(async () => null),
+    createConversation: mockCreateConversation,
     selectConversation: vi.fn(async () => {}),
     renameConversation: vi.fn(async () => {}),
     deleteConversation: vi.fn(async () => {})
@@ -156,8 +162,12 @@ describe('UnifiedPage entry state', () => {
     mockCanvasState.isOpen = false
     mockCanvasState.openChat.mockClear()
     mockCanvasState.switchSpaceSession.mockClear()
+    mockCanvasState.closeSpaceSession.mockClear()
     mockCanvasState.switchTab.mockClear()
     mockCanvasState.setOpen.mockClear()
+    mockUpdateSpace.mockClear()
+    mockDeleteSpace.mockClear()
+    mockCreateConversation.mockClear()
     vi.mocked(navigateToConversationContext).mockClear()
     vi.mocked(navigateToSpaceContext).mockClear()
   })

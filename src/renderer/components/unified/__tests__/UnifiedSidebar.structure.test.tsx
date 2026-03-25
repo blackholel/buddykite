@@ -82,6 +82,9 @@ const handlers = {
   onExpandSpace: vi.fn(async (_spaceId: string) => {}),
   onSelectConversation: vi.fn(async (_spaceId: string, _conversationId: string) => {}),
   onCreateSpace: vi.fn(async (_input: CreateSpaceInput) => null),
+  onCreateConversation: vi.fn(async (_spaceId: string) => null),
+  onRenameSpace: vi.fn(async (_spaceId: string, _name: string) => {}),
+  onDeleteSpace: vi.fn(async (_spaceId: string) => true),
   onRenameConversation: vi.fn(async (_spaceId: string, _conversationId: string, _title: string) => {}),
   onDeleteConversation: vi.fn(async (_spaceId: string, _conversationId: string) => {}),
   onOpenAbilities: vi.fn(),
@@ -160,6 +163,8 @@ describe('UnifiedSidebar structure', () => {
     expect(html).toContain('新建工作区')
     expect(html).toContain('技能')
     expect(html).toContain('工作区')
+    expect(html).toContain('新建会话')
+    expect(html).toContain('更多操作')
     expect(html).toContain('折叠侧边栏')
   })
 

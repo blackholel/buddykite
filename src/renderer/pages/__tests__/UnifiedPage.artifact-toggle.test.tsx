@@ -23,8 +23,12 @@ const mockState = vi.hoisted(() => ({
   selectConversation: vi.fn(async () => {}),
   renameConversation: vi.fn(async () => {}),
   deleteConversation: vi.fn(async () => {}),
+  createConversation: vi.fn(async () => null),
+  updateSpace: vi.fn(async () => null),
+  deleteSpace: vi.fn(async () => true),
   openChat: vi.fn(async () => {}),
   switchSpaceSession: vi.fn(async () => {}),
+  closeSpaceSession: vi.fn(),
   setOpen: vi.fn(),
   openSearch: vi.fn()
 }))
@@ -46,7 +50,8 @@ vi.mock('../../hooks/useCanvasLifecycle', () => ({
     isOpen: false,
     setOpen: mockState.setOpen,
     openChat: mockState.openChat,
-    switchSpaceSession: mockState.switchSpaceSession
+    switchSpaceSession: mockState.switchSpaceSession,
+    closeSpaceSession: mockState.closeSpaceSession
   })
 }))
 
@@ -110,7 +115,9 @@ vi.mock('../../stores/space.store', () => ({
     spaces: [],
     loadSpaces: mockState.loadSpaces,
     setCurrentSpace: mockState.setSpaceCurrentSpace,
-    createSpace: vi.fn(async () => null)
+    createSpace: vi.fn(async () => null),
+    updateSpace: mockState.updateSpace,
+    deleteSpace: mockState.deleteSpace
   })
 }))
 
@@ -122,6 +129,7 @@ vi.mock('../../stores/chat.store', () => ({
     spaceStates: new Map(),
     setCurrentSpace: mockState.setChatCurrentSpace,
     loadConversations: mockState.loadConversations,
+    createConversation: mockState.createConversation,
     selectConversation: mockState.selectConversation,
     renameConversation: mockState.renameConversation,
     deleteConversation: mockState.deleteConversation
@@ -191,8 +199,12 @@ describe('UnifiedPage artifact rail toggle', () => {
     mockState.selectConversation.mockClear()
     mockState.renameConversation.mockClear()
     mockState.deleteConversation.mockClear()
+    mockState.createConversation.mockClear()
+    mockState.updateSpace.mockClear()
+    mockState.deleteSpace.mockClear()
     mockState.openChat.mockClear()
     mockState.switchSpaceSession.mockClear()
+    mockState.closeSpaceSession.mockClear()
     mockState.setOpen.mockClear()
     mockState.openSearch.mockClear()
   })
