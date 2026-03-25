@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "distributionMode": "github-only",
-  "latestVersion": "1.2.5",
+  "latestVersion": "1.2.6",
   "releases": {
     "1.2.2": {
       "notes": "让每个人都能体验前沿 AI：重写 README 与多语言文档，强化零门槛上手体验。",
@@ -138,6 +138,24 @@
         },
         "default": {
           "github": "https://github.com/blackholel/buddykite/releases/tag/v1.2.5"
+        }
+      }
+    },
+    "1.2.6": {
+      "notes": "统一工作台发布：主页与空间视图收敛，按空间隔离会话/画布/产物并优化侧栏交互。",
+      "publishedAt": "2026-03-25T01:07:17.000Z",
+      "platforms": {
+        "darwin-arm64": {
+          "github": "https://github.com/blackholel/buddykite/releases/tag/v1.2.6"
+        },
+        "win32-x64": {
+          "github": "https://github.com/blackholel/buddykite/releases/tag/v1.2.6"
+        },
+        "linux-x64": {
+          "github": "https://github.com/blackholel/buddykite/releases/tag/v1.2.6"
+        },
+        "default": {
+          "github": "https://github.com/blackholel/buddykite/releases/tag/v1.2.6"
         }
       }
     }
