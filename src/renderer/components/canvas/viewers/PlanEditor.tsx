@@ -289,7 +289,7 @@ export function PlanEditor({ tab, onContentChange, onBuild }: PlanEditorProps) {
             height="100%"
             language="markdown"
             value={content}
-            theme={isDarkTheme ? 'vs-dark' : 'light'}
+            theme={isDarkTheme ? 'vs-dark' : 'vs'}
             onMount={handleEditorMount}
             onChange={handleChange}
             options={editorOptions}

@@ -264,7 +264,7 @@ export function CodeEditor({ tab, onContentChange, onSave }: CodeEditorProps) {
           height="100%"
           language={getMonacoLanguage(tab.language)}
           value={draftContent}
-          theme={isDarkTheme ? 'vs-dark' : 'light'}
+          theme={isDarkTheme ? 'vs-dark' : 'vs'}
           onMount={handleEditorMount}
           onChange={handleChange}
           options={editorOptions}
