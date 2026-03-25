@@ -106,6 +106,11 @@ export function UnifiedPage() {
     }
     return result
   }, [spaceStates])
+  const resolveSpaceTabLabel = useCallback((spaceId: string) => {
+    const space = spaceById.get(spaceId)
+    if (!space) return t('Unknown space')
+    return space.isTemp ? 'Kite' : space.name
+  }, [spaceById, t])
   const loadingSpaceIdsRef = useRef<Set<string>>(new Set())
   const conversationSelectTicketRef = useRef(0)
   const [artifactRailExpanded, setArtifactRailExpanded] = useState(true)
@@ -174,6 +179,35 @@ export function UnifiedPage() {
     void selectConversation(entry.id)
   }, [currentSpaceId, selectConversation, spaceStates])
 
+  useEffect(() => {
+    if (!currentSpaceId || !currentConversationId) return
+    const currentConversationTabExists = canvasTabs.some(
+      (tab) => tab.type === 'chat' && tab.spaceId === currentSpaceId && tab.conversationId === currentConversationId
+    )
+    if (currentConversationTabExists) return
+
+    const targetSpace = spaceById.get(currentSpaceId)
+    const conversationTitle = currentConversationMeta?.title?.trim() || t('New conversation')
+    const workDir = targetSpace?.path
+    void openChat(
+      currentSpaceId,
+      currentConversationId,
+      conversationTitle,
+      workDir,
+      resolveSpaceTabLabel(currentSpaceId),
+      false
+    )
+  }, [
+    canvasTabs,
+    currentConversationId,
+    currentConversationMeta?.title,
+    currentSpaceId,
+    openChat,
+    resolveSpaceTabLabel,
+    spaceById,
+    t
+  ])
+
   const handleSelectSpace = useCallback(async (spaceId: string) => {
     setRightPanelMode('artifacts')
     await navigateToSpaceContext({
@@ -197,12 +231,6 @@ export function UnifiedPage() {
   const handleExpandSpace = useCallback(async (spaceId: string) => {
     await ensureSpaceConversationsLoaded(spaceId)
   }, [ensureSpaceConversationsLoaded])
-
-  const resolveSpaceTabLabel = useCallback((spaceId: string) => {
-    const space = spaceById.get(spaceId)
-    if (!space) return t('Unknown space')
-    return space.isTemp ? 'Kite' : space.name
-  }, [spaceById, t])
 
   const handleSelectConversation = useCallback(async (spaceId: string, conversationId: string) => {
     const ticket = ++conversationSelectTicketRef.current
@@ -289,11 +317,6 @@ export function UnifiedPage() {
   }, [canvasTabs, currentSpaceId])
   const hasCanvasTabs = visibleCanvasTabs.length > 0
   const shouldRenderCanvasInMain = hasCanvasTabs && isCanvasOpen && (activeTab ? activeTab.type !== 'chat' : true)
-  const activeTabTitle = useMemo(() => {
-    const title = currentConversationMeta?.title?.trim()
-    if (title) return title
-    return t('当前聊天')
-  }, [currentConversationMeta?.title, t])
   const artifactSpaceId = currentSpaceId || currentSpace?.id || kiteSpace?.id || spaces[0]?.id || null
 
   const handleToggleSidebar = useCallback(() => {
@@ -390,21 +413,7 @@ export function UnifiedPage() {
               <div className="drag-region flex-shrink-0 h-10 border-b border-border/60 bg-background/95">
                 <div className="h-full px-2 pr-12 flex items-start gap-2">
                   <div className="no-drag min-w-0 flex-1 h-full flex items-start">
-                    {hasCanvasTabs ? (
-                      <div className="min-w-0 flex-1"><CanvasTabBar /></div>
-                    ) : (
-                      <div role="tablist" aria-label={t('Opened content')} className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          role="tab"
-                          aria-selected={true}
-                          className="inline-flex max-w-[320px] items-center rounded-lg border border-border/70 bg-background px-3 py-1 text-sm font-medium text-foreground shadow-sm"
-                          title={activeTabTitle}
-                        >
-                          <span className="truncate">{activeTabTitle}</span>
-                        </button>
-                      </div>
-                    )}
+                    {hasCanvasTabs ? <div className="min-w-0 flex-1"><CanvasTabBar /></div> : null}
                   </div>
                 </div>
               </div>

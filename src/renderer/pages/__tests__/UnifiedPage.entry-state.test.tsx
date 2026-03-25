@@ -288,7 +288,7 @@ describe('UnifiedPage entry state', () => {
     expect(html).toContain('Chat Surface')
     expect(html).not.toContain('Canvas Tab Bar')
     expect(html).not.toContain('Canvas Surface')
-    expect(html).toContain('role="tablist"')
+    expect(html).not.toContain('role="tablist"')
     expect(html).toContain('Files and artifacts')
     expect(html).not.toContain('What can I do')
     expect(html).not.toContain('Start in 3 simple steps')
