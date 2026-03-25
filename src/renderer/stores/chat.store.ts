@@ -156,6 +156,25 @@ interface ConversationReadyState {
 }
 
 const CONVERSATION_READY_TIMEOUT_MS = 3000
+let hasLoggedFirstConversationSelectable = false
+
+function getRendererStartupBaseTs(): number {
+  const runtime = globalThis as typeof globalThis & { __kiteRendererStartupTs?: number }
+  if (typeof runtime.__kiteRendererStartupTs !== 'number') {
+    runtime.__kiteRendererStartupTs = Date.now()
+  }
+  return runtime.__kiteRendererStartupTs
+}
+
+function logRendererStartupPerf(stage: string, details?: Record<string, unknown>): void {
+  if (!import.meta.env.DEV) return
+  const elapsedMs = Date.now() - getRendererStartupBaseTs()
+  if (details) {
+    console.log(`[StartupPerf][Renderer] ${stage} +${elapsedMs}ms`, details)
+    return
+  }
+  console.log(`[StartupPerf][Renderer] ${stage} +${elapsedMs}ms`)
+}
 
 const GUIDE_FALLBACK_TO_NEW_RUN_ERROR_CODES = new Set<string>([
   'ASK_USER_QUESTION_NO_ACTIVE_SESSION',
@@ -1054,35 +1073,30 @@ async function ensureConversationLoadedImpl(
     }
   }
 
+  setConversationReadyState(set, conversationId, 'ready')
+  if (!hasLoggedFirstConversationSelectable) {
+    hasLoggedFirstConversationSelectable = true
+    logRendererStartupPerf('first-conversation-selectable', { spaceId, conversationId })
+  }
+
   if (warmSession) {
-    try {
-      const timeoutPromise = new Promise<{ success: false; error: string }>((resolveTimeout) => {
-        setTimeout(() => {
-          resolveTimeout({ success: false, error: 'conversation_ready_timeout' })
-        }, CONVERSATION_READY_TIMEOUT_MS)
+    const warmStartedAt = Date.now()
+    void api
+      .ensureSessionWarm(spaceId, conversationId, getCurrentLanguage(), { waitForReady: false })
+      .then((warmResult) => {
+        if (warmResult?.success) {
+          logRendererStartupPerf('warm-request-dispatched', {
+            spaceId,
+            conversationId,
+            durationMs: Date.now() - warmStartedAt
+          })
+          return
+        }
+        console.warn('[ChatStore] Session warm request returned non-success:', warmResult)
       })
-      const warmResult = await Promise.race([
-        api.ensureSessionWarm(spaceId, conversationId, getCurrentLanguage(), { waitForReady: true }),
-        timeoutPromise
-      ])
-      if (warmResult?.success) {
-        setConversationReadyState(set, conversationId, 'ready')
-      } else if (warmResult?.error === 'conversation_ready_timeout') {
-        setConversationReadyState(set, conversationId, 'timeout')
-      } else {
-        setConversationReadyState(
-          set,
-          conversationId,
-          'failed',
-          typeof warmResult?.error === 'string' ? warmResult.error : 'Failed to warm session'
-        )
-      }
-    } catch (error) {
-      console.error('[ChatStore] Failed to trigger session warm up:', error)
-      setConversationReadyState(set, conversationId, 'failed', 'Failed to trigger session warm up')
-    }
-  } else {
-    setConversationReadyState(set, conversationId, 'ready')
+      .catch((error) => {
+        console.error('[ChatStore] Failed to trigger session warm up:', error)
+      })
   }
 }
 

@@ -33,6 +33,7 @@ interface UnifiedSidebarProps {
   onToggleCollapse: () => void
   onGoSettings: () => void
   initialCreateDialogOpen?: boolean
+  showCollapseControl?: boolean
 }
 
 function formatRelativeTime(dateString: string, t: (key: string, options?: Record<string, unknown>) => string): string {
@@ -75,7 +76,8 @@ export function UnifiedSidebar({
   isCollapsed,
   onToggleCollapse,
   onGoSettings,
-  initialCreateDialogOpen = false
+  initialCreateDialogOpen = false,
+  showCollapseControl = true
 }: UnifiedSidebarProps) {
   const { t } = useTranslation()
   const [loadingSpaceIds, setLoadingSpaceIds] = useState<Set<string>>(new Set())
@@ -233,59 +235,70 @@ export function UnifiedSidebar({
       }`}
     >
       {isCollapsed ? (
-        <div className="h-full flex flex-col items-center py-3 gap-2">
-          <button
-            onClick={onToggleCollapse}
-            className="space-studio-collapsed-rail-btn"
-            title={t('展开侧边栏')}
-            aria-label={t('展开侧边栏')}
-          >
-            <PanelLeftOpen className="w-4 h-4" />
-          </button>
-          <button
-            onClick={handleOpenCreateSpace}
-            className="space-studio-collapsed-rail-btn"
-            title={t('新建工作区')}
-            aria-label={t('新建工作区')}
-          >
-            <FolderPlus className="w-4 h-4" />
-          </button>
-          <button
-            onClick={onOpenAbilities}
-            className="space-studio-collapsed-rail-btn"
-            title={t('技能')}
-            aria-label={t('技能')}
-            aria-pressed={abilitiesOpen}
-          >
-            <Sparkles className="w-4 h-4" />
-          </button>
-          <span className="space-studio-collapsed-rail-count">{sortedSpaces.length}</span>
-          <div className="mt-auto mb-2">
+        <div className="h-full flex flex-col">
+          {showCollapseControl && (
+            <div className="drag-region h-10 border-b border-border/60">
+              <div className="h-full px-2 flex items-start justify-center">
+                <button
+                  onClick={onToggleCollapse}
+                  className="space-studio-collapsed-rail-btn no-drag"
+                  title={t('展开侧边栏')}
+                  aria-label={t('展开侧边栏')}
+                >
+                  <PanelLeftOpen className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
+          <div className="flex-1 flex flex-col items-center py-3 gap-2">
             <button
-              onClick={onGoSettings}
+              onClick={handleOpenCreateSpace}
               className="space-studio-collapsed-rail-btn"
-              title={t('设置')}
-              aria-label={t('设置')}
+              title={t('新建工作区')}
+              aria-label={t('新建工作区')}
             >
-              <Settings2 className="w-4 h-4" />
+              <FolderPlus className="w-4 h-4" />
             </button>
+            <button
+              onClick={onOpenAbilities}
+              className="space-studio-collapsed-rail-btn"
+              title={t('技能')}
+              aria-label={t('技能')}
+              aria-pressed={abilitiesOpen}
+            >
+              <Sparkles className="w-4 h-4" />
+            </button>
+            <span className="space-studio-collapsed-rail-count">{sortedSpaces.length}</span>
+            <div className="mt-auto mb-2">
+              <button
+                onClick={onGoSettings}
+                className="space-studio-collapsed-rail-btn"
+                title={t('设置')}
+                aria-label={t('设置')}
+              >
+                <Settings2 className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         </div>
       ) : (
       <div className="h-full flex flex-col">
-        <div className="space-studio-conversation-head px-4 py-3 border-b border-border/60">
-          <div className="flex items-center justify-end gap-2 border-b border-border/50 pb-2">
-            <button
-              onClick={onToggleCollapse}
-              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary/70 hover:text-foreground"
-              title={t('折叠侧边栏')}
-              aria-label={t('折叠侧边栏')}
-            >
-              <PanelLeftClose className="w-4 h-4" />
-            </button>
+        {showCollapseControl && (
+          <div className="drag-region h-10 border-b border-border/60">
+            <div className="h-full px-2 flex items-start justify-end">
+              <button
+                onClick={onToggleCollapse}
+                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary/70 hover:text-foreground no-drag"
+                title={t('折叠侧边栏')}
+                aria-label={t('折叠侧边栏')}
+              >
+                <PanelLeftClose className="w-4 h-4" />
+              </button>
+            </div>
           </div>
-
-          <div className="mt-2 space-y-1">
+        )}
+        <div className="space-studio-conversation-head px-4 py-3 border-b border-border/60">
+          <div className="space-y-1">
             <button
               onClick={handleOpenCreateSpace}
               className="inline-flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-left text-foreground hover:bg-secondary/70"

@@ -5,7 +5,12 @@
 
 // Detect if running in Electron (supports both window.kite and legacy window.halo)
 export function isElectron(): boolean {
-  return typeof window !== 'undefined' && ('kite' in window || 'halo' in window)
+  if (typeof window === 'undefined') return false
+  return (
+    'kite' in window ||
+    'halo' in window ||
+    typeof window.electron?.ipcRenderer !== 'undefined'
+  )
 }
 
 // Detect if running as remote web client

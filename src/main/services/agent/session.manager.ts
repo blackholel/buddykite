@@ -63,6 +63,17 @@ const lastResourceIndexRebuildAt = new Map<string, number>()
 const sessionAcquireLockChains = new Map<string, Promise<void>>()
 const closedOrClosingSessions = new WeakSet<V2SDKSession>()
 
+function logMainStartupPerf(stage: string, details?: Record<string, unknown>): void {
+  const baseTs = (globalThis as typeof globalThis & { __kiteMainStartupTs?: number }).__kiteMainStartupTs
+  if (typeof baseTs !== 'number') return
+  const elapsedMs = Date.now() - baseTs
+  if (details) {
+    console.log(`[StartupPerf][Main] ${stage} +${elapsedMs}ms`, details)
+    return
+  }
+  console.log(`[StartupPerf][Main] ${stage} +${elapsedMs}ms`)
+}
+
 class AsyncInputQueue<T> implements AsyncIterable<T> {
   private readonly queue: T[] = []
   private readonly waiters: Array<(result: IteratorResult<T>) => void> = []
@@ -1010,6 +1021,7 @@ export async function ensureSessionWarm(
   responseLanguage?: LocaleCode | string
 ): Promise<void> {
   const sessionKey = toSessionKey(spaceId, conversationId)
+  const warmStartAt = Date.now()
   const config = getConfig()
   const workDir = getWorkingDir(spaceId)
   const normalizedResponseLanguage = normalizeLocale(responseLanguage)
@@ -1133,6 +1145,7 @@ export async function ensureSessionWarm(
       }
     })
     console.log(`[Agent] V2 session warmed up: ${sessionKey}`)
+    logMainStartupPerf('warm-finished', { sessionKey, durationMs: Date.now() - warmStartAt })
   } catch (error) {
     console.error(`[Agent] Failed to warm up session ${sessionKey}:`, error)
     throw error

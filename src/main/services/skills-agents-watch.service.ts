@@ -505,7 +505,6 @@ export function initSkillAgentWatchers(window: BrowserWindow): void {
 
   initPluginConfigWatchers()
   reconcileAllResourceWatchers()
-  rebuildAllResourceIndexes('manual-refresh')
   startLinuxRescan()
 }
 

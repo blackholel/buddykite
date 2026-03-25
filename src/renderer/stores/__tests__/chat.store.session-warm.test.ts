@@ -105,7 +105,17 @@ describe('chat.store session warm strategy', () => {
     expect(api.subscribeToConversation).toHaveBeenCalledWith('space-1', 'conv-2')
     expect(api.ensureSessionWarm).toHaveBeenCalledTimes(1)
     expect((api.ensureSessionWarm as Mock).mock.calls[0]).toEqual(
-      expect.arrayContaining(['space-1', 'conv-2', 'zh-CN'])
+      expect.arrayContaining(['space-1', 'conv-2', 'zh-CN', { waitForReady: false }])
     )
+  })
+
+  it('session warm 失败不阻塞会话进入 ready', async () => {
+    ;(api.ensureSessionWarm as Mock).mockRejectedValueOnce(new Error('warm failed'))
+    seedConversation('space-1', 'conv-3')
+
+    await useChatStore.getState().selectConversation('conv-3')
+
+    const readyState = useChatStore.getState().conversationReadyByConversation.get('conv-3')
+    expect(readyState?.status).toBe('ready')
   })
 })

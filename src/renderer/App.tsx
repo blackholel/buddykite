@@ -19,13 +19,11 @@ import { SearchPanel } from './components/search/SearchPanel'
 import { SearchHighlightBar } from './components/search/SearchHighlightBar'
 import { OnboardingOverlay } from './components/onboarding'
 import { UpdateNotification } from './components/updater/UpdateNotification'
-import { WindowDragStrip, shouldShowWindowDragStrip } from './components/layout/WindowDragStrip'
+import { WindowDragStrip } from './components/layout/WindowDragStrip'
 import { api } from './api'
 import { isElectron } from './api/transport'
-import { getPlatformInfo } from './utils/window-chrome'
 import { shallow } from 'zustand/shallow'
 import type {
-  AppView,
   AgentEventBase,
   AgentCompleteEvent,
   AgentModeEvent,
@@ -120,6 +118,24 @@ async function waitForMessageElement(
   })
 }
 
+function getRendererStartupBaseTs(): number {
+  const runtime = globalThis as typeof globalThis & { __kiteRendererStartupTs?: number }
+  if (typeof runtime.__kiteRendererStartupTs !== 'number') {
+    runtime.__kiteRendererStartupTs = Date.now()
+  }
+  return runtime.__kiteRendererStartupTs
+}
+
+function logRendererStartupPerf(stage: string, details?: Record<string, unknown>): void {
+  if (!import.meta.env.DEV) return
+  const elapsedMs = Date.now() - getRendererStartupBaseTs()
+  if (details) {
+    console.log(`[StartupPerf][Renderer] ${stage} +${elapsedMs}ms`, details)
+    return
+  }
+  console.log(`[StartupPerf][Renderer] ${stage} +${elapsedMs}ms`)
+}
+
 export default function App() {
   const { view, config } = useAppStore((state) => ({
     view: state.view,
@@ -209,14 +225,20 @@ export default function App() {
 
   // Initialize app on mount
   useEffect(() => {
-    // Show splash for 2 seconds then initialize
-    const timer = setTimeout(async () => {
+    let cancelled = false
+    void (async () => {
+      logRendererStartupPerf('initialize-start')
       await initialize()
+      if (cancelled) return
+      logRendererStartupPerf('initialize-finished')
       // Initialize onboarding after app config is loaded
       await initializeOnboarding()
-    }, 2000)
-
-    return () => clearTimeout(timer)
+      if (cancelled) return
+      logRendererStartupPerf('onboarding-initialized')
+    })()
+    return () => {
+      cancelled = true
+    }
   }, [initialize, initializeOnboarding])
 
   // Theme switching
@@ -603,25 +625,6 @@ export default function App() {
     }
   }
 
-  const renderViewWithDragStrip = (targetView: AppView, content: JSX.Element): JSX.Element => {
-    if (!shouldShowWindowDragStrip({
-      view: targetView,
-      platform: getPlatformInfo(),
-      inElectron: isElectron()
-    })) {
-      return content
-    }
-
-    return (
-      <div className="h-full w-full flex flex-col">
-        <WindowDragStrip />
-        <div className="flex-1 min-h-0">
-          {content}
-        </div>
-      </div>
-    )
-  }
-
   // Render based on current view
   // Heavy pages (SpacePage, UnifiedPage, SettingsPage) are lazy-loaded for better initial performance
   const renderView = () => {
@@ -635,30 +638,41 @@ export default function App() {
       case 'splash':
         return <SplashScreen />
       case 'gitBashSetup':
-        return renderViewWithDragStrip('gitBashSetup', <GitBashSetup onComplete={handleGitBashSetupComplete} />)
+        return <GitBashSetup onComplete={handleGitBashSetupComplete} />
       case 'home':
       case 'unified':
-        return renderViewWithDragStrip('unified', unifiedContent)
+        return unifiedContent
       case 'space':
-        return renderViewWithDragStrip('space', (
+        return (
           <Suspense fallback={<PageLoader />}>
             <SpacePage />
           </Suspense>
-        ))
+        )
       case 'settings':
-        return renderViewWithDragStrip('settings', (
+        return (
           <Suspense fallback={<PageLoader />}>
             <SettingsPage />
           </Suspense>
-        ))
+        )
       default:
         return <SplashScreen />
     }
   }
 
+  const viewContent = renderView()
+  const inElectron = isElectron()
+  const usePageTopBar = view === 'home' || view === 'unified' || view === 'space'
+
   return (
     <div className="h-screen w-screen overflow-hidden bg-background">
-      {renderView()}
+      {inElectron && !usePageTopBar ? (
+        <div className="h-full w-full flex flex-col">
+          <WindowDragStrip />
+          <div className="flex-1 min-h-0">
+            {viewContent}
+          </div>
+        </div>
+      ) : viewContent}
       {/* Search panel - full screen edit mode */}
       <SearchPanel isOpen={isSearchOpen} onClose={closeSearch} />
       {/* Search highlight bar - floating navigation mode */}

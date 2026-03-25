@@ -236,7 +236,7 @@ describe('UnifiedPage entry state', () => {
     mockCanvasState.activeTab = mockCanvasState.tabs[0]
 
     const html = renderToStaticMarkup(<UnifiedPage />)
-    expect(html).not.toContain('Canvas Toggle')
+    expect(html).not.toContain('Canvas Tab Bar')
     expect(html).not.toContain('Canvas Surface')
   })
 
@@ -251,15 +251,15 @@ describe('UnifiedPage entry state', () => {
     mockCanvasState.activeTab = mockCanvasState.tabs[0]
 
     const inSpace1 = renderToStaticMarkup(<UnifiedPage />)
-    expect(inSpace1).toContain('Canvas Toggle')
+    expect(inSpace1).toContain('Canvas Tab Bar')
 
     mockCurrentSpaceId = 'space-2'
     const inSpace2 = renderToStaticMarkup(<UnifiedPage />)
-    expect(inSpace2).not.toContain('Canvas Toggle')
+    expect(inSpace2).not.toContain('Canvas Tab Bar')
 
     mockCurrentSpaceId = 'space-1'
     const backToSpace1 = renderToStaticMarkup(<UnifiedPage />)
-    expect(backToSpace1).toContain('Canvas Toggle')
+    expect(backToSpace1).toContain('Canvas Tab Bar')
   })
 
   it('当前激活 tab 为 chat 时不渲染右侧 Canvas 内容区', () => {
@@ -275,7 +275,7 @@ describe('UnifiedPage entry state', () => {
 
     const html = renderToStaticMarkup(<UnifiedPage />)
 
-    expect(html).toContain('Canvas Toggle')
+    expect(html).toContain('Canvas Tab Bar')
     expect(html).not.toContain('Canvas Surface')
   })
 
@@ -286,7 +286,7 @@ describe('UnifiedPage entry state', () => {
 
     expect(html).toContain('Unified Sidebar')
     expect(html).toContain('Chat Surface')
-    expect(html).not.toContain('Canvas Toggle')
+    expect(html).not.toContain('Canvas Tab Bar')
     expect(html).not.toContain('Canvas Surface')
     expect(html).toContain('role="tablist"')
     expect(html).toContain('Files and artifacts')
@@ -358,7 +358,7 @@ describe('UnifiedPage entry state', () => {
     mockCanvasState.isOpen = true
     const html = renderToStaticMarkup(<UnifiedPage />)
 
-    expect(html).toContain('Canvas Toggle')
+    expect(html).toContain('Canvas Tab Bar')
     expect(html).not.toContain('Canvas Surface')
     expect(html).toContain('Files and artifacts')
   })
@@ -377,7 +377,7 @@ describe('UnifiedPage entry state', () => {
     mockCanvasState.isOpen = true
 
     const html = renderToStaticMarkup(<UnifiedPage />)
-    expect(html).toContain('Canvas Toggle')
+    expect(html).toContain('Canvas Tab Bar')
     expect(html).toContain('Canvas Surface')
   })
 })

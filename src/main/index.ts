@@ -102,6 +102,26 @@ import { shutdownObservability } from './services/observability'
 
 let mainWindow: BrowserWindow | null = null
 
+declare global {
+  var __kiteMainStartupTs: number | undefined
+}
+
+if (typeof globalThis.__kiteMainStartupTs !== 'number') {
+  globalThis.__kiteMainStartupTs = Date.now()
+}
+
+function logMainStartupPerf(stage: string, details?: Record<string, unknown>): void {
+  if (!is.dev) return
+  const baseTs = globalThis.__kiteMainStartupTs
+  if (typeof baseTs !== 'number') return
+  const elapsedMs = Date.now() - baseTs
+  if (details) {
+    console.log(`[StartupPerf][Main] ${stage} +${elapsedMs}ms`, details)
+    return
+  }
+  console.log(`[StartupPerf][Main] ${stage} +${elapsedMs}ms`)
+}
+
 /**
  * Create application menu with Check for Updates option
  */
@@ -243,6 +263,7 @@ function createWindow(): void {
   })
 
   mainWindow.on('ready-to-show', () => {
+    logMainStartupPerf('window-ready-to-show')
     mainWindow?.show()
     // Set window title with instance identifier for custom instances
     if (isCustomInstance()) {
@@ -301,6 +322,7 @@ function createWindow(): void {
 
 // Initialize application
 app.whenReady().then(async () => {
+  logMainStartupPerf('whenReady-enter')
   // Set app user model id for windows
   electronApp.setAppUserModelId('com.kite.app')
 
@@ -314,6 +336,7 @@ app.whenReady().then(async () => {
 
   // Initialize app data directories
   await initializeApp()
+  logMainStartupPerf('initializeApp-finished')
 
   if (is.dev) {
     try {
@@ -340,6 +363,7 @@ app.whenReady().then(async () => {
 
   // Create window first (before analytics, so Baidu provider can find the window)
   createWindow()
+  logMainStartupPerf('window-created')
 
   // ========================================
   // PHASED INITIALIZATION

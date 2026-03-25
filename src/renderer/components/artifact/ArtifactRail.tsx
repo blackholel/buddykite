@@ -38,6 +38,8 @@ interface ArtifactRailProps {
   isTemp: boolean
   displayMode?: 'inline' | 'overlay'
   onClose?: () => void
+  collapseMode?: 'rail' | 'hidden'
+  showHeaderToggle?: boolean
   // External control props for Canvas integration
   externalExpanded?: boolean        // Controlled expanded state from parent
   onExpandedChange?: (expanded: boolean) => void  // Callback when user toggles
@@ -75,6 +77,8 @@ export function ArtifactRail({
   isTemp,
   displayMode = 'inline',
   onClose,
+  collapseMode = 'rail',
+  showHeaderToggle = true,
   externalExpanded,
   onExpandedChange
 }: ArtifactRailProps) {
@@ -188,7 +192,7 @@ export function ArtifactRail({
         const previousCount = previousArtifactCountRef.current
         const hasNewArtifacts = previousCount != null && nextCount > previousCount
 
-        if (hasNewArtifacts && isExpanded && !isOverlayMode) {
+        if (hasNewArtifacts && isExpanded && !isOverlayMode && collapseMode === 'rail') {
           if (isControlled) {
             onExpandedChange?.(false)
           } else {
@@ -209,7 +213,7 @@ export function ArtifactRail({
       if (isStale) return
       setIsLoading(false)
     }
-  }, [isControlled, isExpanded, isOverlayMode, onExpandedChange, spaceId, t])
+  }, [collapseMode, isControlled, isExpanded, isOverlayMode, onExpandedChange, spaceId, t])
 
   useEffect(() => {
     previousArtifactCountRef.current = null
@@ -485,6 +489,10 @@ export function ArtifactRail({
   }
 
   // ==================== Desktop Inline Mode ====================
+  if (!isExpanded && collapseMode === 'hidden') {
+    return null
+  }
+
   const displayWidth = isExpanded ? PANEL_WIDTH : COLLAPSED_WIDTH
 
   return (
@@ -520,13 +528,15 @@ export function ArtifactRail({
             </button>
           </div>
         )}
-        <button
-          onClick={handleToggleExpanded}
-          className="p-1 hover:bg-secondary rounded transition-colors"
-          aria-label={isExpanded ? t('Collapse artifacts panel') : t('Expand artifacts panel')}
-        >
-          <ChevronRight className={`w-4 h-4 transition-transform ${isExpanded ? '' : 'rotate-180'}`} />
-        </button>
+        {showHeaderToggle && (
+          <button
+            onClick={handleToggleExpanded}
+            className="p-1 hover:bg-secondary rounded transition-colors"
+            aria-label={isExpanded ? t('Collapse artifacts panel') : t('Expand artifacts panel')}
+          >
+            <ChevronRight className={`w-4 h-4 transition-transform ${isExpanded ? '' : 'rotate-180'}`} />
+          </button>
+        )}
       </div>
 
       {/* Content */}
@@ -536,7 +546,7 @@ export function ArtifactRail({
       {isExpanded && renderFooter()}
 
       {/* Collapsed state - show folder icon */}
-      {!isExpanded && (
+      {!isExpanded && collapseMode === 'rail' && (
         <div className="flex-1 flex flex-col items-center py-4 gap-2">
           <div className="px-1.5 py-0.5 text-[10px] rounded-md bg-secondary text-muted-foreground">
             {displayCount}

@@ -191,7 +191,7 @@ body {
   -webkit-user-select: none;
 }
 
-/* Draggable region for macOS */
+/* Draggable region for desktop custom title bar */
 .drag-region {
   -webkit-app-region: drag;
 }
