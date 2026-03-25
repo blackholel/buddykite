@@ -36,7 +36,6 @@ import type {
 
 // Lazy load heavy page components for better initial load performance
 // These pages contain complex components (chat, markdown, code highlighting, etc.)
-const SpacePage = lazy(() => import('./pages/SpacePage').then(m => ({ default: m.SpacePage })))
 const UnifiedPage = lazy(() => import('./pages/UnifiedPage').then(m => ({ default: m.UnifiedPage })))
 const SettingsPage = lazy(() => import('./pages/SettingsPage').then(m => ({ default: m.SettingsPage })))
 
@@ -627,7 +626,7 @@ export default function App() {
   }
 
   // Render based on current view
-  // Heavy pages (SpacePage, UnifiedPage, SettingsPage) are lazy-loaded for better initial performance
+  // Heavy pages (UnifiedPage, SettingsPage) are lazy-loaded for better initial performance
   const renderView = () => {
     const unifiedContent = (
       <Suspense fallback={<PageLoader />}>
@@ -640,15 +639,8 @@ export default function App() {
         return <SplashScreen />
       case 'gitBashSetup':
         return <GitBashSetup onComplete={handleGitBashSetupComplete} />
-      case 'home':
       case 'unified':
         return unifiedContent
-      case 'space':
-        return (
-          <Suspense fallback={<PageLoader />}>
-            <SpacePage />
-          </Suspense>
-        )
       case 'settings':
         return (
           <Suspense fallback={<PageLoader />}>

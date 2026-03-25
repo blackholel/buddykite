@@ -975,14 +975,6 @@ export function deleteSkill(skillPath: string): boolean {
   }
 }
 
-/**
- * Copy a skill to the space directory
- */
-export function copySkillToSpace(skillName: string, workDir: string): SkillDefinition | null {
-  const result = copySkillToSpaceByRef({ type: 'skill', name: skillName }, workDir)
-  return result.status === 'copied' ? (result.data ?? null) : null
-}
-
 export function copySkillToSpaceByRef(
   ref: ResourceRef,
   workDir: string,

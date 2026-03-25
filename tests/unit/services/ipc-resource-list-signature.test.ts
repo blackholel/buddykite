@@ -9,7 +9,6 @@ vi.mock('../../../src/main/services/skills.service', () => ({
   createSkill: vi.fn(),
   updateSkill: vi.fn(),
   deleteSkill: vi.fn(),
-  copySkillToSpace: vi.fn(),
   copySkillToSpaceByRef: vi.fn(),
   clearSkillsCache: vi.fn(),
   invalidateSkillsCache: vi.fn()

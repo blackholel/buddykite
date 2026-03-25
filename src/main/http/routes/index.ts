@@ -584,19 +584,6 @@ export function registerApiRoutes(app: Express, mainWindow: BrowserWindow | null
     res.json({ success: true, data: true })
   }))
 
-  app.post('/api/skills/copy', safeRoute(async (req, res) => {
-    const workDir = validateWorkDir(req, res, { required: true })
-    if (workDir === null) return
-    const { copySkillToSpace } = await import('../../services/skills.service')
-    const { skillName } = req.body
-    const skill = copySkillToSpace(skillName, workDir)
-    if (!skill) {
-      res.json({ success: false, error: `Failed to copy skill: ${skillName}` })
-      return
-    }
-    res.json({ success: true, data: skill })
-  }))
-
   app.post('/api/skills/copy-by-ref', safeRoute(async (req, res) => {
     const workDir = validateWorkDir(req, res, { required: true })
     if (workDir === null) return
@@ -697,19 +684,6 @@ export function registerApiRoutes(app: Express, mainWindow: BrowserWindow | null
     res.json({ success: true, data: true })
   }))
 
-  app.post('/api/agents/copy', safeRoute(async (req, res) => {
-    const workDir = validateWorkDir(req, res, { required: true })
-    if (workDir === null) return
-    const { copyAgentToSpace } = await import('../../services/agents.service')
-    const { agentName } = req.body
-    const agent = copyAgentToSpace(agentName, workDir)
-    if (!agent) {
-      res.json({ success: false, error: `Failed to copy agent: ${agentName}` })
-      return
-    }
-    res.json({ success: true, data: agent })
-  }))
-
   app.post('/api/agents/copy-by-ref', safeRoute(async (req, res) => {
     const workDir = validateWorkDir(req, res, { required: true })
     if (workDir === null) return
@@ -775,19 +749,6 @@ export function registerApiRoutes(app: Express, mainWindow: BrowserWindow | null
       return
     }
     res.json({ success: true, data: true })
-  }))
-
-  app.post('/api/commands/copy', safeRoute(async (req, res) => {
-    const workDir = validateWorkDir(req, res, { required: true })
-    if (workDir === null) return
-    const { copyCommandToSpace } = await import('../../services/commands.service')
-    const { commandName } = req.body
-    const command = copyCommandToSpace(commandName, workDir)
-    if (!command) {
-      res.json({ success: false, error: `Failed to copy command: ${commandName}` })
-      return
-    }
-    res.json({ success: true, data: command })
   }))
 
   app.post('/api/commands/copy-by-ref', safeRoute(async (req, res) => {

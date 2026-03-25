@@ -17,6 +17,7 @@ const setRightPanelModeMock = vi.fn()
 const mockUpdateSpace = vi.fn(async () => null)
 const mockDeleteSpace = vi.fn(async () => true)
 const mockCreateConversation = vi.fn(async () => null)
+const mockDeleteConversation = vi.fn(async () => true)
 const mockCanvasState = {
   tabs: [] as Array<Record<string, unknown>>,
   activeTab: null as Record<string, unknown> | null,
@@ -24,6 +25,7 @@ const mockCanvasState = {
   openChat: vi.fn(async () => {}),
   switchSpaceSession: vi.fn(async () => {}),
   closeSpaceSession: vi.fn(),
+  closeConversationTabs: vi.fn(),
   switchTab: vi.fn(async () => {}),
   setOpen: vi.fn()
 }
@@ -137,7 +139,7 @@ vi.mock('../../stores/chat.store', () => ({
     createConversation: mockCreateConversation,
     selectConversation: vi.fn(async () => {}),
     renameConversation: vi.fn(async () => {}),
-    deleteConversation: vi.fn(async () => {})
+    deleteConversation: mockDeleteConversation
   })
 }))
 
@@ -163,11 +165,13 @@ describe('UnifiedPage entry state', () => {
     mockCanvasState.openChat.mockClear()
     mockCanvasState.switchSpaceSession.mockClear()
     mockCanvasState.closeSpaceSession.mockClear()
+    mockCanvasState.closeConversationTabs.mockClear()
     mockCanvasState.switchTab.mockClear()
     mockCanvasState.setOpen.mockClear()
     mockUpdateSpace.mockClear()
     mockDeleteSpace.mockClear()
     mockCreateConversation.mockClear()
+    mockDeleteConversation.mockClear()
     vi.mocked(navigateToConversationContext).mockClear()
     vi.mocked(navigateToSpaceContext).mockClear()
   })
@@ -300,9 +304,10 @@ describe('UnifiedPage entry state', () => {
     expect(html).not.toContain('Canvas Surface')
     expect(html).not.toContain('role="tablist"')
     expect(html).toContain('Files and artifacts')
-    expect(html).toContain('aria-pressed="false"')
-    expect(html).toContain('显示文件面板')
-    expect(html).toContain('drag-region flex-shrink-0 h-10 border-b border-border/60 bg-background/95')
+    expect(html).toContain('w-[56px]')
+    expect(html).not.toContain('ease-out w-0')
+    expect(html).toContain('drag-region flex-shrink-0 h-10 bg-background/95')
+    expect(html).not.toContain('absolute top-0 right-0')
     expect(html).not.toContain('no-drag min-w-0 flex-1 h-full flex items-start')
     expect(html).not.toContain('What can I do')
     expect(html).not.toContain('Start in 3 simple steps')
@@ -357,6 +362,14 @@ describe('UnifiedPage entry state', () => {
     await capturedSidebarProps?.onSelectConversation?.('space-1', 'conv-1')
 
     expect(setRightPanelModeMock).toHaveBeenCalledWith('artifacts')
+  })
+
+  it('删除会话后会联动关闭对应 conversation 的已打开 tabs', async () => {
+    renderToStaticMarkup(<UnifiedPage />)
+
+    await capturedSidebarProps?.onDeleteConversation?.('space-1', 'conv-1')
+
+    expect(mockCanvasState.closeConversationTabs).toHaveBeenCalledWith('space-1', 'conv-1')
   })
 
   it('temp 空间显示文件栏（chat tab 激活时不展示右侧画布）', () => {

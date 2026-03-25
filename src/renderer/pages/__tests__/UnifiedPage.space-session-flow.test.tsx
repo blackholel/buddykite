@@ -32,6 +32,7 @@ const mockState = vi.hoisted(() => ({
   switchTab: vi.fn(async () => {}),
   switchSpaceSession: vi.fn(async () => {}),
   closeSpaceSession: vi.fn(),
+  closeConversationTabs: vi.fn(),
   navigateToConversationContext: vi.fn(async () => ({ success: true })),
   navigateToSpaceContext: vi.fn(async () => ({ success: true })),
   createConversation: vi.fn(async (_spaceId: string) => ({
@@ -75,7 +76,8 @@ vi.mock('../../hooks/useCanvasLifecycle', () => ({
     openChat: mockState.openChat,
     switchTab: mockState.switchTab,
     switchSpaceSession: mockState.switchSpaceSession,
-    closeSpaceSession: mockState.closeSpaceSession
+    closeSpaceSession: mockState.closeSpaceSession,
+    closeConversationTabs: mockState.closeConversationTabs
   })
 }))
 
@@ -191,6 +193,7 @@ describe('UnifiedPage space session flow', () => {
     mockState.switchTab.mockClear()
     mockState.switchSpaceSession.mockClear()
     mockState.closeSpaceSession.mockClear()
+    mockState.closeConversationTabs.mockClear()
     mockState.navigateToConversationContext.mockClear()
     mockState.navigateToSpaceContext.mockClear()
     mockState.createConversation.mockClear()

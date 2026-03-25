@@ -9,7 +9,6 @@ import {
   createCommand,
   updateCommand,
   deleteCommand,
-  copyCommandToSpace,
   copyCommandToSpaceByRef,
   clearCommandsCache
 } from '../services/commands.service'
@@ -67,18 +66,6 @@ export function registerCommandsHandlers(): void {
         return { success: false, error: 'Failed to delete command' }
       }
       return { success: true, data: true }
-    } catch (error: unknown) {
-      return { success: false, error: (error as Error).message }
-    }
-  })
-
-  ipcMain.handle('commands:copy-to-space', async (_event, commandName: string, workDir: string) => {
-    try {
-      const command = copyCommandToSpace(commandName, workDir)
-      if (!command) {
-        return { success: false, error: `Failed to copy command: ${commandName}` }
-      }
-      return { success: true, data: command }
     } catch (error: unknown) {
       return { success: false, error: (error as Error).message }
     }

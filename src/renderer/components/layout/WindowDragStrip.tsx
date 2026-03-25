@@ -3,7 +3,7 @@ import type { AppView } from '../../types'
 import { getPlatformInfo, getWindowChromeInsets, type PlatformInfo } from '../../utils/window-chrome'
 
 const WINDOW_DRAG_STRIP_HEIGHT = 40
-const WINDOWS_DRAG_STRIP_VIEWS: AppView[] = ['gitBashSetup', 'home', 'space', 'unified', 'settings']
+const WINDOWS_DRAG_STRIP_VIEWS: AppView[] = ['gitBashSetup', 'unified', 'settings']
 
 export function shouldShowWindowDragStrip(params: {
   view: AppView

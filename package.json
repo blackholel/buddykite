@@ -26,7 +26,7 @@
     "release:win": "npm run check:update-manifest && npm run prepare:kite-seed && npm run check:seed-package && npm run build && electron-builder --win --publish always",
     "release:linux": "npm run check:update-manifest && npm run prepare:kite-seed && npm run check:seed-package && npm run build && electron-builder --linux --publish always",
     "test": "npm run test:check && npm run test:no-claude-user-root && npm run test:ask-user-question-guard && npm run test:unit",
-    "test:check": "node tests/check/binaries.mjs && node tests/check/no-online-resource-i18n-mode.mjs && node tests/check/seed-package.mjs",
+    "test:check": "node tests/check/binaries.mjs && node tests/check/no-online-resource-i18n-mode.mjs && node tests/check/no-removed-copy-interface-usage.mjs && node tests/check/seed-package.mjs",
     "test:no-claude-user-root": "node tests/check/no-claude-user-root.mjs",
     "test:check:mac": "node tests/check/binaries.mjs --platform mac",
     "test:check:win": "node tests/check/binaries.mjs --platform win",

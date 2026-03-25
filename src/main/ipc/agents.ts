@@ -12,7 +12,6 @@ import {
   createAgent,
   updateAgent,
   deleteAgent,
-  copyAgentToSpace,
   copyAgentToSpaceByRef
 } from '../services/agents.service'
 import type { ResourceRef } from '../services/resource-ref.service'
@@ -91,20 +90,6 @@ export function registerAgentsHandlers(): void {
         return { success: false, error: 'Failed to delete agent' }
       }
       return { success: true, data: true }
-    } catch (error: unknown) {
-      const err = error as Error
-      return { success: false, error: err.message }
-    }
-  })
-
-  // Copy agent to space
-  ipcMain.handle('agents:copy-to-space', async (_event, agentName: string, workDir: string) => {
-    try {
-      const agent = copyAgentToSpace(agentName, workDir)
-      if (!agent) {
-        return { success: false, error: `Failed to copy agent: ${agentName}` }
-      }
-      return { success: true, data: agent }
     } catch (error: unknown) {
       const err = error as Error
       return { success: false, error: err.message }

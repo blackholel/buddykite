@@ -16,7 +16,7 @@ import type { Artifact, ArtifactViewMode } from '../../types'
 import { useIsGenerating } from '../../stores/chat.store'
 import { useOnboardingStore } from '../../stores/onboarding.store'
 import { useCanvasStore } from '../../stores/canvas.store'
-import { ChevronRight, FolderOpen, Monitor, LayoutGrid, FolderTree, X, Bell } from 'lucide-react'
+import { FolderOpen, Monitor, LayoutGrid, FolderTree, X, Bell } from 'lucide-react'
 import { ONBOARDING_ARTIFACT_NAME } from '../onboarding/onboardingData'
 import { useTranslation } from '../../i18n'
 
@@ -28,7 +28,7 @@ const VIEW_MODE_STORAGE_KEY = 'kite:artifact-view-mode'
 
 // Width constraints (in pixels) - Desktop only
 const PANEL_WIDTH = 320
-const COLLAPSED_WIDTH = 48
+const COLLAPSED_WIDTH = 56
 
 // Mobile breakpoint (matches Tailwind sm)
 const MOBILE_BREAKPOINT = 640
@@ -504,7 +504,7 @@ export function ArtifactRail({
       }}
     >
       {/* Header - height matches CanvasTabs (py-1.5 + h-7 content = ~40px) */}
-      <div className="flex-shrink-0 px-3 h-10 border-b border-border flex items-center justify-between">
+      <div className="flex-shrink-0 px-3 h-10 flex items-center justify-between">
         {isExpanded && (
           <div className="flex items-center gap-1.5">
             <span className="text-sm font-medium text-muted-foreground">
@@ -528,13 +528,14 @@ export function ArtifactRail({
             </button>
           </div>
         )}
-        {showHeaderToggle && (
+        {showHeaderToggle && isExpanded && (
           <button
             onClick={handleToggleExpanded}
             className="p-1 hover:bg-secondary rounded transition-colors"
-            aria-label={isExpanded ? t('Collapse artifacts panel') : t('Expand artifacts panel')}
+            title={t('Collapse artifacts panel')}
+            aria-label={t('Collapse artifacts panel')}
           >
-            <ChevronRight className={`w-4 h-4 transition-transform ${isExpanded ? '' : 'rotate-180'}`} />
+            <FolderOpen className="w-4 h-4 text-amber-500" />
           </button>
         )}
       </div>

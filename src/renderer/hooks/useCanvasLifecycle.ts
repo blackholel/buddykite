@@ -168,6 +168,11 @@ export function useCanvasLifecycle() {
     []
   )
 
+  const closeConversationTabs = useCallback(
+    (spaceId: string, conversationId: string) => canvasLifecycle.closeConversationTabs(spaceId, conversationId),
+    []
+  )
+
   const currentSpaceSession: SpaceSessionState | undefined = currentSpaceId
     ? canvasLifecycle.getSpaceSession(currentSpaceId)
     : undefined
@@ -209,6 +214,7 @@ export function useCanvasLifecycle() {
     toggleOpen,
     switchSpaceSession,
     closeSpaceSession,
+    closeConversationTabs,
   }
 }
 

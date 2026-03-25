@@ -38,4 +38,13 @@ describe('window-chrome computeWindowChromeInsets', () => {
 
     expect(insets).toEqual({ top: 0, left: 0, right: 128 })
   })
+
+  it('Linux Electron 同样预留右侧 titleBarOverlay 安全区', () => {
+    const insets = computeWindowChromeInsets({
+      inElectron: true,
+      platform: createPlatform({ platform: 'linux', isLinux: true })
+    })
+
+    expect(insets).toEqual({ top: 0, left: 0, right: 128 })
+  })
 })

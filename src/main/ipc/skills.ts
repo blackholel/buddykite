@@ -12,7 +12,6 @@ import {
   updateSkill,
   deleteSkill,
   saveSopSkill,
-  copySkillToSpace,
   copySkillToSpaceByRef,
   clearSkillsCache,
   invalidateSkillsCache
@@ -117,20 +116,6 @@ export function registerSkillsHandlers(): void {
         return { success: false, error: 'Failed to delete skill' }
       }
       return { success: true, data: true }
-    } catch (error: unknown) {
-      const err = error as Error
-      return { success: false, error: err.message }
-    }
-  })
-
-  // Copy a skill to space directory
-  ipcMain.handle('skills:copy-to-space', async (_event, skillName: string, workDir: string) => {
-    try {
-      const skill = copySkillToSpace(skillName, workDir)
-      if (!skill) {
-        return { success: false, error: `Failed to copy skill: ${skillName}` }
-      }
-      return { success: true, data: skill }
     } catch (error: unknown) {
       const err = error as Error
       return { success: false, error: err.message }

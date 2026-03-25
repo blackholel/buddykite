@@ -313,7 +313,7 @@ export function UnifiedSidebar({
       {isCollapsed ? (
         <div className="h-full flex flex-col">
           {showCollapseControl && (
-            <div className="drag-region h-10 border-b border-border/60">
+            <div className="drag-region h-10">
               <div className="h-full px-2 flex items-start justify-center">
                 <button
                   onClick={onToggleCollapse}
@@ -360,7 +360,7 @@ export function UnifiedSidebar({
       ) : (
         <div className="h-full flex flex-col">
           {showCollapseControl && (
-            <div className="drag-region h-10 border-b border-border/60">
+            <div className="drag-region h-10">
               <div className="h-full px-2 flex items-start justify-end">
                 <button
                   onClick={onToggleCollapse}

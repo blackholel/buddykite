@@ -517,17 +517,6 @@ export function deleteAgent(agentPath: string): boolean {
   }
 }
 
-/**
- * Copy an agent to the space directory
- *
- * @param agentName - Agent name (without .md)
- * @param workDir - Target workspace directory
- */
-export function copyAgentToSpace(agentName: string, workDir: string): AgentDefinition | null {
-  const result = copyAgentToSpaceByRef({ type: 'agent', name: agentName }, workDir)
-  return result.status === 'copied' ? (result.data ?? null) : null
-}
-
 export function copyAgentToSpaceByRef(
   ref: ResourceRef,
   workDir: string,

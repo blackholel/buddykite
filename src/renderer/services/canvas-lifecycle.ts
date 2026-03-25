@@ -376,6 +376,29 @@ class CanvasLifecycle {
     this.notifyTabsChange()
   }
 
+  closeConversationTabs(spaceId: string, conversationId: string): void {
+    const session = this.spaceSessions.get(spaceId)
+    if (!session) {
+      return
+    }
+
+    const tabIds = session.tabs
+      .filter((tab) => tab.conversationId === conversationId)
+      .map((tab) => tab.id)
+
+    if (tabIds.length === 0) {
+      return
+    }
+
+    for (const tabId of tabIds) {
+      this.removeTabFromSession(session, tabId)
+    }
+
+    if (this.currentSpaceId !== spaceId) {
+      this.notifyTabsChange()
+    }
+  }
+
   // ============================================
   // Tab Management
   // ============================================

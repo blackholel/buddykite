@@ -924,13 +924,6 @@ export const api = {
     return httpRequest('DELETE', `/api/skills?path=${encodeURIComponent(skillPath)}`)
   },
 
-  copySkillToSpace: async (skillName: string, workDir: string): Promise<ApiResponse> => {
-    if (isElectron()) {
-      return window.kite.copySkillToSpace(skillName, workDir)
-    }
-    return httpRequest('POST', '/api/skills/copy', { skillName, workDir })
-  },
-
   copySkillToSpaceByRef: async (
     ref: Record<string, unknown>,
     workDir: string,
@@ -1003,13 +996,6 @@ export const api = {
     return httpRequest('DELETE', `/api/commands?path=${encodeURIComponent(commandPath)}`)
   },
 
-  copyCommandToSpace: async (commandName: string, workDir: string): Promise<ApiResponse> => {
-    if (isElectron()) {
-      return window.kite.copyCommandToSpace(commandName, workDir)
-    }
-    return httpRequest('POST', '/api/commands/copy', { commandName, workDir })
-  },
-
   copyCommandToSpaceByRef: async (
     ref: Record<string, unknown>,
     workDir: string,
@@ -1073,13 +1059,6 @@ export const api = {
       return window.kite.deleteAgent(agentPath)
     }
     return httpRequest('DELETE', `/api/agents?path=${encodeURIComponent(agentPath)}`)
-  },
-
-  copyAgentToSpace: async (agentName: string, workDir: string): Promise<ApiResponse> => {
-    if (isElectron()) {
-      return window.kite.copyAgentToSpace(agentName, workDir)
-    }
-    return httpRequest('POST', '/api/agents/copy', { agentName, workDir })
   },
 
   copyAgentToSpaceByRef: async (

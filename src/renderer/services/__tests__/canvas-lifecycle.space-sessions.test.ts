@@ -113,4 +113,22 @@ describe('canvasLifecycle space sessions', () => {
     expect(canvasLifecycle.getSpaceSession('space-a')?.tabs).toHaveLength(1)
     expect(canvasLifecycle.getSpaceSession('space-a')?.tabs[0]?.isDirty).toBe(false)
   })
+
+  it('删除会话时可按 spaceId + conversationId 联动关闭该会话相关 tabs', async () => {
+    await canvasLifecycle.openChat('space-a', 'conv-1', '会话 1')
+    await canvasLifecycle.openPlan('计划 1', 'Plan 1', 'space-a', 'conv-1')
+    await canvasLifecycle.openChat('space-a', 'conv-2', '会话 2')
+
+    await canvasLifecycle.switchSpaceSession('space-b')
+    await canvasLifecycle.openChat('space-b', 'conv-1', 'B 会话 1')
+
+    canvasLifecycle.closeConversationTabs('space-a', 'conv-1')
+
+    const spaceATabs = canvasLifecycle.getSpaceSession('space-a')?.tabs ?? []
+    const spaceBTabs = canvasLifecycle.getSpaceSession('space-b')?.tabs ?? []
+
+    expect(spaceATabs.map((tab) => tab.conversationId)).toEqual(['conv-2'])
+    expect(spaceATabs.every((tab) => tab.conversationId !== 'conv-1')).toBe(true)
+    expect(spaceBTabs.some((tab) => tab.conversationId === 'conv-1')).toBe(true)
+  })
 })

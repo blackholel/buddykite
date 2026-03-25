@@ -467,11 +467,6 @@ export function deleteCommand(commandPath: string): boolean {
   }
 }
 
-export function copyCommandToSpace(commandName: string, workDir: string): CommandDefinition | null {
-  const result = copyCommandToSpaceByRef({ type: 'command', name: commandName }, workDir)
-  return result.status === 'copied' ? (result.data ?? null) : null
-}
-
 export function copyCommandToSpaceByRef(
   ref: ResourceRef,
   workDir: string,

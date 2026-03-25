@@ -281,7 +281,6 @@ export interface KiteAPI {
   }) => Promise<IpcResponse>
   updateSkill: (skillPath: string, content: string) => Promise<IpcResponse>
   deleteSkill: (skillPath: string) => Promise<IpcResponse>
-  copySkillToSpace: (skillName: string, workDir: string) => Promise<IpcResponse>
   copySkillToSpaceByRef: (
     ref: Record<string, unknown>,
     workDir: string,
@@ -296,7 +295,6 @@ export interface KiteAPI {
   createCommand: (workDir: string, name: string, content: string) => Promise<IpcResponse>
   updateCommand: (commandPath: string, content: string) => Promise<IpcResponse>
   deleteCommand: (commandPath: string) => Promise<IpcResponse>
-  copyCommandToSpace: (commandName: string, workDir: string) => Promise<IpcResponse>
   copyCommandToSpaceByRef: (
     ref: Record<string, unknown>,
     workDir: string,
@@ -310,7 +308,6 @@ export interface KiteAPI {
   createAgent: (workDir: string, name: string, content: string) => Promise<IpcResponse>
   updateAgent: (agentPath: string, content: string) => Promise<IpcResponse>
   deleteAgent: (agentPath: string) => Promise<IpcResponse>
-  copyAgentToSpace: (agentName: string, workDir: string) => Promise<IpcResponse>
   copyAgentToSpaceByRef: (
     ref: Record<string, unknown>,
     workDir: string,
@@ -579,7 +576,6 @@ const api: KiteAPI = {
   saveSopSkill: (payload) => ipcRenderer.invoke('skills:save-sop-recording', payload),
   updateSkill: (skillPath, content) => ipcRenderer.invoke('skills:update', skillPath, content),
   deleteSkill: (skillPath) => ipcRenderer.invoke('skills:delete', skillPath),
-  copySkillToSpace: (skillName, workDir) => ipcRenderer.invoke('skills:copy-to-space', skillName, workDir),
   copySkillToSpaceByRef: (ref, workDir, options) => ipcRenderer.invoke('skills:copy-to-space-by-ref', ref, workDir, options),
   clearSkillsCache: () => ipcRenderer.invoke('skills:clear-cache'),
   refreshSkillsIndex: (workDir) => ipcRenderer.invoke('skills:refresh', workDir),
@@ -590,7 +586,6 @@ const api: KiteAPI = {
   createCommand: (workDir, name, content) => ipcRenderer.invoke('commands:create', workDir, name, content),
   updateCommand: (commandPath, content) => ipcRenderer.invoke('commands:update', commandPath, content),
   deleteCommand: (commandPath) => ipcRenderer.invoke('commands:delete', commandPath),
-  copyCommandToSpace: (commandName, workDir) => ipcRenderer.invoke('commands:copy-to-space', commandName, workDir),
   copyCommandToSpaceByRef: (ref, workDir, options) => ipcRenderer.invoke('commands:copy-to-space-by-ref', ref, workDir, options),
   clearCommandsCache: () => ipcRenderer.invoke('commands:clear-cache'),
 
@@ -600,7 +595,6 @@ const api: KiteAPI = {
   createAgent: (workDir, name, content) => ipcRenderer.invoke('agents:create', workDir, name, content),
   updateAgent: (agentPath, content) => ipcRenderer.invoke('agents:update', agentPath, content),
   deleteAgent: (agentPath) => ipcRenderer.invoke('agents:delete', agentPath),
-  copyAgentToSpace: (agentName, workDir) => ipcRenderer.invoke('agents:copy-to-space', agentName, workDir),
   copyAgentToSpaceByRef: (ref, workDir, options) => ipcRenderer.invoke('agents:copy-to-space-by-ref', ref, workDir, options),
   clearAgentsCache: () => ipcRenderer.invoke('agents:clear-cache'),
 

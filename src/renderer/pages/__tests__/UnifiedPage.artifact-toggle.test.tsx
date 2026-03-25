@@ -29,6 +29,7 @@ const mockState = vi.hoisted(() => ({
   openChat: vi.fn(async () => {}),
   switchSpaceSession: vi.fn(async () => {}),
   closeSpaceSession: vi.fn(),
+  closeConversationTabs: vi.fn(),
   setOpen: vi.fn(),
   openSearch: vi.fn()
 }))
@@ -51,7 +52,8 @@ vi.mock('../../hooks/useCanvasLifecycle', () => ({
     setOpen: mockState.setOpen,
     openChat: mockState.openChat,
     switchSpaceSession: mockState.switchSpaceSession,
-    closeSpaceSession: mockState.closeSpaceSession
+    closeSpaceSession: mockState.closeSpaceSession,
+    closeConversationTabs: mockState.closeConversationTabs
   })
 }))
 
@@ -64,14 +66,22 @@ vi.mock('../../components/home/ExtensionsView', () => ({
 }))
 
 vi.mock('../../components/artifact/ArtifactRail', () => ({
-  ArtifactRail: (props: Record<string, unknown>) => (
-    <aside
-      aria-label="Files and artifacts"
-      data-artifact-expanded={String(Boolean(props.externalExpanded))}
-    >
-      Artifact Rail
-    </aside>
-  )
+  ArtifactRail: (props: Record<string, unknown>) => {
+    const onExpandedChange = typeof props.onExpandedChange === 'function'
+      ? props.onExpandedChange as (expanded: boolean) => void
+      : undefined
+    return (
+      <aside
+        aria-label="Files and artifacts"
+        data-artifact-expanded={String(Boolean(props.externalExpanded))}
+        data-show-header-toggle={String(Boolean(props.showHeaderToggle))}
+      >
+        Artifact Rail
+        <button data-testid="mock-expand-rail" onClick={() => onExpandedChange?.(true)}>expand rail</button>
+        <button data-testid="mock-collapse-rail" onClick={() => onExpandedChange?.(false)}>collapse rail</button>
+      </aside>
+    )
+  }
 }))
 
 vi.mock('../../components/canvas', () => ({
@@ -165,14 +175,14 @@ function createRenderer() {
   }
 }
 
-function getRailToggleButton(container: HTMLElement): HTMLButtonElement {
-  const buttons = Array.from(container.querySelectorAll('button'))
-  const target = buttons.find((button) => {
-    const label = button.getAttribute('aria-label')
-    return label === '显示文件面板' || label === '隐藏文件面板'
-  })
+function getMockRailControlButton(
+  container: HTMLElement,
+  action: 'expand' | 'collapse'
+): HTMLButtonElement {
+  const selector = action === 'expand' ? '[data-testid="mock-expand-rail"]' : '[data-testid="mock-collapse-rail"]'
+  const target = container.querySelector(selector)
   if (!(target instanceof HTMLButtonElement)) {
-    throw new Error('artifact rail toggle button not found')
+    throw new Error(`mock rail ${action} button not found`)
   }
   return target
 }
@@ -205,6 +215,7 @@ describe('UnifiedPage artifact rail toggle', () => {
     mockState.openChat.mockClear()
     mockState.switchSpaceSession.mockClear()
     mockState.closeSpaceSession.mockClear()
+    mockState.closeConversationTabs.mockClear()
     mockState.setOpen.mockClear()
     mockState.openSearch.mockClear()
   })
@@ -213,22 +224,22 @@ describe('UnifiedPage artifact rail toggle', () => {
     const renderer = createRenderer()
     await renderer.render(<UnifiedPage />)
 
-    let button = getRailToggleButton(renderer.container)
-    expect(button.getAttribute('aria-pressed')).toBe('false')
+    expect(getRailExpandedState(renderer.container)).toBe('false')
+    expect(renderer.container.querySelector('[data-show-header-toggle="true"]')).not.toBeNull()
+
+    await userClick(getMockRailControlButton(renderer.container, 'expand'))
+    expect(getRailExpandedState(renderer.container)).toBe('true')
+
+    await userClick(getMockRailControlButton(renderer.container, 'collapse'))
     expect(getRailExpandedState(renderer.container)).toBe('false')
 
-    const expected = ['true', 'false', 'true', 'false', 'true']
-    for (const nextState of expected) {
-      await userClick(button)
-      button = getRailToggleButton(renderer.container)
-      expect(button.getAttribute('aria-pressed')).toBe(nextState)
-      expect(getRailExpandedState(renderer.container)).toBe(nextState)
-    }
+    await userClick(getMockRailControlButton(renderer.container, 'expand'))
+    expect(getRailExpandedState(renderer.container)).toBe('true')
 
     await renderer.unmount()
   })
 
-  it('abilities 模式首次点击文件夹会切回 artifacts 并展开', async () => {
+  it('abilities 模式不再显示顶部文件按钮，并可通过侧栏切回 artifacts', async () => {
     const renderer = createRenderer()
     await renderer.render(<UnifiedPage />)
 
@@ -238,16 +249,14 @@ describe('UnifiedPage artifact rail toggle', () => {
     })
 
     expect(renderer.container.querySelector('[data-testid=\"extensions-surface\"]')).not.toBeNull()
+    expect(renderer.container.querySelector('button[aria-label="显示文件面板"],button[aria-label="隐藏文件面板"]')).toBeNull()
 
-    const button = getRailToggleButton(renderer.container)
-    expect(button.getAttribute('aria-pressed')).toBe('false')
-    await userClick(button)
+    await act(async () => {
+      await mockState.capturedSidebarProps?.onOpenAbilities?.()
+    })
 
-    const toggledButton = getRailToggleButton(renderer.container)
-    expect(toggledButton.getAttribute('aria-pressed')).toBe('true')
-    expect(getRailExpandedState(renderer.container)).toBe('true')
-    expect(renderer.container.querySelector('[data-testid=\"chat-surface\"]')).not.toBeNull()
     expect(renderer.container.querySelector('[data-testid=\"extensions-surface\"]')).toBeNull()
+    expect(renderer.container.querySelector('[data-testid=\"chat-surface\"]')).not.toBeNull()
 
     await renderer.unmount()
   })
