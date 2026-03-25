@@ -33,14 +33,64 @@ export function ArtifactCard({ artifact, spaceId, isActive = false }: ArtifactCa
   const { t } = useTranslation()
   const [isHovered, setIsHovered] = useState(false)
   const openFile = useCanvasStore(state => state.openFile)
+  const openContent = useCanvasStore(state => state.openContent)
   const isFolder = artifact.type === 'folder'
 
   // Desktop: open all files in canvas first (unknown suffix falls back to text viewer)
   const canViewInCanvas = !isFolder && !isWebMode
 
-  // Handle click to open file
-  // Priority: Canvas > System App (desktop) > Download (web)
+  // Handle click
+  // Folder (desktop): open folder index in Canvas tab
+  // File: Canvas > System App (desktop) > Download (web)
   const handleClick = async () => {
+    if (isFolder) {
+      if (isWebMode) return
+
+      const normalizedFolderPath = artifact.path.replace(/\\/g, '/').replace(/\/+$/g, '')
+      const folderPrefix = `${normalizedFolderPath}/`
+
+      try {
+        const response = await api.listArtifacts(spaceId)
+        if (!response.success || !response.data) {
+          throw new Error(response.error || 'Failed to list folder entries')
+        }
+
+        const entries = (response.data as Artifact[])
+          .filter((entry) => {
+            const normalizedEntryPath = entry.path.replace(/\\/g, '/')
+            return normalizedEntryPath !== normalizedFolderPath && normalizedEntryPath.startsWith(folderPrefix)
+          })
+          .sort((a, b) => a.path.localeCompare(b.path))
+
+        const entryLines = entries.map((entry) => {
+          const normalizedEntryPath = entry.path.replace(/\\/g, '/')
+          const relativePath = normalizedEntryPath.slice(folderPrefix.length)
+          return `${entry.type === 'folder' ? '[DIR]' : '[FILE]'} ${relativePath}`
+        })
+
+        const content = [
+          `# ${artifact.name}`,
+          '',
+          `${t('Path')}: ${artifact.path}`,
+          `${t('Items')}: ${entries.length}`,
+          '',
+          ...(entryLines.length > 0 ? entryLines : [t('No files')])
+        ].join('\n')
+
+        openContent(content, `${artifact.name}/`, 'text')
+      } catch (error) {
+        const fallbackContent = [
+          `# ${artifact.name}`,
+          '',
+          `${t('Path')}: ${artifact.path}`,
+          '',
+          (error as Error).message || t('Failed to load details')
+        ].join('\n')
+        openContent(fallbackContent, `${artifact.name}/`, 'text')
+      }
+      return
+    }
+
     // Try to open in Canvas first for viewable files
     if (canViewInCanvas) {
       openFile(spaceId, artifact.path, artifact.name)

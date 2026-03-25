@@ -287,8 +287,7 @@ export function UnifiedPage() {
     return canvasTabs.filter((tab) => !tab.spaceId || tab.spaceId === currentSpaceId)
   }, [canvasTabs, currentSpaceId])
   const hasCanvasTabs = visibleCanvasTabs.length > 0
-  const shouldRenderCanvasPanel = hasCanvasTabs && isCanvasOpen && (activeTab ? activeTab.type !== 'chat' : true)
-  const shouldSplitWithCanvas = shouldRenderCanvasPanel
+  const shouldRenderCanvasInMain = hasCanvasTabs && isCanvasOpen && (activeTab ? activeTab.type !== 'chat' : true)
   const activeTabTitle = useMemo(() => {
     const title = currentConversationMeta?.title?.trim()
     if (title) return title
@@ -332,9 +331,7 @@ export function UnifiedPage() {
           <div className="space-studio-pane space-studio-chat-pane flex-1 min-w-0 min-h-0 flex overflow-hidden bg-background">
             <div
               className={`min-w-0 min-h-0 flex flex-col overflow-hidden ${
-                shouldSplitWithCanvas
-                  ? 'w-[44%] min-w-[360px] max-w-[860px] shrink-0 border-r border-border/50'
-                  : 'flex-1'
+                'flex-1'
               }`}
             >
               {!isWorkbenchSpace && !hasCanvasTabs && (
@@ -359,15 +356,13 @@ export function UnifiedPage() {
                 </div>
               )}
               <div className="flex-1 min-w-0 min-h-0 bg-background overflow-hidden">
-                <ChatView isCompact={shouldSplitWithCanvas} />
+                {shouldRenderCanvasInMain ? (
+                  <CollapsibleCanvas />
+                ) : (
+                  <ChatView isCompact={false} />
+                )}
               </div>
             </div>
-
-            {shouldRenderCanvasPanel && (
-              <div className="space-studio-pane space-studio-canvas-pane min-w-0 overflow-hidden">
-                <CollapsibleCanvas />
-              </div>
-            )}
 
             {currentSpaceId && (
               <aside aria-label={t('Files and artifacts')} className="h-full">

@@ -962,6 +962,79 @@ describe('Chat Store - queued turn flow', () => {
     expect(useChatStore.getState().getQueueCount(conversationA)).toBe(0)
   })
 
+  it('optimistically updates conversation list before delete API returns', async () => {
+    const spaceId = 'space-1'
+    const conversationA = 'conv-a'
+    const conversationB = 'conv-b'
+    const now = new Date().toISOString()
+    let resolveDelete: ((value: { success: boolean }) => void) | null = null
+
+    useChatStore.setState({
+      currentSpaceId: spaceId,
+      spaceStates: new Map([
+        [
+          spaceId,
+          {
+            conversations: [
+              { id: conversationA, spaceId, title: 'A', createdAt: now, updatedAt: now, messageCount: 0, preview: '' },
+              { id: conversationB, spaceId, title: 'B', createdAt: now, updatedAt: now, messageCount: 0, preview: '' }
+            ],
+            currentConversationId: conversationA
+          }
+        ]
+      ])
+    })
+
+    mockDeleteConversation.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveDelete = resolve as (value: { success: boolean }) => void
+        })
+    )
+
+    const deletingPromise = useChatStore.getState().deleteConversation(spaceId, conversationA)
+
+    const interimSpaceState = useChatStore.getState().spaceStates.get(spaceId)
+    expect(interimSpaceState?.conversations.map((item) => item.id)).toEqual([conversationB])
+    expect(interimSpaceState?.currentConversationId).toBe(conversationB)
+
+    if (!resolveDelete) throw new Error('delete resolver not initialized')
+    resolveDelete({ success: true })
+    const result = await deletingPromise
+    expect(result).toBe(true)
+  })
+
+  it('rolls back optimistic delete when API deletion fails', async () => {
+    const spaceId = 'space-1'
+    const conversationA = 'conv-a'
+    const conversationB = 'conv-b'
+    const now = new Date().toISOString()
+
+    useChatStore.setState({
+      currentSpaceId: spaceId,
+      spaceStates: new Map([
+        [
+          spaceId,
+          {
+            conversations: [
+              { id: conversationA, spaceId, title: 'A', createdAt: now, updatedAt: now, messageCount: 0, preview: '' },
+              { id: conversationB, spaceId, title: 'B', createdAt: now, updatedAt: now, messageCount: 0, preview: '' }
+            ],
+            currentConversationId: conversationA
+          }
+        ]
+      ])
+    })
+
+    mockDeleteConversation.mockResolvedValueOnce({ success: false })
+    const result = await useChatStore.getState().deleteConversation(spaceId, conversationA)
+    expect(result).toBe(false)
+
+    const restoredState = useChatStore.getState().spaceStates.get(spaceId)
+    expect(restoredState?.conversations.map((item) => item.id)).toEqual([conversationA, conversationB])
+    expect(restoredState?.currentConversationId).toBe(conversationA)
+  })
+
   it('returns SPACE_CONVERSATION_MISMATCH when space does not contain the conversation', async () => {
     const spaceId = 'space-1'
     const wrongSpaceId = 'space-2'

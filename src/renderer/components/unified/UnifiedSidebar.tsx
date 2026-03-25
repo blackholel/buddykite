@@ -92,6 +92,10 @@ export function UnifiedSidebar({
     conversationId: string
     title: string
   } | null>(null)
+  const [deleteConversationTarget, setDeleteConversationTarget] = useState<{
+    spaceId: string
+    conversationId: string
+  } | null>(null)
 
   const sortedSpaces = useMemo(() => {
     return [...spaces].sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
@@ -214,6 +218,13 @@ export function UnifiedSidebar({
   const handleOpenCreateSpace = useCallback(() => {
     setCreatingSpace(true)
   }, [])
+
+  const handleConfirmDeleteConversation = useCallback(async () => {
+    if (!deleteConversationTarget) return
+    const { spaceId, conversationId } = deleteConversationTarget
+    setDeleteConversationTarget(null)
+    await onDeleteConversation(spaceId, conversationId)
+  }, [deleteConversationTarget, onDeleteConversation])
 
   return (
     <aside
@@ -445,8 +456,10 @@ export function UnifiedSidebar({
                                     </button>
                                     <button
                                       onClick={() => {
-                                        if (!window.confirm(t('Delete this conversation?'))) return
-                                        void onDeleteConversation(space.id, conversation.id)
+                                        setDeleteConversationTarget({
+                                          spaceId: space.id,
+                                          conversationId: conversation.id
+                                        })
                                       }}
                                       className={`space-studio-history-action-btn unified-sidebar-history-action text-destructive ${isActiveConversation ? 'is-visible' : ''}`}
                                       title={t('Delete')}
@@ -560,6 +573,37 @@ export function UnifiedSidebar({
                 className="px-3 py-1.5 text-sm rounded-lg bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {t('创建工作区')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteConversationTarget && (
+        <div
+          className="fixed inset-0 z-50 bg-black/35 flex items-center justify-center p-4"
+          onClick={() => setDeleteConversationTarget(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-xl border border-border bg-card p-4"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3 className="text-sm font-semibold">{t('Delete this conversation?')}</h3>
+            <p className="mt-2 text-xs text-muted-foreground">
+              {t('This action cannot be undone.')}
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                onClick={() => setDeleteConversationTarget(null)}
+                className="px-3 py-1.5 text-sm rounded-lg border border-border hover:bg-secondary/70"
+              >
+                {t('Cancel')}
+              </button>
+              <button
+                onClick={() => void handleConfirmDeleteConversation()}
+                className="px-3 py-1.5 text-sm rounded-lg bg-destructive text-destructive-foreground hover:opacity-90"
+              >
+                {t('Delete')}
               </button>
             </div>
           </div>

@@ -10,6 +10,7 @@ import type { Artifact } from '../../../types'
 const { canvasState, apiMock, translateFn } = vi.hoisted(() => ({
   canvasState: {
     openFile: vi.fn(async () => {}),
+    openContent: vi.fn(),
     tabs: [] as Array<{ id: string; type?: string; path?: string; spaceId?: string }>,
     activeTabId: null as string | null
   },
@@ -165,6 +166,7 @@ async function click(element: Element) {
 describe('Artifact rail space sync', () => {
   beforeEach(() => {
     canvasState.openFile.mockClear()
+    canvasState.openContent.mockClear()
     canvasState.tabs = []
     canvasState.activeTabId = null
 
@@ -198,6 +200,58 @@ describe('Artifact rail space sync', () => {
     expect(canvasState.openFile).toHaveBeenCalledTimes(2)
     expect(canvasState.openFile).toHaveBeenNthCalledWith(1, 'space-a', '/workspace/readme.md', 'readme.md')
     expect(canvasState.openFile).toHaveBeenNthCalledWith(2, 'space-a', '/workspace/readme.md', 'readme.md')
+
+    await renderer.unmount()
+  })
+
+  it('点击目录卡片时，在主页面打开目录标签而不是系统窗口', async () => {
+    const artifact: Artifact = {
+      id: 'd1',
+      name: 'docs',
+      path: '/workspace/docs',
+      type: 'folder',
+      extension: ''
+    }
+    apiMock.listArtifacts.mockResolvedValue({
+      success: true,
+      data: [
+        artifact,
+        {
+          id: 'f1',
+          name: 'readme.md',
+          path: '/workspace/docs/readme.md',
+          type: 'file',
+          extension: 'md'
+        },
+        {
+          id: 'f2',
+          name: 'api',
+          path: '/workspace/docs/api',
+          type: 'folder',
+          extension: ''
+        }
+      ]
+    })
+
+    const renderer = createRenderer()
+    await renderer.render(<ArtifactCard artifact={artifact} spaceId="space-a" />)
+    await flushEffects()
+
+    const card = renderer.container.querySelector('.artifact-card')
+    if (card == null) throw new Error('card not found')
+    await click(card)
+
+    await waitFor(() => {
+      expect(canvasState.openContent).toHaveBeenCalledTimes(1)
+    })
+    const [content, title, type] = canvasState.openContent.mock.calls[0]
+    expect(content).toContain('/workspace/docs')
+    expect(content).toContain('[FILE] readme.md')
+    expect(content).toContain('[DIR] api')
+    expect(title).toBe('docs/')
+    expect(type).toBe('text')
+    expect(canvasState.openFile).not.toHaveBeenCalled()
+    expect(apiMock.openArtifact).not.toHaveBeenCalled()
 
     await renderer.unmount()
   })

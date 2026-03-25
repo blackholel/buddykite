@@ -1502,83 +1502,209 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   // Delete conversation
   deleteConversation: async (spaceId, conversationId) => {
+    let removedConversationMeta: ConversationMetaWithAi | null = null
+    let removedConversationIndex = -1
+    let previousCurrentConversationId: string | null = null
+    let nextCurrentConversationIdAfterOptimistic: string | null = null
+
+    let removedSession: SessionState | undefined
+    let removedCachedConversation: Conversation | undefined
+    let removedChangeSet: ChangeSet[] | undefined
+    let removedLoadingCount: number | undefined
+    let removedReadyState: ConversationReadyState | undefined
+
+    let queueKey: string | null = null
+    let removedQueuedTurns: QueuedUserTurn[] | undefined
+    let removedQueueDispatching: boolean | undefined
+    let removedQueueError: string | null | undefined
+    let removedQueueInFlightTurnId: string | undefined
+    let removedQueueSuppressedRestore: Set<string> | undefined
+
+    set((state) => {
+      const newSpaceStates = new Map(state.spaceStates)
+      const existingState = newSpaceStates.get(spaceId) || createEmptySpaceState()
+      removedConversationIndex = existingState.conversations.findIndex((c) => c.id === conversationId)
+      removedConversationMeta = removedConversationIndex >= 0
+        ? (existingState.conversations[removedConversationIndex] as ConversationMetaWithAi)
+        : null
+      previousCurrentConversationId = existingState.currentConversationId
+
+      const newConversations = existingState.conversations.filter((c) => c.id !== conversationId)
+      const nextCurrentConversationId =
+        existingState.currentConversationId === conversationId
+          ? (newConversations[0]?.id || null)
+          : existingState.currentConversationId
+      nextCurrentConversationIdAfterOptimistic = nextCurrentConversationId
+
+      newSpaceStates.set(spaceId, {
+        conversations: newConversations,
+        currentConversationId: nextCurrentConversationId
+      })
+
+      const newSessions = new Map(state.sessions)
+      removedSession = newSessions.get(conversationId)
+      newSessions.delete(conversationId)
+
+      const newCache = new Map(state.conversationCache)
+      removedCachedConversation = newCache.get(conversationId) as Conversation | undefined
+      newCache.delete(conversationId)
+
+      const newChangeSets = new Map(state.changeSets)
+      removedChangeSet = newChangeSets.get(conversationId)
+      newChangeSets.delete(conversationId)
+
+      const newLoadingConversationCounts = new Map(state.loadingConversationCounts)
+      removedLoadingCount = newLoadingConversationCounts.get(conversationId)
+      newLoadingConversationCounts.delete(conversationId)
+
+      const conversationReadyByConversation = new Map(state.conversationReadyByConversation)
+      removedReadyState = conversationReadyByConversation.get(conversationId)
+      conversationReadyByConversation.delete(conversationId)
+
+      queueKey = resolveSessionKey(state, conversationId, spaceId)
+
+      const queuedTurnsByConversation = new Map(state.queuedTurnsByConversation)
+      const queueDispatchingByConversation = new Map(state.queueDispatchingByConversation)
+      const queueErrorByConversation = new Map(state.queueErrorByConversation)
+      const queueInFlightTurnByConversation = new Map(state.queueInFlightTurnByConversation)
+      const queueSuppressedRestoreByConversation = new Map(state.queueSuppressedRestoreByConversation)
+
+      if (queueKey) {
+        const queued = queuedTurnsByConversation.get(queueKey)
+        removedQueuedTurns = queued ? [...queued] : undefined
+        removedQueueDispatching = queueDispatchingByConversation.get(queueKey)
+        removedQueueError = queueErrorByConversation.get(queueKey) ?? undefined
+        removedQueueInFlightTurnId = queueInFlightTurnByConversation.get(queueKey)
+        const suppressed = queueSuppressedRestoreByConversation.get(queueKey)
+        removedQueueSuppressedRestore = suppressed ? new Set(suppressed) : undefined
+
+        queuedTurnsByConversation.delete(queueKey)
+        queueDispatchingByConversation.delete(queueKey)
+        queueErrorByConversation.delete(queueKey)
+        queueInFlightTurnByConversation.delete(queueKey)
+        queueSuppressedRestoreByConversation.delete(queueKey)
+      }
+
+      return {
+        spaceStates: newSpaceStates,
+        sessions: newSessions,
+        conversationCache: newCache,
+        changeSets: newChangeSets,
+        loadingConversationCounts: newLoadingConversationCounts,
+        conversationReadyByConversation,
+        queuedTurnsByConversation,
+        queueDispatchingByConversation,
+        queueErrorByConversation,
+        queueInFlightTurnByConversation,
+        queueSuppressedRestoreByConversation
+      }
+    })
+
+    const rollbackOptimisticDelete = () => {
+      set((state) => {
+        if (!removedConversationMeta) {
+          return {}
+        }
+
+        const newSpaceStates = new Map(state.spaceStates)
+        const existingState = newSpaceStates.get(spaceId) || createEmptySpaceState()
+        if (!existingState.conversations.some((c) => c.id === conversationId)) {
+          const restoredConversations = [...existingState.conversations]
+          const restoreIndex = removedConversationIndex >= 0 && removedConversationIndex <= restoredConversations.length
+            ? removedConversationIndex
+            : restoredConversations.length
+          restoredConversations.splice(restoreIndex, 0, removedConversationMeta)
+
+          const shouldRestoreCurrent =
+            existingState.currentConversationId === nextCurrentConversationIdAfterOptimistic
+            || existingState.currentConversationId == null
+          const restoredCurrentConversationId = shouldRestoreCurrent
+            ? (previousCurrentConversationId || existingState.currentConversationId)
+            : existingState.currentConversationId
+
+          newSpaceStates.set(spaceId, {
+            conversations: restoredConversations,
+            currentConversationId: restoredCurrentConversationId
+          })
+        }
+
+        const newSessions = new Map(state.sessions)
+        if (removedSession && !newSessions.has(conversationId)) {
+          newSessions.set(conversationId, removedSession)
+        }
+
+        const newCache = new Map(state.conversationCache)
+        if (removedCachedConversation && !newCache.has(conversationId)) {
+          newCache.set(conversationId, removedCachedConversation)
+        }
+
+        const newChangeSets = new Map(state.changeSets)
+        if (removedChangeSet && !newChangeSets.has(conversationId)) {
+          newChangeSets.set(conversationId, removedChangeSet)
+        }
+
+        const newLoadingConversationCounts = new Map(state.loadingConversationCounts)
+        if (removedLoadingCount !== undefined && !newLoadingConversationCounts.has(conversationId)) {
+          newLoadingConversationCounts.set(conversationId, removedLoadingCount)
+        }
+
+        const conversationReadyByConversation = new Map(state.conversationReadyByConversation)
+        if (removedReadyState && !conversationReadyByConversation.has(conversationId)) {
+          conversationReadyByConversation.set(conversationId, removedReadyState)
+        }
+
+        const queuedTurnsByConversation = new Map(state.queuedTurnsByConversation)
+        const queueDispatchingByConversation = new Map(state.queueDispatchingByConversation)
+        const queueErrorByConversation = new Map(state.queueErrorByConversation)
+        const queueInFlightTurnByConversation = new Map(state.queueInFlightTurnByConversation)
+        const queueSuppressedRestoreByConversation = new Map(state.queueSuppressedRestoreByConversation)
+
+        if (queueKey) {
+          if (removedQueuedTurns && !queuedTurnsByConversation.has(queueKey)) {
+            queuedTurnsByConversation.set(queueKey, [...removedQueuedTurns])
+          }
+          if (removedQueueDispatching !== undefined && !queueDispatchingByConversation.has(queueKey)) {
+            queueDispatchingByConversation.set(queueKey, removedQueueDispatching)
+          }
+          if (removedQueueError !== undefined && !queueErrorByConversation.has(queueKey)) {
+            queueErrorByConversation.set(queueKey, removedQueueError)
+          }
+          if (removedQueueInFlightTurnId !== undefined && !queueInFlightTurnByConversation.has(queueKey)) {
+            queueInFlightTurnByConversation.set(queueKey, removedQueueInFlightTurnId)
+          }
+          if (removedQueueSuppressedRestore && !queueSuppressedRestoreByConversation.has(queueKey)) {
+            queueSuppressedRestoreByConversation.set(queueKey, new Set(removedQueueSuppressedRestore))
+          }
+        }
+
+        return {
+          spaceStates: newSpaceStates,
+          sessions: newSessions,
+          conversationCache: newCache,
+          changeSets: newChangeSets,
+          loadingConversationCounts: newLoadingConversationCounts,
+          conversationReadyByConversation,
+          queuedTurnsByConversation,
+          queueDispatchingByConversation,
+          queueErrorByConversation,
+          queueInFlightTurnByConversation,
+          queueSuppressedRestoreByConversation
+        }
+      })
+    }
+
     try {
       const response = await api.deleteConversation(spaceId, conversationId)
 
       if (response.success) {
-        set((state) => {
-          // Clean up session state
-          const newSessions = new Map(state.sessions)
-          newSessions.delete(conversationId)
-
-          // Clean up cache
-          const newCache = new Map(state.conversationCache)
-          newCache.delete(conversationId)
-
-          // Clean up change sets
-          const newChangeSets = new Map(state.changeSets)
-          newChangeSets.delete(conversationId)
-          const newLoadingConversationCounts = new Map(state.loadingConversationCounts)
-          newLoadingConversationCounts.delete(conversationId)
-          const conversationReadyByConversation = new Map(state.conversationReadyByConversation)
-          conversationReadyByConversation.delete(conversationId)
-          const queueKey = resolveSessionKey(state, conversationId, spaceId)
-          const queuedTurnsByConversation = new Map(state.queuedTurnsByConversation)
-          if (queueKey) {
-            queuedTurnsByConversation.delete(queueKey)
-          }
-          const queueDispatchingByConversation = new Map(state.queueDispatchingByConversation)
-          if (queueKey) {
-            queueDispatchingByConversation.delete(queueKey)
-          }
-          const queueErrorByConversation = new Map(state.queueErrorByConversation)
-          if (queueKey) {
-            queueErrorByConversation.delete(queueKey)
-          }
-          const queueInFlightTurnByConversation = new Map(state.queueInFlightTurnByConversation)
-          if (queueKey) {
-            queueInFlightTurnByConversation.delete(queueKey)
-          }
-          const queueSuppressedRestoreByConversation = new Map(state.queueSuppressedRestoreByConversation)
-          if (queueKey) {
-            queueSuppressedRestoreByConversation.delete(queueKey)
-          }
-
-          // Update space state
-          const newSpaceStates = new Map(state.spaceStates)
-          const existingState = newSpaceStates.get(spaceId) || createEmptySpaceState()
-          const newConversations = existingState.conversations.filter((c) => c.id !== conversationId)
-          const nextCurrentConversationId =
-            existingState.currentConversationId === conversationId
-              ? (newConversations[0]?.id || null)
-              : existingState.currentConversationId
-
-          newSpaceStates.set(spaceId, {
-            conversations: newConversations,
-            currentConversationId: nextCurrentConversationId
-          })
-
-          return {
-            spaceStates: newSpaceStates,
-            sessions: newSessions,
-            conversationCache: newCache,
-            changeSets: newChangeSets,
-            loadingConversationCounts: newLoadingConversationCounts,
-            conversationReadyByConversation,
-            queuedTurnsByConversation,
-            queueDispatchingByConversation,
-            queueErrorByConversation,
-            queueInFlightTurnByConversation,
-            queueSuppressedRestoreByConversation
-          }
-        })
-
         return true
       }
 
+      rollbackOptimisticDelete()
       return false
     } catch (error) {
       console.error('Failed to delete conversation:', error)
+      rollbackOptimisticDelete()
       return false
     }
   },
