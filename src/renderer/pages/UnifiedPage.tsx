@@ -4,6 +4,7 @@ import { ChatView } from '../components/chat/ChatView'
 import { UnifiedSidebar } from '../components/unified/UnifiedSidebar'
 import { GitBashWarningBanner } from '../components/setup/GitBashWarningBanner'
 import { ArtifactRail } from '../components/artifact/ArtifactRail'
+import { ExtensionsView } from '../components/home/ExtensionsView'
 import { CanvasToggleButton, CanvasTabBar, CollapsibleCanvas } from '../components/canvas'
 import { useSearchShortcuts } from '../hooks/useSearchShortcuts'
 import { useCanvasLifecycle } from '../hooks/useCanvasLifecycle'
@@ -11,7 +12,7 @@ import { useAppStore } from '../stores/app.store'
 import { useChatStore } from '../stores/chat.store'
 import { useSearchStore, type SearchScope } from '../stores/search.store'
 import { useSpaceStore } from '../stores/space.store'
-import { navigateToConversationContext, navigateToSpaceContext } from '../utils/space-conversation-navigation'
+import { navigateToSpaceContext } from '../utils/space-conversation-navigation'
 import { pickEntryConversation } from '../utils/space-entry-conversation'
 import { useTranslation } from '../i18n'
 import type { ConversationMeta, CreateSpaceInput } from '../types'
@@ -59,7 +60,6 @@ export function UnifiedPage() {
     spaceStates,
     setCurrentSpace: setChatCurrentSpace,
     loadConversations,
-    createConversation,
     selectConversation,
     renameConversation,
     deleteConversation
@@ -70,7 +70,6 @@ export function UnifiedPage() {
     spaceStates: state.spaceStates,
     setCurrentSpace: state.setCurrentSpace,
     loadConversations: state.loadConversations,
-    createConversation: state.createConversation,
     selectConversation: state.selectConversation,
     renameConversation: state.renameConversation,
     deleteConversation: state.deleteConversation
@@ -109,6 +108,8 @@ export function UnifiedPage() {
   const loadingSpaceIdsRef = useRef<Set<string>>(new Set())
   const conversationSelectTicketRef = useRef(0)
   const [artifactRailExpanded, setArtifactRailExpanded] = useState(false)
+  const [rightPanelMode, setRightPanelMode] = useState<'artifacts' | 'abilities'>('artifacts')
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
   const ensureSpaceConversationsLoaded = useCallback(async (spaceId: string) => {
     if (spaceStates.has(spaceId) || loadingSpaceIdsRef.current.has(spaceId)) return
@@ -173,6 +174,7 @@ export function UnifiedPage() {
   }, [currentSpaceId, selectConversation, spaceStates])
 
   const handleSelectSpace = useCallback(async (spaceId: string) => {
+    setRightPanelMode('artifacts')
     await navigateToSpaceContext({
       targetSpaceId: spaceId,
       currentSpaceId,
@@ -203,6 +205,7 @@ export function UnifiedPage() {
 
   const handleSelectConversation = useCallback(async (spaceId: string, conversationId: string) => {
     const ticket = ++conversationSelectTicketRef.current
+    setRightPanelMode('artifacts')
     const conversationTitle = conversationsBySpaceId
       .get(spaceId)
       ?.find((conversation) => conversation.id === conversationId)
@@ -242,6 +245,7 @@ export function UnifiedPage() {
   ])
 
   const handleCreateSpace = useCallback(async (input: CreateSpaceInput) => {
+    setRightPanelMode('artifacts')
     const created = await createSpace(input)
     if (!created) return null
 
@@ -265,53 +269,6 @@ export function UnifiedPage() {
     loadConversations
   ])
 
-  const handleCreateConversation = useCallback(async (spaceId: string) => {
-    const spaceReady = await navigateToSpaceContext({
-      targetSpaceId: spaceId,
-      currentSpaceId,
-      spaces,
-      kiteSpace,
-      setSpaceStoreCurrentSpace,
-      setChatCurrentSpace,
-      loadConversations
-    })
-    if (!spaceReady.success) return
-
-    const created = await createConversation(spaceId)
-    if (!created) return
-
-    const conversationReady = await navigateToConversationContext({
-      targetSpaceId: spaceId,
-      targetConversationId: created.id,
-      currentSpaceId: spaceId,
-      spaces,
-      kiteSpace,
-      setSpaceStoreCurrentSpace,
-      setChatCurrentSpace,
-      loadConversations,
-      selectConversation
-    })
-    if (!conversationReady.success) return
-
-    const targetSpace = spaceById.get(spaceId)
-    const workDir = targetSpace?.path
-    setCanvasOpen(false)
-    await openChat(spaceId, created.id, created.title, workDir, resolveSpaceTabLabel(spaceId), false)
-  }, [
-    currentSpaceId,
-    createConversation,
-    kiteSpace,
-    loadConversations,
-    openChat,
-    resolveSpaceTabLabel,
-    setCanvasOpen,
-    selectConversation,
-    setChatCurrentSpace,
-    setSpaceStoreCurrentSpace,
-    spaceById,
-    spaces
-  ])
-
   const handleRenameConversation = useCallback(async (spaceId: string, conversationId: string, title: string) => {
     await renameConversation(spaceId, conversationId, title)
   }, [renameConversation])
@@ -319,6 +276,10 @@ export function UnifiedPage() {
   const handleDeleteConversation = useCallback(async (spaceId: string, conversationId: string) => {
     await deleteConversation(spaceId, conversationId)
   }, [deleteConversation])
+
+  const handleOpenAbilities = useCallback(() => {
+    setRightPanelMode((prev) => (prev === 'abilities' ? 'artifacts' : 'abilities'))
+  }, [])
 
   const isWorkbenchSpace = Boolean(currentSpace?.isTemp)
   const visibleCanvasTabs = useMemo(() => {
@@ -354,64 +315,72 @@ export function UnifiedPage() {
           onExpandSpace={handleExpandSpace}
           onSelectConversation={handleSelectConversation}
           onCreateSpace={handleCreateSpace}
-          onCreateConversation={handleCreateConversation}
           onRenameConversation={handleRenameConversation}
           onDeleteConversation={handleDeleteConversation}
-          onGoHome={() => setView('unified')}
+          onOpenAbilities={handleOpenAbilities}
+          abilitiesOpen={rightPanelMode === 'abilities'}
+          isCollapsed={sidebarCollapsed}
+          onToggleCollapse={() => setSidebarCollapsed((prev) => !prev)}
           onGoSettings={() => setView('settings')}
         />
 
-        <div className="space-studio-pane space-studio-chat-pane flex-1 min-w-0 min-h-0 flex overflow-hidden bg-background">
-          <div
-            className={`min-w-0 min-h-0 flex flex-col overflow-hidden ${
-              shouldSplitWithCanvas
-                ? 'w-[44%] min-w-[360px] max-w-[860px] shrink-0 border-r border-border/50'
-                : 'flex-1'
-            }`}
-          >
-            {!isWorkbenchSpace && !hasCanvasTabs && (
-              <div className="space-studio-header border-b border-border/60 bg-card/50 px-3 py-2">
-                <div role="tablist" aria-label={t('Opened content')} className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={true}
-                    className="inline-flex max-w-[320px] items-center rounded-lg border border-border/70 bg-background px-3 py-1.5 text-sm font-medium text-foreground shadow-sm"
-                    title={activeTabTitle}
-                  >
-                    <span className="truncate">{activeTabTitle}</span>
-                  </button>
-                </div>
-              </div>
-            )}
-            {hasCanvasTabs && (
-              <div className="flex items-center bg-background">
-                <div className="min-w-0 flex-1"><CanvasTabBar /></div>
-                <div className="px-2"><CanvasToggleButton /></div>
-              </div>
-            )}
-            <div className="flex-1 min-w-0 min-h-0 bg-background overflow-hidden">
-              <ChatView isCompact={shouldSplitWithCanvas} />
-            </div>
+        {rightPanelMode === 'abilities' ? (
+          <div className="space-studio-pane space-studio-chat-pane flex-1 min-w-0 min-h-0 overflow-hidden bg-background">
+            <ExtensionsView />
           </div>
-
-          {shouldRenderCanvasPanel && (
-            <div className="space-studio-pane space-studio-canvas-pane min-w-0 overflow-hidden">
-              <CollapsibleCanvas />
+        ) : (
+          <div className="space-studio-pane space-studio-chat-pane flex-1 min-w-0 min-h-0 flex overflow-hidden bg-background">
+            <div
+              className={`min-w-0 min-h-0 flex flex-col overflow-hidden ${
+                shouldSplitWithCanvas
+                  ? 'w-[44%] min-w-[360px] max-w-[860px] shrink-0 border-r border-border/50'
+                  : 'flex-1'
+              }`}
+            >
+              {!isWorkbenchSpace && !hasCanvasTabs && (
+                <div className="space-studio-header border-b border-border/60 bg-card/50 px-3 py-2">
+                  <div role="tablist" aria-label={t('Opened content')} className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={true}
+                      className="inline-flex max-w-[320px] items-center rounded-lg border border-border/70 bg-background px-3 py-1.5 text-sm font-medium text-foreground shadow-sm"
+                      title={activeTabTitle}
+                    >
+                      <span className="truncate">{activeTabTitle}</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+              {hasCanvasTabs && (
+                <div className="flex items-center bg-background">
+                  <div className="min-w-0 flex-1"><CanvasTabBar /></div>
+                  <div className="px-2"><CanvasToggleButton /></div>
+                </div>
+              )}
+              <div className="flex-1 min-w-0 min-h-0 bg-background overflow-hidden">
+                <ChatView isCompact={shouldSplitWithCanvas} />
+              </div>
             </div>
-          )}
 
-          {currentSpaceId && (
-            <aside aria-label={t('Files and artifacts')} className="h-full">
-              <ArtifactRail
-                spaceId={currentSpaceId}
-                isTemp={isWorkbenchSpace}
-                externalExpanded={artifactRailExpanded}
-                onExpandedChange={setArtifactRailExpanded}
-              />
-            </aside>
-          )}
-        </div>
+            {shouldRenderCanvasPanel && (
+              <div className="space-studio-pane space-studio-canvas-pane min-w-0 overflow-hidden">
+                <CollapsibleCanvas />
+              </div>
+            )}
+
+            {currentSpaceId && (
+              <aside aria-label={t('Files and artifacts')} className="h-full">
+                <ArtifactRail
+                  spaceId={currentSpaceId}
+                  isTemp={isWorkbenchSpace}
+                  externalExpanded={artifactRailExpanded}
+                  onExpandedChange={setArtifactRailExpanded}
+                />
+              </aside>
+            )}
+          </div>
+        )}
         </div>
       </div>
     </div>

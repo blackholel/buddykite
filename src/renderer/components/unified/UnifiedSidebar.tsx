@@ -3,10 +3,12 @@ import {
   ChevronDown,
   ChevronRight,
   FolderPlus,
-  House,
   Loader2,
-  MessageSquarePlus,
+  PanelLeftClose,
+  PanelLeftOpen,
   Pencil,
+  Sparkles,
+  Settings2,
   Trash2
 } from 'lucide-react'
 import type { ConversationMeta, CreateSpaceInput, Space } from '../../types'
@@ -23,10 +25,12 @@ interface UnifiedSidebarProps {
   onExpandSpace: (spaceId: string) => Promise<void>
   onSelectConversation: (spaceId: string, conversationId: string) => Promise<void>
   onCreateSpace: (input: CreateSpaceInput) => Promise<Space | null>
-  onCreateConversation: (spaceId: string) => Promise<void>
   onRenameConversation: (spaceId: string, conversationId: string, title: string) => Promise<void>
   onDeleteConversation: (spaceId: string, conversationId: string) => Promise<void>
-  onGoHome: () => void
+  onOpenAbilities: () => void
+  abilitiesOpen: boolean
+  isCollapsed: boolean
+  onToggleCollapse: () => void
   onGoSettings: () => void
   initialCreateDialogOpen?: boolean
 }
@@ -50,6 +54,11 @@ function formatRelativeTime(dateString: string, t: (key: string, options?: Recor
   }).format(date)
 }
 
+function getFolderDisplayName(folderPath: string): string {
+  const segments = folderPath.split(/[\\/]/).filter(Boolean)
+  return segments[segments.length - 1] || folderPath
+}
+
 export function UnifiedSidebar({
   spaces,
   currentSpaceId,
@@ -59,17 +68,18 @@ export function UnifiedSidebar({
   onExpandSpace,
   onSelectConversation,
   onCreateSpace,
-  onCreateConversation,
   onRenameConversation,
   onDeleteConversation,
-  onGoHome,
+  onOpenAbilities,
+  abilitiesOpen,
+  isCollapsed,
+  onToggleCollapse,
   onGoSettings,
   initialCreateDialogOpen = false
 }: UnifiedSidebarProps) {
   const { t } = useTranslation()
   const [loadingSpaceIds, setLoadingSpaceIds] = useState<Set<string>>(new Set())
   const loadingSpaceIdsRef = useRef<Set<string>>(new Set())
-  const [hoveredSpaceId, setHoveredSpaceId] = useState<string | null>(null)
   const [expandedSpaceId, setExpandedSpaceId] = useState<string | null>(currentSpaceId)
   const [creatingSpace, setCreatingSpace] = useState(initialCreateDialogOpen)
   const [newSpaceName, setNewSpaceName] = useState('')
@@ -170,6 +180,7 @@ export function UnifiedSidebar({
     if (!result.success || typeof result.data !== 'string' || !result.data) return
     setSelectedCustomPath(result.data)
     setCreatePathMode('custom')
+    setNewSpaceName((prev) => prev.trim() ? prev : getFolderDisplayName(result.data))
   }, [])
 
   const handleCreateSpace = async () => {
@@ -200,32 +211,108 @@ export function UnifiedSidebar({
     setEditingConversation(null)
   }
 
+  const handleOpenCreateSpace = useCallback(() => {
+    setCreatingSpace(true)
+  }, [])
+
   return (
-    <aside className="space-studio-sidebar space-studio-conversation-panel space-studio-reveal w-[320px] h-full border-r border-border/60 bg-card backdrop-blur-sm overflow-hidden">
-      <div className="h-full flex flex-col">
-        <div className="space-studio-conversation-head px-4 py-3 border-b border-border/60 flex items-center justify-between">
-          <div className="min-w-0 flex items-center">
-            <button
-              onClick={onGoHome}
-              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary/70"
-              title={t('Home')}
-              aria-label={t('Home')}
-            >
-              <House className="w-3.5 h-3.5" />
-              <span>{t('主页')}</span>
-            </button>
-          </div>
+    <aside
+      className={`space-studio-sidebar space-studio-conversation-panel space-studio-reveal h-full border-r border-border/60 bg-card backdrop-blur-sm overflow-hidden ${
+        isCollapsed ? 'space-studio-collapsed-rail w-[62px]' : 'w-[320px]'
+      }`}
+    >
+      {isCollapsed ? (
+        <div className="h-full flex flex-col items-center py-3 gap-2">
           <button
-            onClick={() => setCreatingSpace(true)}
-            className="p-2 rounded-lg hover:bg-secondary/80 transition-colors"
-            title={t('New space')}
-            aria-label={t('New space')}
+            onClick={onToggleCollapse}
+            className="space-studio-collapsed-rail-btn"
+            title={t('展开侧边栏')}
+            aria-label={t('展开侧边栏')}
+          >
+            <PanelLeftOpen className="w-4 h-4" />
+          </button>
+          <button
+            onClick={handleOpenCreateSpace}
+            className="space-studio-collapsed-rail-btn"
+            title={t('新建工作区')}
+            aria-label={t('新建工作区')}
           >
             <FolderPlus className="w-4 h-4" />
           </button>
+          <button
+            onClick={onOpenAbilities}
+            className="space-studio-collapsed-rail-btn"
+            title={t('技能')}
+            aria-label={t('技能')}
+            aria-pressed={abilitiesOpen}
+          >
+            <Sparkles className="w-4 h-4" />
+          </button>
+          <span className="space-studio-collapsed-rail-count">{sortedSpaces.length}</span>
+          <div className="mt-auto mb-2">
+            <button
+              onClick={onGoSettings}
+              className="space-studio-collapsed-rail-btn"
+              title={t('设置')}
+              aria-label={t('设置')}
+            >
+              <Settings2 className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      ) : (
+      <div className="h-full flex flex-col">
+        <div className="space-studio-conversation-head px-4 py-3 border-b border-border/60">
+          <div className="flex items-center justify-end gap-2 border-b border-border/50 pb-2">
+            <button
+              onClick={onToggleCollapse}
+              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary/70 hover:text-foreground"
+              title={t('折叠侧边栏')}
+              aria-label={t('折叠侧边栏')}
+            >
+              <PanelLeftClose className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="mt-2 space-y-1">
+            <button
+              onClick={handleOpenCreateSpace}
+              className="inline-flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-left text-foreground hover:bg-secondary/70"
+              title={t('新建工作区')}
+              aria-label={t('新建工作区')}
+            >
+              <FolderPlus className="w-4 h-4 text-muted-foreground" />
+              <span>{t('新建工作区')}</span>
+            </button>
+          </div>
+
+          <button
+            onClick={onOpenAbilities}
+            className="mt-1 inline-flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-left text-foreground transition-colors hover:bg-secondary/70"
+            title={t('技能')}
+            aria-label={t('技能')}
+            aria-pressed={abilitiesOpen}
+          >
+            <Sparkles className="w-4 h-4 text-muted-foreground" />
+            <span>{t('技能')}</span>
+          </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-2 py-2">
+        <div className="flex-1 overflow-y-auto px-2 py-3">
+          <div className="px-2 pb-2 flex items-center justify-between gap-2">
+            <span className="text-[11px] font-medium tracking-[0.08em] text-muted-foreground/75">
+              {t('工作区')}
+            </span>
+            <button
+              onClick={() => setCreatingSpace(true)}
+              className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary/70 hover:text-foreground"
+              title={t('新建工作区')}
+              aria-label={t('新建工作区')}
+            >
+              <FolderPlus className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
           {sortedSpaces.map((space) => {
             const hasLoadedConversations = conversationsBySpaceId.has(space.id)
             const isSpaceLoading = loadingSpaceIds.has(space.id)
@@ -241,12 +328,7 @@ export function UnifiedSidebar({
                 : formatRelativeTime(space.updatedAt, t)
 
             return (
-              <div
-                key={space.id}
-                className="mb-1 rounded-xl"
-                onMouseEnter={() => setHoveredSpaceId(space.id)}
-                onMouseLeave={() => setHoveredSpaceId((prev) => (prev === space.id ? null : prev))}
-              >
+              <div key={space.id} className="mb-1 rounded-xl">
                 <div className={`flex items-center gap-1 px-2 py-1.5 rounded-xl ${isActiveSpace ? 'bg-secondary/80' : 'hover:bg-secondary/50'}`}>
                   <button
                     onClick={(event) => {
@@ -272,21 +354,9 @@ export function UnifiedSidebar({
                     <SpaceIcon iconId={space.icon} size={16} />
                     <span className="text-sm truncate">{space.isTemp ? 'Kite' : space.name}</span>
                   </button>
-
                   <span className="text-[11px] text-muted-foreground bg-background/60 rounded-md px-1.5 py-0.5">
                     {statusLabel}
                   </span>
-
-                  {hoveredSpaceId === space.id && isActiveSpace && (
-                    <button
-                      onClick={() => void onCreateConversation(space.id)}
-                      className="p-1 rounded-md hover:bg-background/60 transition-colors"
-                      title={t('New conversation')}
-                      aria-label={t('New conversation')}
-                    >
-                      <MessageSquarePlus className="w-3.5 h-3.5" />
-                    </button>
-                  )}
                 </div>
 
                 {isExpanded && (
@@ -300,7 +370,7 @@ export function UnifiedSidebar({
                       </div>
                     ) : conversations.length === 0 ? (
                       <div className="text-xs text-muted-foreground px-2 py-1.5">
-                        {t('No conversations yet')}
+                        {t('暂无对话')}
                       </div>
                     ) : (
                       conversations.map((conversation) => {
@@ -352,20 +422,14 @@ export function UnifiedSidebar({
                                   <span
                                     data-slot="time"
                                     aria-hidden={isActiveConversation}
-                                    className={`unified-sidebar-history-time ${
-                                      isActiveConversation
-                                        ? 'is-collapsed'
-                                        : 'is-visible'
-                                    }`}
+                                    className={`unified-sidebar-history-time ${isActiveConversation ? 'is-collapsed' : 'is-visible'}`}
                                     title={new Date(conversation.updatedAt).toLocaleString(getCurrentLanguage())}
                                   >
                                     {relativeTimeText}
                                   </span>
                                   <div
                                     data-slot="actions"
-                                    className={`unified-sidebar-history-actions ${
-                                      isActiveConversation ? 'is-active' : ''
-                                    }`}
+                                    className={`unified-sidebar-history-actions ${isActiveConversation ? 'is-active' : ''}`}
                                   >
                                     <button
                                       onClick={() => setEditingConversation({
@@ -373,9 +437,7 @@ export function UnifiedSidebar({
                                         conversationId: conversation.id,
                                         title: conversation.title
                                       })}
-                                      className={`space-studio-history-action-btn unified-sidebar-history-action ${
-                                        isActiveConversation ? 'is-visible' : ''
-                                      }`}
+                                      className={`space-studio-history-action-btn unified-sidebar-history-action ${isActiveConversation ? 'is-visible' : ''}`}
                                       title={t('Rename')}
                                       aria-label={t('Rename')}
                                     >
@@ -386,9 +448,7 @@ export function UnifiedSidebar({
                                         if (!window.confirm(t('Delete this conversation?'))) return
                                         void onDeleteConversation(space.id, conversation.id)
                                       }}
-                                      className={`space-studio-history-action-btn unified-sidebar-history-action text-destructive ${
-                                        isActiveConversation ? 'is-visible' : ''
-                                      }`}
+                                      className={`space-studio-history-action-btn unified-sidebar-history-action text-destructive ${isActiveConversation ? 'is-visible' : ''}`}
                                       title={t('Delete')}
                                       aria-label={t('Delete')}
                                     >
@@ -420,6 +480,7 @@ export function UnifiedSidebar({
           </button>
         </div>
       </div>
+      )}
 
       {creatingSpace && (
         <div
@@ -430,7 +491,7 @@ export function UnifiedSidebar({
             className="w-full max-w-sm rounded-xl border border-border bg-card p-4"
             onClick={(event) => event.stopPropagation()}
           >
-            <h3 className="text-sm font-semibold">{t('Create space')}</h3>
+            <h3 className="text-sm font-semibold">{t('新建工作区')}</h3>
             <input
               autoFocus
               value={newSpaceName}
@@ -441,7 +502,7 @@ export function UnifiedSidebar({
                   void handleCreateSpace()
                 }
               }}
-              placeholder={t('Space name')}
+              placeholder={t('工作区名称')}
               className="mt-3 w-full bg-background border border-border rounded-lg px-3 py-2 text-sm"
             />
             <div className="mt-3 rounded-lg border border-border/60 p-2.5 space-y-2">
@@ -491,14 +552,14 @@ export function UnifiedSidebar({
                 onClick={closeCreateSpaceDialog}
                 className="px-3 py-1.5 text-sm rounded-lg border border-border hover:bg-secondary/70"
               >
-                {t('Cancel')}
+                {t('取消')}
               </button>
               <button
                 onClick={() => void handleCreateSpace()}
                 disabled={!newSpaceName.trim() || (createPathMode === 'custom' && !selectedCustomPath)}
                 className="px-3 py-1.5 text-sm rounded-lg bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {t('Create')}
+                {t('创建工作区')}
               </button>
             </div>
           </div>

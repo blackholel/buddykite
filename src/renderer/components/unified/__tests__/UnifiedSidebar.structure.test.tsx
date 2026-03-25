@@ -82,11 +82,13 @@ const handlers = {
   onExpandSpace: vi.fn(async (_spaceId: string) => {}),
   onSelectConversation: vi.fn(async (_spaceId: string, _conversationId: string) => {}),
   onCreateSpace: vi.fn(async (_input: CreateSpaceInput) => null),
-  onCreateConversation: vi.fn(async (_spaceId: string) => {}),
   onRenameConversation: vi.fn(async (_spaceId: string, _conversationId: string, _title: string) => {}),
   onDeleteConversation: vi.fn(async (_spaceId: string, _conversationId: string) => {}),
-  onGoHome: vi.fn(),
-  onGoSettings: vi.fn()
+  onOpenAbilities: vi.fn(),
+  onToggleCollapse: vi.fn(),
+  onGoSettings: vi.fn(),
+  abilitiesOpen: false,
+  isCollapsed: false
 }
 
 describe('UnifiedSidebar structure', () => {
@@ -138,7 +140,52 @@ describe('UnifiedSidebar structure', () => {
     expect(html).toContain('aria-expanded="false"')
   })
 
-  it('新建空间弹窗展示创建方式与引导文案', () => {
+  it('左栏顶部保留精简入口并提供折叠按钮', () => {
+    const html = renderToStaticMarkup(
+      <UnifiedSidebar
+        spaces={[spaceA, spaceB]}
+        currentSpaceId="space-a"
+        currentConversationId="conv-1"
+        conversationsBySpaceId={new Map([
+          ['space-a', [conv1, conv2]],
+          ['space-b', [conv3]]
+        ])}
+        {...handlers}
+      />
+    )
+
+    expect(html).not.toContain('快捷操作')
+    expect(html).not.toContain('新线程')
+    expect(html).not.toContain('自动化')
+    expect(html).toContain('新建工作区')
+    expect(html).toContain('技能')
+    expect(html).toContain('工作区')
+    expect(html).toContain('折叠侧边栏')
+  })
+
+  it('折叠态展示紧凑工具栏并提供展开入口', () => {
+    const html = renderToStaticMarkup(
+      <UnifiedSidebar
+        spaces={[spaceA, spaceB]}
+        currentSpaceId="space-a"
+        currentConversationId="conv-1"
+        conversationsBySpaceId={new Map([
+          ['space-a', [conv1, conv2]],
+          ['space-b', [conv3]]
+        ])}
+        {...handlers}
+        isCollapsed
+      />
+    )
+
+    expect(html).toContain('space-studio-collapsed-rail')
+    expect(html).toContain('展开侧边栏')
+    expect(html).toContain('新建工作区')
+    expect(html).toContain('技能')
+    expect(html).not.toContain('自动化')
+  })
+
+  it('新建工作区弹窗展示创建方式与引导文案', () => {
     const html = renderToStaticMarkup(
       <UnifiedSidebar
         spaces={[spaceA, spaceB]}
@@ -153,6 +200,8 @@ describe('UnifiedSidebar structure', () => {
       />
     )
 
+    expect(html).toContain('新建工作区')
+    expect(html).toContain('工作区名称')
     expect(html).toContain('创建位置')
     expect(html).toContain('默认目录')
     expect(html).toContain('本地文件夹')

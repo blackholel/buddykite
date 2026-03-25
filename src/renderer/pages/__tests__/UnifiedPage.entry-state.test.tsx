@@ -12,6 +12,8 @@ const mockCurrentSpace = {
 let mockCurrentSpaceId = 'space-1'
 let capturedSidebarProps: Record<string, any> | null = null
 let triggerTopTabClick: null | (() => Promise<void>) = null
+let rightPanelModeOverride: 'artifacts' | 'abilities' | null = null
+const setRightPanelModeMock = vi.fn()
 const mockCanvasState = {
   tabs: [] as Array<Record<string, unknown>>,
   activeTab: null as Record<string, unknown> | null,
@@ -21,6 +23,19 @@ const mockCanvasState = {
   switchTab: vi.fn(async () => {}),
   setOpen: vi.fn()
 }
+
+vi.mock('react', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react')>()
+  return {
+    ...actual,
+    useState: ((initial: unknown) => {
+      if (initial === 'artifacts') {
+        return [rightPanelModeOverride ?? initial, setRightPanelModeMock]
+      }
+      return actual.useState(initial)
+    }) as typeof actual.useState
+  }
+})
 
 vi.mock('../../i18n', () => ({
   useTranslation: () => ({
@@ -42,6 +57,10 @@ vi.mock('../../components/chat/ChatView', () => ({
 
 vi.mock('../../components/artifact/ArtifactRail', () => ({
   ArtifactRail: () => <aside aria-label="Files and artifacts">Artifact Rail</aside>
+}))
+
+vi.mock('../../components/home/ExtensionsView', () => ({
+  ExtensionsView: () => <section>Extensions View</section>
 }))
 
 vi.mock('../../components/canvas', () => ({
@@ -130,6 +149,8 @@ describe('UnifiedPage entry state', () => {
     mockCurrentSpace.isTemp = false
     capturedSidebarProps = null
     triggerTopTabClick = null
+    rightPanelModeOverride = null
+    setRightPanelModeMock.mockClear()
     mockCanvasState.tabs = []
     mockCanvasState.activeTab = null
     mockCanvasState.isOpen = false
@@ -273,6 +294,55 @@ describe('UnifiedPage entry state', () => {
     expect(html).not.toContain('Start in 3 simple steps')
     expect(html).not.toContain('Back to home')
     expect(html).not.toContain('All spaces')
+  })
+
+  it('点击能力入口时会请求右侧切到能力面板', async () => {
+    renderToStaticMarkup(<UnifiedPage />)
+
+    await capturedSidebarProps?.onOpenAbilities?.()
+
+    expect(setRightPanelModeMock).toHaveBeenCalledTimes(1)
+    const updater = setRightPanelModeMock.mock.calls[0]?.[0]
+    expect(typeof updater).toBe('function')
+    expect(updater('artifacts')).toBe('abilities')
+  })
+
+  it('能力面板已打开时再次点击入口会切回文件栏', async () => {
+    rightPanelModeOverride = 'abilities'
+    renderToStaticMarkup(<UnifiedPage />)
+
+    await capturedSidebarProps?.onOpenAbilities?.()
+
+    expect(setRightPanelModeMock).toHaveBeenCalledTimes(1)
+    const updater = setRightPanelModeMock.mock.calls[0]?.[0]
+    expect(typeof updater).toBe('function')
+    expect(updater('abilities')).toBe('artifacts')
+  })
+
+  it('能力模式会替换主对话区为扩展页，并隐藏文件栏', () => {
+    rightPanelModeOverride = 'abilities'
+
+    const html = renderToStaticMarkup(<UnifiedPage />)
+
+    expect(html).toContain('Extensions View')
+    expect(html).not.toContain('Chat Surface')
+    expect(html).not.toContain('Files and artifacts')
+  })
+
+  it('切换工作区时会请求右侧恢复文件栏', async () => {
+    renderToStaticMarkup(<UnifiedPage />)
+
+    await capturedSidebarProps?.onSelectSpace?.('space-2')
+
+    expect(setRightPanelModeMock).toHaveBeenCalledWith('artifacts')
+  })
+
+  it('切换线程时会请求右侧恢复文件栏', async () => {
+    renderToStaticMarkup(<UnifiedPage />)
+
+    await capturedSidebarProps?.onSelectConversation?.('space-1', 'conv-1')
+
+    expect(setRightPanelModeMock).toHaveBeenCalledWith('artifacts')
   })
 
   it('temp 空间显示文件栏（chat tab 激活时不展示右侧画布）', () => {

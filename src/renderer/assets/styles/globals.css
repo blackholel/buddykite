@@ -109,17 +109,26 @@
 
 /* Unified workspace: classic split (left gray + right white) */
 html:not(.dark) .unified-classic-theme {
-  /* 来源: v1.2.5 (tag: de81116) */
-  --background: 0 0% 97.8%;
+  /* 基于 v1.2.5：右侧提亮一档，保留轻灰层次 */
+  --background: 0 0% 98.8%;
   --card: 215 17% 93.7%;
-  --popover: 0 0% 97.8%;
-  --secondary: 215 19% 95.8%;
-  --muted: 215 16% 94.4%;
-  --accent: 210 20% 97%;
-  --border: 214 14% 84%;
-  --input: 0 0% 97.8%;
+  --popover: 0 0% 98.8%;
+  --secondary: 214 20% 96.8%;
+  --muted: 214 16% 95.2%;
+  --accent: 210 22% 97.8%;
+  --border: 214 13% 84%;
+  --input: 0 0% 98.8%;
   --primary: 213 72% 48%;
   --ring: 213 72% 48%;
+
+  --workspace-bg: 214 19% 96.4%;
+  --sidebar-bg: 214 16% 94.6%;
+  --canvas-bg: 0 0% 99.1%;
+  --chrome-bg: 214 16% 95.2%;
+  --line-soft: 214 13% 84%;
+  --line-strong: 214 12% 77%;
+  --space-split-line: 214 13% 85%;
+  --space-right-panel-alt: 214 18% 97.6%;
 }
 
 html.dark .unified-classic-theme {
@@ -1224,7 +1233,11 @@ body {
 }
 
 .space-studio-shell .space-studio-chat-pane {
-  background: hsl(var(--space-right-panel));
+  background: linear-gradient(
+    180deg,
+    hsl(var(--space-right-panel)) 0%,
+    hsl(var(--space-right-panel-alt) / 0.98) 100%
+  );
 }
 
 .space-studio-shell .space-studio-canvas-pane {
