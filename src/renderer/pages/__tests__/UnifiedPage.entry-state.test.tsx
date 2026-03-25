@@ -290,6 +290,8 @@ describe('UnifiedPage entry state', () => {
     expect(html).not.toContain('Canvas Surface')
     expect(html).not.toContain('role="tablist"')
     expect(html).toContain('Files and artifacts')
+    expect(html).toContain('aria-pressed="false"')
+    expect(html).toContain('显示文件面板')
     expect(html).not.toContain('What can I do')
     expect(html).not.toContain('Start in 3 simple steps')
     expect(html).not.toContain('Back to home')

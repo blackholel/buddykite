@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEventHandler } from 'react'
 import { shallow } from 'zustand/shallow'
 import { FolderOpen } from 'lucide-react'
 import { ChatView } from '../components/chat/ChatView'
@@ -113,9 +113,17 @@ export function UnifiedPage() {
   }, [spaceById, t])
   const loadingSpaceIdsRef = useRef<Set<string>>(new Set())
   const conversationSelectTicketRef = useRef(0)
-  const [artifactRailExpanded, setArtifactRailExpanded] = useState(true)
+  const [artifactRailExpanded, setArtifactRailExpanded] = useState(false)
   const [rightPanelMode, setRightPanelMode] = useState<'artifacts' | 'abilities'>('artifacts')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+
+  const stopTitlebarEvent: MouseEventHandler<HTMLDivElement | HTMLButtonElement> = useCallback((event) => {
+    event.stopPropagation()
+  }, [])
+  const blockTitlebarDoubleClick: MouseEventHandler<HTMLDivElement | HTMLButtonElement> = useCallback((event) => {
+    event.preventDefault()
+    event.stopPropagation()
+  }, [])
 
   const ensureSpaceConversationsLoaded = useCallback(async (spaceId: string) => {
     if (spaceStates.has(spaceId) || loadingSpaceIdsRef.current.has(spaceId)) return
@@ -334,6 +342,11 @@ export function UnifiedPage() {
     setArtifactRailExpanded((prev) => !prev)
   }, [artifactSpaceId, rightPanelMode, setRightPanelMode])
 
+  const handleArtifactRailToggleClick: MouseEventHandler<HTMLButtonElement> = useCallback((event) => {
+    event.stopPropagation()
+    handleToggleArtifactRail()
+  }, [handleToggleArtifactRail])
+
   return (
     <div className="unified-classic-theme space-studio-root h-full min-h-0 w-full flex flex-col">
       {mockBashMode && (
@@ -365,53 +378,42 @@ export function UnifiedPage() {
         />
 
         {rightPanelMode === 'abilities' ? (
-          <div className="space-studio-pane space-studio-chat-pane flex-1 min-w-0 min-h-0 overflow-hidden bg-background relative">
-            <div className="no-drag absolute top-1 right-2 z-30">
-              <button
-                type="button"
-                onClick={handleToggleArtifactRail}
-                className={`inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors ${
-                  artifactRailExpanded
-                    ? 'bg-secondary/80 text-foreground'
-                    : 'text-muted-foreground hover:bg-secondary/70 hover:text-foreground'
-                }`}
-                title={artifactRailExpanded ? t('隐藏文件面板') : t('显示文件面板')}
-                aria-label={artifactRailExpanded ? t('隐藏文件面板') : t('显示文件面板')}
-                aria-pressed={artifactRailExpanded}
-                disabled={!artifactSpaceId}
-              >
-                <FolderOpen className="w-4 h-4" />
-              </button>
+          <div className="space-studio-pane space-studio-chat-pane flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden bg-background relative">
+            <div className="drag-region flex-shrink-0 h-10 border-b border-border/60 bg-background/95">
+              <div className="h-full px-2 pr-16 flex items-start justify-end" />
             </div>
-            <ExtensionsView />
+            <button
+              type="button"
+              onClick={handleArtifactRailToggleClick}
+              onMouseDown={stopTitlebarEvent}
+              onDoubleClick={blockTitlebarDoubleClick}
+              className="no-drag absolute top-0 right-0 z-40 h-10 w-14 flex items-center justify-center"
+              title={artifactRailExpanded ? t('隐藏文件面板') : t('显示文件面板')}
+              aria-label={artifactRailExpanded ? t('隐藏文件面板') : t('显示文件面板')}
+              aria-pressed={artifactRailExpanded}
+              disabled={!artifactSpaceId}
+            >
+              <span className={`inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors ${
+                artifactRailExpanded
+                  ? 'bg-secondary/80 text-foreground'
+                  : 'text-muted-foreground hover:bg-secondary/70 hover:text-foreground'
+              }`}>
+                <FolderOpen className="w-4 h-4" />
+              </span>
+            </button>
+            <div className="flex-1 min-h-0 overflow-hidden">
+              <ExtensionsView />
+            </div>
           </div>
         ) : (
           <div className="space-studio-pane space-studio-chat-pane flex-1 min-w-0 min-h-0 flex overflow-hidden bg-background relative">
-            <div className="no-drag absolute top-1 right-2 z-30">
-              <button
-                type="button"
-                onClick={handleToggleArtifactRail}
-                className={`inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors ${
-                  artifactRailExpanded
-                    ? 'bg-secondary/80 text-foreground'
-                    : 'text-muted-foreground hover:bg-secondary/70 hover:text-foreground'
-                }`}
-                title={artifactRailExpanded ? t('隐藏文件面板') : t('显示文件面板')}
-                aria-label={artifactRailExpanded ? t('隐藏文件面板') : t('显示文件面板')}
-                aria-pressed={artifactRailExpanded}
-                disabled={!artifactSpaceId}
-              >
-                <FolderOpen className="w-4 h-4" />
-              </button>
-            </div>
-
             <div
               className={`min-w-0 min-h-0 flex flex-col overflow-hidden ${
                 'flex-1'
               }`}
             >
               <div className="drag-region flex-shrink-0 h-10 border-b border-border/60 bg-background/95">
-                <div className="h-full px-2 pr-12 flex items-start gap-2">
+                <div className="h-full px-2 pr-16 flex items-start gap-2">
                   <div className="no-drag min-w-0 flex-1 h-full flex items-start">
                     {hasCanvasTabs ? <div className="min-w-0 flex-1"><CanvasTabBar /></div> : null}
                   </div>
@@ -444,6 +446,25 @@ export function UnifiedPage() {
                 />
               </aside>
             )}
+            <button
+              type="button"
+              onClick={handleArtifactRailToggleClick}
+              onMouseDown={stopTitlebarEvent}
+              onDoubleClick={blockTitlebarDoubleClick}
+              className="no-drag absolute top-0 right-0 z-40 h-10 w-14 flex items-center justify-center"
+              title={artifactRailExpanded ? t('隐藏文件面板') : t('显示文件面板')}
+              aria-label={artifactRailExpanded ? t('隐藏文件面板') : t('显示文件面板')}
+              aria-pressed={artifactRailExpanded}
+              disabled={!artifactSpaceId}
+            >
+              <span className={`inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors ${
+                artifactRailExpanded
+                  ? 'bg-secondary/80 text-foreground'
+                  : 'text-muted-foreground hover:bg-secondary/70 hover:text-foreground'
+              }`}>
+                <FolderOpen className="w-4 h-4" />
+              </span>
+            </button>
           </div>
         )}
         </div>
