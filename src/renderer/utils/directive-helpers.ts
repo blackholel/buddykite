@@ -2,7 +2,7 @@
  * Shared helpers for building DirectiveRef from resource definitions.
  *
  * Extracted from duplicated code across AgentsPanel, SkillsPanel,
- * CommandsPanel, ResourceCard, and WorkflowEditorModal.
+ * CommandsPanel, and ResourceCard.
  */
 
 import type { DirectiveRef, DirectiveType } from '../types'

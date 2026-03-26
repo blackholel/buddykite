@@ -20,7 +20,6 @@ export type ResourceListView =
   | 'composer'
   | 'template-library'
   | 'taxonomy-admin'
-  | 'workflow-validation'
   | 'runtime-direct'
   | 'runtime-command-dependency'
 
@@ -29,7 +28,6 @@ export const RESOURCE_LIST_VIEWS: ResourceListView[] = [
   'composer',
   'template-library',
   'taxonomy-admin',
-  'workflow-validation',
   'runtime-direct',
   'runtime-command-dependency'
 ]
@@ -38,18 +36,9 @@ export function isResourceListView(value: unknown): value is ResourceListView {
   return typeof value === 'string' && (RESOURCE_LIST_VIEWS as string[]).includes(value)
 }
 
-export interface ResourceVisibilityOptions {
-  allowLegacyWorkflowInternalDirect?: boolean
-}
-
 export function viewAllowsInternalResources(
-  view: ResourceListView,
-  options?: ResourceVisibilityOptions
+  view: ResourceListView
 ): boolean {
-  if (view === 'workflow-validation') {
-    return options?.allowLegacyWorkflowInternalDirect === true
-  }
-
   if (view === 'taxonomy-admin' || view === 'runtime-command-dependency') {
     return true
   }
@@ -59,17 +48,16 @@ export function viewAllowsInternalResources(
 
 export function isResourceVisibleInView(
   exposure: ResourceExposure,
-  view: ResourceListView,
-  options?: ResourceVisibilityOptions
+  view: ResourceListView
 ): boolean {
   if (exposure === 'public') return true
-  return viewAllowsInternalResources(view, options)
+  return viewAllowsInternalResources(view)
 }
 
-export type InvocationContext = 'interactive' | 'workflow-step' | 'command-dependency'
+export type InvocationContext = 'interactive' | 'command-dependency'
 
 export function isInvocationContext(value: unknown): value is InvocationContext {
-  return value === 'interactive' || value === 'workflow-step' || value === 'command-dependency'
+  return value === 'interactive' || value === 'command-dependency'
 }
 
 export type ResourceRefreshReason =

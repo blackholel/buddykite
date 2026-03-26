@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import i18n from '../../../src/renderer/i18n'
 
 const mockSendMessage = vi.fn()
-const mockSendWorkflowStepMessage = vi.fn()
 const mockGetConversation = vi.fn()
 const mockListChangeSets = vi.fn()
 const mockStopGeneration = vi.fn()
@@ -10,7 +9,6 @@ const mockStopGeneration = vi.fn()
 vi.mock('../../../src/renderer/api', () => ({
   api: {
     sendMessage: (...args: unknown[]) => mockSendMessage(...args),
-    sendWorkflowStepMessage: (...args: unknown[]) => mockSendWorkflowStepMessage(...args),
     getConversation: (...args: unknown[]) => mockGetConversation(...args),
     listChangeSets: (...args: unknown[]) => mockListChangeSets(...args),
     stopGeneration: (...args: unknown[]) => mockStopGeneration(...args)
@@ -80,12 +78,10 @@ describe('chat.store AI setup guard', () => {
   beforeEach(() => {
     useChatStore.getState().reset()
     mockSendMessage.mockReset()
-    mockSendWorkflowStepMessage.mockReset()
     mockGetConversation.mockReset()
     mockListChangeSets.mockReset()
     mockStopGeneration.mockReset()
     mockSendMessage.mockResolvedValue({ success: true })
-    mockSendWorkflowStepMessage.mockResolvedValue({ success: true })
     mockGetConversation.mockResolvedValue({ success: false })
     mockListChangeSets.mockResolvedValue({ success: false })
     mockStopGeneration.mockResolvedValue({ success: true })

@@ -37,7 +37,6 @@ export interface ResolveResourceExposureInput {
 
 interface RuntimeExposureFlags {
   exposureEnabled: boolean
-  allowLegacyInternalDirect: boolean
   legacyDependencyRegexEnabled: boolean
 }
 
@@ -189,13 +188,11 @@ export function isResourceExposureEnabled(): boolean {
 export function getResourceExposureRuntimeFlags(): RuntimeExposureFlags {
   const config = getConfig() as {
     resourceExposure?: { enabled?: boolean }
-    workflow?: { allowLegacyInternalDirect?: boolean }
     commands?: { legacyDependencyRegexEnabled?: boolean }
   }
 
   return {
     exposureEnabled: config.resourceExposure?.enabled !== false,
-    allowLegacyInternalDirect: config.workflow?.allowLegacyInternalDirect === true,
     legacyDependencyRegexEnabled: config.commands?.legacyDependencyRegexEnabled !== false
   }
 }
@@ -219,8 +216,5 @@ export function filterByResourceExposure<T extends { exposure: ResourceExposure 
   view: ResourceListView
 ): T[] {
   if (!isResourceExposureEnabled()) return resources
-  const runtimeFlags = getResourceExposureRuntimeFlags()
-  return resources.filter((resource) => isResourceVisibleInView(resource.exposure, view, {
-    allowLegacyWorkflowInternalDirect: runtimeFlags.allowLegacyInternalDirect
-  }))
+  return resources.filter((resource) => isResourceVisibleInView(resource.exposure, view))
 }

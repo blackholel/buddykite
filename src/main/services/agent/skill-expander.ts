@@ -55,7 +55,6 @@ interface ExpandLazyDirectiveOptions {
   invocationContext?: InvocationContext
   locale?: string
   resourceExposureEnabled?: boolean
-  allowLegacyWorkflowInternalDirect?: boolean
   legacyDependencyRegexEnabled?: boolean
 }
 
@@ -228,22 +227,7 @@ function canUseExposure(
   if (options?.resourceExposureEnabled === false) return true
   if (exposure !== 'internal-only') return true
   if (context === 'command-dependency') return true
-  if (context === 'workflow-step' && options?.allowLegacyWorkflowInternalDirect) return true
   return false
-}
-
-function warnWorkflowLegacyInternal(
-  type: 'skill' | 'agent' | 'command',
-  token: ParsedDirectiveToken,
-  context: InvocationContext,
-  exposure: ResourceExposure | undefined,
-  options?: ExpandLazyDirectiveOptions
-): void {
-  if (context !== 'workflow-step') return
-  if (!options?.allowLegacyWorkflowInternalDirect) return
-  if (options?.resourceExposureEnabled === false) return
-  if (exposure !== 'internal-only') return
-  console.warn(`[ResourceExposure] Workflow legacy direct access allowed for internal-only ${type}: ${token.raw}`)
 }
 
 function buildSkillInjectionBlock(
@@ -369,7 +353,6 @@ function expandSkillDirective(
     pushMissing(state, 'skills', token.raw)
     return null
   }
-  warnWorkflowLegacyInternal('skill', token, invocationContext, skillDefinition.exposure, options)
 
   const skill = getSkillContent(token.raw, workDir, { locale: options?.locale })
   if (!skill) {
@@ -422,7 +405,6 @@ function expandAgentDirective(
     pushMissing(state, 'agents', token.raw)
     return null
   }
-  warnWorkflowLegacyInternal('agent', token, invocationContext, agentDefinition.exposure, options)
 
   const agentContent = getAgentContent(token.raw, workDir)
   if (!agentContent) {

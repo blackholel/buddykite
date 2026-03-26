@@ -412,70 +412,6 @@ export const api = {
     return httpRequest('POST', '/api/agent/mode', { spaceId, conversationId, mode, runId })
   },
 
-  sendWorkflowStepMessage: async (request: {
-    spaceId: string
-    conversationId: string
-    message: string
-    opId?: string
-    responseLanguage?: LocaleCode | string
-    resumeSessionId?: string
-    modelOverride?: string
-    model?: string
-    images?: Array<{
-      id: string
-      type: 'image'
-      mediaType: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'
-      data: string
-      name?: string
-      size?: number
-    }>
-    thinkingEnabled?: boolean
-    planEnabled?: boolean
-    mode?: ChatMode
-    canvasContext?: {
-      isOpen: boolean
-      tabCount: number
-      activeTab: {
-        type: string
-        title: string
-        url?: string
-        path?: string
-      } | null
-      tabs: Array<{
-        type: string
-        title: string
-        url?: string
-        path?: string
-        isActive: boolean
-      }>
-    }
-    fileContexts?: Array<{
-      id: string
-      type: 'file-context'
-      path: string
-      name: string
-      extension: string
-    }>
-  }): Promise<ApiResponse> => {
-    const normalizedRequest = {
-      ...request,
-      opId: request.opId || createOpId('workflow-step-send')
-    }
-    if (!isElectron()) {
-      subscribeToConversation(normalizedRequest.spaceId, normalizedRequest.conversationId)
-    }
-
-    if (isElectron()) {
-      return window.kite.sendWorkflowStepMessage(normalizedRequest)
-    }
-    // Security boundary: remote HTTP requests must not escalate to workflow-step.
-    // Keep invocationContext forced to interactive for untrusted external clients.
-    return httpRequest('POST', '/api/agent/message', {
-      ...normalizedRequest,
-      invocationContext: 'interactive'
-    })
-  },
-
   guideMessage: async (
     request: GuideMessageRequest
   ): Promise<ApiResponse<{ delivery: 'session_send' | 'ask_user_question_answer' }>> => {
@@ -1027,42 +963,6 @@ export const api = {
       return window.kite.getPreset(presetId)
     }
     return httpRequest('GET', `/api/presets/${encodeURIComponent(presetId)}`)
-  },
-
-  // ===== Workflows =====
-  listWorkflows: async (spaceId: string): Promise<ApiResponse> => {
-    if (isElectron()) {
-      return window.kite.listWorkflows(spaceId)
-    }
-    return httpRequest('GET', `/api/workflows?spaceId=${encodeURIComponent(spaceId)}`)
-  },
-
-  getWorkflow: async (spaceId: string, workflowId: string): Promise<ApiResponse> => {
-    if (isElectron()) {
-      return window.kite.getWorkflow(spaceId, workflowId)
-    }
-    return httpRequest('GET', `/api/workflows/${encodeURIComponent(workflowId)}?spaceId=${encodeURIComponent(spaceId)}`)
-  },
-
-  createWorkflow: async (spaceId: string, input: Record<string, unknown>): Promise<ApiResponse> => {
-    if (isElectron()) {
-      return window.kite.createWorkflow(spaceId, input)
-    }
-    return httpRequest('POST', '/api/workflows', { spaceId, input })
-  },
-
-  updateWorkflow: async (spaceId: string, workflowId: string, updates: Record<string, unknown>): Promise<ApiResponse> => {
-    if (isElectron()) {
-      return window.kite.updateWorkflow(spaceId, workflowId, updates)
-    }
-    return httpRequest('PUT', `/api/workflows/${encodeURIComponent(workflowId)}`, { spaceId, updates })
-  },
-
-  deleteWorkflow: async (spaceId: string, workflowId: string): Promise<ApiResponse> => {
-    if (isElectron()) {
-      return window.kite.deleteWorkflow(spaceId, workflowId)
-    }
-    return httpRequest('DELETE', `/api/workflows/${encodeURIComponent(workflowId)}?spaceId=${encodeURIComponent(spaceId)}`)
   },
 
   // ===== Remote Access (Electron only) =====

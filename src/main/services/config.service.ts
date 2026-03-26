@@ -45,6 +45,7 @@ const APPEARANCE_THEME_VALUES = ['light', 'dark'] as const
 const CHAT_LAYOUT_MODE_VALUES = ['auto', 'manual'] as const
 const LANGFUSE_MASK_MODE_VALUES = ['summary_hash', 'off'] as const
 const LEGACY_TAXONOMY_CONFIG_KEY = 'extension' + 'Taxonomy'
+const LEGACY_WORKFLOW_CONFIG_KEY = 'workflow'
 const CHAT_LAYOUT_MANUAL_WIDTH_MIN = 860
 const CHAT_LAYOUT_MANUAL_WIDTH_MAX = 1600
 const CHAT_LAYOUT_MANUAL_WIDTH_DEFAULT = 1100
@@ -225,9 +226,6 @@ interface KiteConfig {
   resourceExposure?: {
     enabled: boolean
   }
-  workflow?: {
-    allowLegacyInternalDirect: boolean
-  }
   commands?: {
     legacyDependencyRegexEnabled: boolean
   }
@@ -391,9 +389,6 @@ const DEFAULT_CONFIG: KiteConfig = {
   configSourceMode: 'kite',
   resourceExposure: {
     enabled: true
-  },
-  workflow: {
-    allowLegacyInternalDirect: false
   },
   commands: {
     legacyDependencyRegexEnabled: true
@@ -902,8 +897,10 @@ export function getConfig(): KiteConfig {
     const content = readFileSync(configPath, 'utf-8')
     const parsed = JSON.parse(content) as Partial<KiteConfig> & Record<string, unknown>
     const hadLegacyTaxonomyField = Object.prototype.hasOwnProperty.call(parsed, LEGACY_TAXONOMY_CONFIG_KEY)
+    const hadLegacyWorkflowField = Object.prototype.hasOwnProperty.call(parsed, LEGACY_WORKFLOW_CONFIG_KEY)
     const {
       [LEGACY_TAXONOMY_CONFIG_KEY]: _legacyTaxonomyConfig,
+      [LEGACY_WORKFLOW_CONFIG_KEY]: _legacyWorkflowConfig,
       ...parsedWithoutLegacy
     } = parsed as Partial<KiteConfig> & Record<string, unknown>
     const legacyApi = ensureLegacyApiConfig(parsed.api, DEFAULT_CONFIG.api)
@@ -965,12 +962,6 @@ export function getConfig(): KiteConfig {
             ? parsed.resourceExposure.enabled
             : DEFAULT_CONFIG.resourceExposure?.enabled !== false
       },
-      workflow: {
-        allowLegacyInternalDirect:
-          typeof parsed.workflow?.allowLegacyInternalDirect === 'boolean'
-            ? parsed.workflow.allowLegacyInternalDirect
-            : DEFAULT_CONFIG.workflow?.allowLegacyInternalDirect === true
-      },
       commands: {
         legacyDependencyRegexEnabled:
           typeof parsed.commands?.legacyDependencyRegexEnabled === 'boolean'
@@ -1018,6 +1009,7 @@ export function getConfig(): KiteConfig {
 
     if (
       hadLegacyTaxonomyField ||
+      hadLegacyWorkflowField ||
       shouldPersistThemeMigration ||
       shouldPersistOnboardingMigration ||
       shouldPersistMcpMigration ||
@@ -1039,10 +1031,12 @@ export function saveConfig(config: Partial<KiteConfig>): KiteConfig {
   const rawUpdates = config as Record<string, unknown>
   const {
     [LEGACY_TAXONOMY_CONFIG_KEY]: _legacyTaxonomyConfig,
+    [LEGACY_WORKFLOW_CONFIG_KEY]: _legacyWorkflowConfig,
     ...updatesWithoutLegacy
   } = rawUpdates
   const newConfig = { ...currentConfig, ...updatesWithoutLegacy } as KiteConfig & Record<string, unknown>
   delete newConfig[LEGACY_TAXONOMY_CONFIG_KEY]
+  delete newConfig[LEGACY_WORKFLOW_CONFIG_KEY]
   const hasApiUpdate = config.api !== undefined
   const hasAiUpdate = updatesWithoutLegacy.ai !== undefined
 
@@ -1096,12 +1090,6 @@ export function saveConfig(config: Partial<KiteConfig>): KiteConfig {
     newConfig.resourceExposure = {
       ...currentConfig.resourceExposure,
       ...(updatesWithoutLegacy.resourceExposure as Record<string, unknown>)
-    }
-  }
-  if (updatesWithoutLegacy.workflow !== undefined) {
-    newConfig.workflow = {
-      ...currentConfig.workflow,
-      ...(updatesWithoutLegacy.workflow as Record<string, unknown>)
     }
   }
   if (updatesWithoutLegacy.commands !== undefined) {
@@ -1183,6 +1171,7 @@ export function saveConfig(config: Partial<KiteConfig>): KiteConfig {
 
   const configPath = getConfigPath()
   delete newConfig[LEGACY_TAXONOMY_CONFIG_KEY]
+  delete newConfig[LEGACY_WORKFLOW_CONFIG_KEY]
   writeFileSync(configPath, JSON.stringify(newConfig, null, 2))
 
   // Detect config changes and notify subscribers.

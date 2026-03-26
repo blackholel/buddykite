@@ -230,9 +230,6 @@ export interface KiteConfig {
   resourceExposure?: {
     enabled: boolean;
   };
-  workflow?: {
-    allowLegacyInternalDirect: boolean;
-  };
   commands?: {
     legacyDependencyRegexEnabled: boolean;
   };
@@ -309,46 +306,7 @@ export interface Conversation extends ConversationMeta {
   sessionId?: string;
 }
 
-// ============================================
-// Workflow Types
-// ============================================
-
-export interface WorkflowStep {
-  id: string;
-  type: 'skill' | 'agent' | 'message';
-  name?: string;
-  input?: string;
-  args?: string;
-  summarizeAfter?: boolean;
-}
-
 export type { TemplateLibraryTab } from './template-library';
-
-export interface Workflow {
-  id: string;
-  spaceId: string;
-  name: string;
-  description?: string;
-  steps: WorkflowStep[];
-  settings?: {
-    thinkingEnabled?: boolean;
-  };
-  createdAt: string;
-  updatedAt: string;
-  lastRunAt?: string;
-  lastConversationId?: string;
-}
-
-export interface WorkflowMeta {
-  id: string;
-  spaceId: string;
-  name: string;
-  description?: string;
-  createdAt: string;
-  updatedAt: string;
-  lastRunAt?: string;
-  lastConversationId?: string;
-}
 
 // ============================================
 // Message Types

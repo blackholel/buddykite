@@ -138,50 +138,6 @@ export interface KiteAPI {
     mode: ChatMode,
     runId?: string
   ) => Promise<IpcResponse<{ applied: boolean; mode: ChatMode; runId?: string; reason?: string; error?: string }>>
-  sendWorkflowStepMessage: (request: {
-    spaceId: string
-    conversationId: string
-    message: string
-    opId?: string
-    responseLanguage?: LocaleCode | string
-    resumeSessionId?: string
-    modelOverride?: string
-    model?: string
-    images?: Array<{
-      id: string
-      type: 'image'
-      mediaType: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'
-      data: string
-      name?: string
-      size?: number
-    }>
-    thinkingEnabled?: boolean
-    planEnabled?: boolean
-    canvasContext?: {
-      isOpen: boolean
-      tabCount: number
-      activeTab: {
-        type: string
-        title: string
-        url?: string
-        path?: string
-      } | null
-      tabs: Array<{
-        type: string
-        title: string
-        url?: string
-        path?: string
-        isActive: boolean
-      }>
-    }
-    fileContexts?: Array<{
-      id: string
-      type: 'file-context'
-      path: string
-      name: string
-      extension: string
-    }>
-  }) => Promise<IpcResponse>
   guideMessage: (request: GuideMessageRequest) => Promise<IpcResponse<{ delivery: 'session_send' | 'ask_user_question_answer' }>>
   stopGeneration: (spaceId: string, conversationId?: string, opId?: string) => Promise<IpcResponse>
   approveTool: (spaceId: string, conversationId: string, opId?: string) => Promise<IpcResponse>
@@ -304,13 +260,6 @@ export interface KiteAPI {
   // Presets
   listPresets: () => Promise<IpcResponse>
   getPreset: (presetId: string) => Promise<IpcResponse>
-
-  // Workflows
-  listWorkflows: (spaceId: string) => Promise<IpcResponse>
-  getWorkflow: (spaceId: string, workflowId: string) => Promise<IpcResponse>
-  createWorkflow: (spaceId: string, input: Record<string, unknown>) => Promise<IpcResponse>
-  updateWorkflow: (spaceId: string, workflowId: string, updates: Record<string, unknown>) => Promise<IpcResponse>
-  deleteWorkflow: (spaceId: string, workflowId: string) => Promise<IpcResponse>
 
   // Remote Access
   enableRemoteAccess: (port?: number) => Promise<IpcResponse>
@@ -497,7 +446,6 @@ const api: KiteAPI = {
   sendMessage: (request) => ipcRenderer.invoke('agent:send-message', request),
   setAgentMode: (spaceId, conversationId, mode, runId) =>
     ipcRenderer.invoke('agent:set-mode', { spaceId, conversationId, mode, runId }),
-  sendWorkflowStepMessage: (request) => ipcRenderer.invoke('workflow:send-step-message', request),
   guideMessage: (request) => ipcRenderer.invoke('agent:guide-message', request),
   stopGeneration: (spaceId, conversationId, opId) => ipcRenderer.invoke('agent:stop', { spaceId, conversationId, opId }),
   approveTool: (spaceId, conversationId, opId) => ipcRenderer.invoke('agent:approve-tool', { spaceId, conversationId, opId }),
@@ -577,13 +525,6 @@ const api: KiteAPI = {
   // Presets
   listPresets: () => ipcRenderer.invoke('preset:list'),
   getPreset: (presetId) => ipcRenderer.invoke('preset:get', presetId),
-
-  // Workflows
-  listWorkflows: (spaceId) => ipcRenderer.invoke('workflow:list', spaceId),
-  getWorkflow: (spaceId, workflowId) => ipcRenderer.invoke('workflow:get', spaceId, workflowId),
-  createWorkflow: (spaceId, input) => ipcRenderer.invoke('workflow:create', spaceId, input),
-  updateWorkflow: (spaceId, workflowId, updates) => ipcRenderer.invoke('workflow:update', spaceId, workflowId, updates),
-  deleteWorkflow: (spaceId, workflowId) => ipcRenderer.invoke('workflow:delete', spaceId, workflowId),
 
   // Remote Access
   enableRemoteAccess: (port) => ipcRenderer.invoke('remote:enable', port),

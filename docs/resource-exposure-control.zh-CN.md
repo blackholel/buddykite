@@ -193,10 +193,9 @@
 可选相关开关：
 
 1. `resourceExposure.enabled`：总开关（默认 `true`）
-2. `workflow.allowLegacyInternalDirect`：workflow legacy 兼容开关（默认 `true`）
-3. `commands.legacyDependencyRegexEnabled`：命令依赖 regex 回退开关（默认 `true`）
+2. `commands.legacyDependencyRegexEnabled`：命令依赖 regex 回退开关（默认 `true`）
 
 建议：
 
-1. 生产阶段保持默认开启，避免打断现有 workflow
+1. 生产阶段保持默认开启，确保资源暴露与命令依赖解析行为稳定
 2. 完成命令依赖迁移后，再逐步收紧 legacy 开关

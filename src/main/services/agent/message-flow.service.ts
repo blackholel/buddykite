@@ -716,7 +716,7 @@ function emitAgentUnknownResourceEvent(
   params: {
     type: 'skill' | 'agent' | 'command'
     token: string
-    context: 'interactive' | 'workflow-step'
+    context: 'interactive'
     workDir: string
     sourceCandidates: string[]
   }
@@ -1432,7 +1432,7 @@ export async function sendMessage(
     finalizeObservation('error', 'error', { errorMessage: routingError.message })
     throw routingError
   }
-  const runtimeInvocationContext = invocationContext === 'workflow-step' ? 'workflow-step' : 'interactive'
+  const runtimeInvocationContext: 'interactive' = 'interactive'
   if (invocationContext && invocationContext !== runtimeInvocationContext) {
     console.warn(
       `[Agent][${conversationId}] Ignoring unsupported invocationContext from request: ${invocationContext}`
@@ -2181,7 +2181,6 @@ export async function sendMessage(
         invocationContext: runtimeInvocationContext,
         locale: effectiveResponseLanguage,
         resourceExposureEnabled: false,
-        allowLegacyWorkflowInternalDirect: exposureFlags.allowLegacyInternalDirect,
         legacyDependencyRegexEnabled: exposureFlags.legacyDependencyRegexEnabled
       })
       : {

@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 vi.mock('../../api', () => ({
   api: {
     sendMessage: vi.fn().mockResolvedValue({ success: true }),
-    sendWorkflowStepMessage: vi.fn().mockResolvedValue({ success: true }),
     getConversation: vi.fn().mockResolvedValue({ success: false, data: null }),
     listChangeSets: vi.fn().mockResolvedValue({ success: true, data: [] }),
     getSessionState: vi.fn().mockResolvedValue({

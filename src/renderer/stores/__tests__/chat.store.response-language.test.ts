@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 vi.mock('../../api', () => ({
   api: {
     sendMessage: vi.fn().mockResolvedValue({ success: true }),
-    sendWorkflowStepMessage: vi.fn().mockResolvedValue({ success: true }),
     getConversation: vi.fn().mockResolvedValue({ success: false }),
     listChangeSets: vi.fn().mockResolvedValue({ success: true, data: [] }),
     getSessionState: vi.fn().mockResolvedValue({ success: true, data: { isActive: false, thoughts: [] } }),
@@ -125,29 +124,6 @@ describe('chat.store responseLanguage request building', () => {
         message: 'hello',
         responseLanguage: 'ja',
         invocationContext: 'interactive'
-      })
-    )
-  })
-
-  it('sendMessageToConversation workflow-step 请求包含 responseLanguage', async () => {
-    seedConversation('space-1', 'conv-2')
-    await useChatStore.getState().sendMessageToConversation(
-      'space-1',
-      'conv-2',
-      'step run',
-      undefined,
-      false,
-      undefined,
-      'code',
-      'workflow-step'
-    )
-
-    expect(api.sendWorkflowStepMessage).toHaveBeenCalledTimes(1)
-    expect((api.sendWorkflowStepMessage as Mock).mock.calls[0]?.[0]).toEqual(
-      expect.objectContaining({
-        conversationId: 'conv-2',
-        message: 'step run',
-        responseLanguage: 'ja'
       })
     )
   })

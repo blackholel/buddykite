@@ -80,8 +80,7 @@ describe('resource-index.service', () => {
     expect(snapshot.reason).toBe('manual-refresh')
     expect(snapshot.counts).toEqual({
       skills: 1,
-      agents: 1,
-      commands: 1
+      agents: 1
     })
     expect(vi.mocked(statSync)).toHaveBeenCalledWith('/home/test/.kite/skills/global-skill/SKILL.md')
   })

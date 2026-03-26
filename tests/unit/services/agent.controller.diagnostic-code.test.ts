@@ -14,7 +14,7 @@ vi.mock('../../../src/main/services/agent', () => ({
   testMcpConnections: vi.fn(async () => ({ success: true, servers: [] }))
 }))
 
-import { sendMessage, sendWorkflowStepMessage } from '../../../src/main/controllers/agent.controller'
+import { sendMessage } from '../../../src/main/controllers/agent.controller'
 
 describe('agent.controller sendMessage diagnostic code passthrough', () => {
   beforeEach(() => {
@@ -37,27 +37,6 @@ describe('agent.controller sendMessage diagnostic code passthrough', () => {
     expect(result.data).toEqual({
       accepted: true,
       diagnosticCode: 'DIRECTIVE_EXPLICIT_NOT_FOUND'
-    })
-  })
-
-  it('keeps workflow-step routing and diagnosticCode passthrough', async () => {
-    sendMessageMock.mockResolvedValue({
-      accepted: true,
-      diagnosticCode: 'DIRECTIVE_AMBIGUOUS_ALIAS'
-    })
-
-    const result = await sendWorkflowStepMessage(null, {
-      spaceId: 'space-1',
-      conversationId: 'conv-2',
-      message: '/x-article-publisher test'
-    } as any)
-
-    expect(result.success).toBe(true)
-    expect(sendMessageMock).toHaveBeenCalledTimes(1)
-    expect(sendMessageMock.mock.calls[0]?.[1]?.invocationContext).toBe('workflow-step')
-    expect(result.data).toEqual({
-      accepted: true,
-      diagnosticCode: 'DIRECTIVE_AMBIGUOUS_ALIAS'
     })
   })
 })

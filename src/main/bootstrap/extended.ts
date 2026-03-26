@@ -26,7 +26,6 @@ import { registerRemoteHandlers } from '../ipc/remote'
 import { initializeSearchHandlers, cleanupSearchHandlers } from '../ipc/search'
 import { registerPerfHandlers } from '../ipc/perf'
 import { registerGitBashHandlers, initializeGitBashOnStartup } from '../ipc/git-bash'
-import { registerWorkflowHandlers } from '../ipc/workflow'
 import { initSkillAgentWatchers, cleanupSkillAgentWatchers } from '../services/skills-agents-watch.service'
 
 function resolveSuperpowersPatchScriptPath(): string | null {
@@ -104,9 +103,6 @@ export function initializeExtendedServices(mainWindow: BrowserWindow): void {
 
   // Remote: Remote access feature, optional functionality
   registerRemoteHandlers(mainWindow)
-
-  // Workflows: Space-level workflow management
-  registerWorkflowHandlers(mainWindow)
 
   // Search: Global search functionality
   initializeSearchHandlers(mainWindow)

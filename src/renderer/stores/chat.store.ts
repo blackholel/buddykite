@@ -1945,7 +1945,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       })
 
       const context = invocationContext || 'interactive'
-      if (context !== 'interactive' && context !== 'workflow-step') {
+      if (context !== 'interactive') {
         throw new Error(`Unsupported invocationContext from renderer: ${context}`)
       }
 
@@ -1962,31 +1962,18 @@ export const useChatStore = create<ChatState>((set, get) => ({
         fileContexts: fileContexts
       }
 
-      if (context === 'workflow-step') {
-        const response = await api.sendWorkflowStepMessage(baseRequest)
-        if (!response.success) {
-          console.error('[ChatStore] sendWorkflowStepMessage (tab) failed', {
-            spaceId,
-            conversationId,
-            errorCode: response.errorCode,
-            error: response.error
-          })
-          throw new Error(resolveSendErrorMessage(response.error, response.errorCode))
-        }
-      } else {
-        const response = await api.sendMessage({
-          ...baseRequest,
-          invocationContext: 'interactive'
+      const response = await api.sendMessage({
+        ...baseRequest,
+        invocationContext: 'interactive'
+      })
+      if (!response.success) {
+        console.error('[ChatStore] sendMessage (tab) API failed', {
+          spaceId,
+          conversationId,
+          errorCode: response.errorCode,
+          error: response.error
         })
-        if (!response.success) {
-          console.error('[ChatStore] sendMessage (tab) API failed', {
-            spaceId,
-            conversationId,
-            errorCode: response.errorCode,
-            error: response.error
-          })
-          throw new Error(resolveSendErrorMessage(response.error, response.errorCode))
-        }
+        throw new Error(resolveSendErrorMessage(response.error, response.errorCode))
       }
     } catch (error) {
       const reason = toErrorMessage(error, i18n.t('Failed to send message'))
@@ -2322,7 +2309,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const snapshotSession = get().sessions.get(conversationId)
     const effectiveMode = normalizeChatMode(turn.mode, undefined, snapshotSession?.mode || 'code')
     const context = invocationContext || 'interactive'
-    if (context !== 'interactive' && context !== 'workflow-step') {
+    if (context !== 'interactive') {
       return { accepted: false, error: `Unsupported invocationContext from renderer: ${context}` }
     }
 
@@ -2394,12 +2381,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
         fileContexts
       }
 
-      const response = context === 'workflow-step'
-        ? await api.sendWorkflowStepMessage(baseRequest)
-        : await api.sendMessage({
-          ...baseRequest,
-          invocationContext: 'interactive'
-        })
+      const response = await api.sendMessage({
+        ...baseRequest,
+        invocationContext: 'interactive'
+      })
       if (!response.success) {
         const transportError = new Error(
           resolveSendErrorMessage(response.error, response.errorCode)

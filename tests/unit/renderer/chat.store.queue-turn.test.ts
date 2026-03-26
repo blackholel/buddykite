@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentCompleteEvent } from '../../../src/renderer/types'
 
 const mockSendMessage = vi.fn()
-const mockSendWorkflowStepMessage = vi.fn()
 const mockGuideMessage = vi.fn()
 const mockStopGeneration = vi.fn()
 const mockGetConversation = vi.fn()
@@ -12,7 +11,6 @@ const mockDeleteConversation = vi.fn()
 vi.mock('../../../src/renderer/api', () => ({
   api: {
     sendMessage: (...args: unknown[]) => mockSendMessage(...args),
-    sendWorkflowStepMessage: (...args: unknown[]) => mockSendWorkflowStepMessage(...args),
     guideMessage: (...args: unknown[]) => mockGuideMessage(...args),
     stopGeneration: (...args: unknown[]) => mockStopGeneration(...args),
     getConversation: (...args: unknown[]) => mockGetConversation(...args),
@@ -78,7 +76,6 @@ describe('Chat Store - queued turn flow', () => {
   beforeEach(() => {
     useChatStore.getState().reset()
     mockSendMessage.mockReset()
-    mockSendWorkflowStepMessage.mockReset()
     mockGuideMessage.mockReset()
     mockStopGeneration.mockReset()
     mockGetConversation.mockReset()
@@ -86,7 +83,6 @@ describe('Chat Store - queued turn flow', () => {
     mockDeleteConversation.mockReset()
 
     mockSendMessage.mockResolvedValue({ success: true })
-    mockSendWorkflowStepMessage.mockResolvedValue({ success: true })
     mockGuideMessage.mockResolvedValue({ success: true, data: { delivery: 'session_send' } })
     mockStopGeneration.mockResolvedValue({ success: true })
     mockGetConversation.mockResolvedValue({ success: false })

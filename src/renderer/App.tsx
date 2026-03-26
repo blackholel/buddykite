@@ -9,7 +9,6 @@ import { useOnboardingStore } from './stores/onboarding.store'
 import { initPerfStoreListeners } from './stores/perf.store'
 import { initSkillsStoreListeners } from './stores/skills.store'
 import { initAgentsStoreListeners } from './stores/agents.store'
-import { useWorkflowsStore } from './stores/workflows.store'
 import { useSpaceStore } from './stores/space.store'
 import { useSearchStore } from './stores/search.store'
 import { SplashScreen } from './components/splash/SplashScreen'
@@ -181,10 +180,6 @@ export default function App() {
     loadConversations: state.loadConversations,
     selectConversation: state.selectConversation
   }), shallow)
-  const { handleAgentComplete: handleWorkflowAgentComplete } = useWorkflowsStore(
-    (state) => ({ handleAgentComplete: state.handleAgentComplete }),
-    shallow
-  )
   const { initialize: initializeOnboarding } = useOnboardingStore(
     (state) => ({ initialize: state.initialize }),
     shallow
@@ -307,7 +302,6 @@ export default function App() {
     const unsubComplete = api.onAgentComplete((data) => {
       console.log('[App] Received agent:complete event:', data)
       handleAgentComplete(data as AgentCompleteEvent)
-      handleWorkflowAgentComplete(data as AgentCompleteEvent)
     })
 
     const unsubMode = api.onAgentMode((data) => {
@@ -402,7 +396,6 @@ export default function App() {
     handleAgentError,
     handleAgentComplete,
     handleAgentMode,
-    handleWorkflowAgentComplete,
     handleAgentThought,
     handleAgentCompact,
     handleAgentToolsAvailable,

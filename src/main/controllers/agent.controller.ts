@@ -146,38 +146,6 @@ export async function sendMessage(
   }
 }
 
-/**
- * Send workflow step message with server-derived invocation context.
- */
-export async function sendWorkflowStepMessage(
-  mainWindow: BrowserWindow | null,
-  request: SendMessageRequest
-): Promise<ControllerResponse> {
-  try {
-    const execution = await executeIdempotentOperation({
-      scopeKey: buildScopeKey(request.spaceId, request.conversationId),
-      operation: 'workflow-step-send',
-      opId: request.opId,
-      execute: async () => {
-        const normalizedModelOverride = request.modelOverride || request.model
-        const normalizedRequest = normalizedModelOverride
-          ? { ...request, modelOverride: normalizedModelOverride, invocationContext: 'workflow-step' as InvocationContext }
-          : { ...request, invocationContext: 'workflow-step' as InvocationContext }
-        const sendResult = await agentSendMessage(mainWindow, normalizedRequest)
-        return {
-          accepted: true as const,
-          ...(sendResult?.diagnosticCode
-            ? { diagnosticCode: sendResult.diagnosticCode }
-            : {})
-        }
-      }
-    })
-    return withReplayMeta(execution)
-  } catch (error: unknown) {
-    return toErrorResponse(error)
-  }
-}
-
 export async function guideMessage(
   _mainWindow: BrowserWindow | null,
   request: GuideMessageRequest

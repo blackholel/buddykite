@@ -399,13 +399,6 @@ export function registerApiRoutes(app: Express, mainWindow: BrowserWindow | null
     res.json(result)
   })
 
-  app.post('/api/workflow/step-message', async (_req: Request, res: Response) => {
-    res.status(403).json({
-      success: false,
-      error: 'workflow-step endpoint is restricted to trusted internal channels'
-    })
-  })
-
   app.post('/api/agent/stop', async (req: Request, res: Response) => {
     const { spaceId, conversationId, opId } = req.body
     if (typeof spaceId !== 'string') {
@@ -692,48 +685,6 @@ export function registerApiRoutes(app: Express, mainWindow: BrowserWindow | null
     const { clearAgentsCache } = await import('../../services/agents.service')
     clearAgentsCache()
     res.json({ success: true })
-  }))
-
-  // ===== Workflows Routes =====
-  app.get('/api/workflows', safeRoute(async (req, res) => {
-    const { listWorkflows } = await import('../../services/workflow.service')
-    res.json({ success: true, data: listWorkflows(req.query.spaceId as string) })
-  }))
-
-  app.get('/api/workflows/:workflowId', safeRoute(async (req, res) => {
-    const { getWorkflow } = await import('../../services/workflow.service')
-    const workflow = getWorkflow(req.query.spaceId as string, req.params.workflowId)
-    if (!workflow) {
-      res.json({ success: false, error: `Workflow not found: ${req.params.workflowId}` })
-      return
-    }
-    res.json({ success: true, data: workflow })
-  }))
-
-  app.post('/api/workflows', safeRoute(async (req, res) => {
-    const { createWorkflow } = await import('../../services/workflow.service')
-    const { spaceId, input } = req.body
-    res.json({ success: true, data: createWorkflow(spaceId, input) })
-  }))
-
-  app.put('/api/workflows/:workflowId', safeRoute(async (req, res) => {
-    const { updateWorkflow } = await import('../../services/workflow.service')
-    const { spaceId, updates } = req.body
-    const workflow = updateWorkflow(spaceId, req.params.workflowId, updates)
-    if (!workflow) {
-      res.json({ success: false, error: 'Failed to update workflow' })
-      return
-    }
-    res.json({ success: true, data: workflow })
-  }))
-
-  app.delete('/api/workflows/:workflowId', safeRoute(async (req, res) => {
-    const { deleteWorkflow } = await import('../../services/workflow.service')
-    if (!deleteWorkflow(req.query.spaceId as string, req.params.workflowId)) {
-      res.json({ success: false, error: 'Failed to delete workflow' })
-      return
-    }
-    res.json({ success: true, data: true })
   }))
 
   // ===== Artifact Routes =====

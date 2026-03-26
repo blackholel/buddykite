@@ -48,27 +48,6 @@ describe('renderer api language passthrough', () => {
     })
   })
 
-  it('sendWorkflowStepMessage 在 HTTP fallback 保留 responseLanguage 且强制 interactive', async () => {
-    isElectronMock.mockReturnValue(false)
-    const { api } = await import('..')
-
-    await api.sendWorkflowStepMessage({
-      spaceId: 'space-1',
-      conversationId: 'conv-2',
-      message: 'run',
-      responseLanguage: 'ja'
-    })
-
-    expect(httpRequestMock).toHaveBeenCalledWith('POST', '/api/agent/message', {
-      spaceId: 'space-1',
-      conversationId: 'conv-2',
-      message: 'run',
-      responseLanguage: 'ja',
-      opId: expect.any(String),
-      invocationContext: 'interactive'
-    })
-  })
-
   it('ensureSessionWarm 在 Electron 模式透传 responseLanguage', async () => {
     isElectronMock.mockReturnValue(true)
     const ensureSessionWarmMock = vi.fn().mockResolvedValue(undefined)
