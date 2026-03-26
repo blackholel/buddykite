@@ -50,6 +50,8 @@ interface ThoughtProcessProps {
   defaultExpanded?: boolean
 }
 
+const AUTO_FOLLOW_THRESHOLD_PX = 24
+
 export function filterThoughtsForDisplay(
   thoughts: Thought[],
   options?: { hideTask?: boolean }
@@ -398,10 +400,12 @@ export function ThoughtProcess({
   mode = 'realtime',
   defaultExpanded
 }: ThoughtProcessProps) {
-  // In realtime mode, expand when thinking; in completed mode, use defaultExpanded (default false)
-  const initialExpanded = mode === 'realtime' ? false : (defaultExpanded ?? false)
+  // Realtime always enters expanded by default; completed respects defaultExpanded (default false)
+  const initialExpanded = mode === 'realtime' ? true : (defaultExpanded ?? false)
   const [isExpanded, setIsExpanded] = useState(initialExpanded)
+  const [shouldAutoFollow, setShouldAutoFollow] = useState(true)
   const contentRef = useRef<HTMLDivElement>(null)
+  const shouldAutoFollowRef = useRef(true)
   const { t } = useTranslation()
 
   // Calculate elapsed time from first thought's timestamp
@@ -449,12 +453,61 @@ export function ThoughtProcess({
     return displayThoughts.filter(t => !parallelThoughtIds.has(t.id))
   }, [displayThoughts, parallelThoughtIds])
 
-  // Auto-scroll to bottom
+  // Sync auto-follow ref for scroll/update effects
   useEffect(() => {
-    if (isExpanded && contentRef.current) {
-      contentRef.current.scrollTop = contentRef.current.scrollHeight
+    shouldAutoFollowRef.current = shouldAutoFollow
+  }, [shouldAutoFollow])
+
+  // Realtime mode always starts expanded; completed mode follows defaultExpanded.
+  useEffect(() => {
+    if (mode === 'realtime') {
+      setIsExpanded(true)
+      setShouldAutoFollow(true)
+      shouldAutoFollowRef.current = true
+      return
     }
-  }, [thoughts, isExpanded])
+    setIsExpanded(defaultExpanded ?? false)
+  }, [mode, defaultExpanded])
+
+  const isNearBottom = (el: HTMLDivElement): boolean => {
+    const distanceToBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+    return distanceToBottom <= AUTO_FOLLOW_THRESHOLD_PX
+  }
+
+  // Update auto-follow state when user scrolls in realtime expanded mode.
+  useEffect(() => {
+    if (mode !== 'realtime' || !isExpanded || !contentRef.current) {
+      return
+    }
+    const scrollEl = contentRef.current
+    const onScroll = () => {
+      const nextShouldFollow = isNearBottom(scrollEl)
+      if (nextShouldFollow !== shouldAutoFollowRef.current) {
+        shouldAutoFollowRef.current = nextShouldFollow
+        setShouldAutoFollow(nextShouldFollow)
+      }
+    }
+    onScroll()
+    scrollEl.addEventListener('scroll', onScroll, { passive: true })
+    return () => {
+      scrollEl.removeEventListener('scroll', onScroll)
+    }
+  }, [mode, isExpanded])
+
+  // Auto-follow new thoughts only when user is still near bottom.
+  useEffect(() => {
+    if (mode !== 'realtime' || !isExpanded || !contentRef.current) {
+      return
+    }
+    const scrollEl = contentRef.current
+    if (shouldAutoFollowRef.current || isNearBottom(scrollEl)) {
+      scrollEl.scrollTop = scrollEl.scrollHeight
+      if (!shouldAutoFollowRef.current) {
+        shouldAutoFollowRef.current = true
+        setShouldAutoFollow(true)
+      }
+    }
+  }, [thoughts, mode, isExpanded])
 
   // Don't render if no thoughts and not thinking
   if (thoughts.length === 0 && !isThinking) {
@@ -506,7 +559,7 @@ export function ThoughtProcess({
           )}
 
           {/* Label */}
-          <span className="text-muted-foreground/60">{t('Thought process')}</span>
+          <span className="text-muted-foreground/60">执行记录</span>
 
           {/* Stats: time only */}
           <div className="flex items-center gap-1.5 text-muted-foreground/40 tabular-nums">
@@ -580,20 +633,25 @@ export function ThoughtProcess({
             />
           )}
 
-          <span className={`text-[13px] font-medium ${isThinking ? 'text-primary' : 'text-foreground/80'}`}>
-            {isThinking ? (() => {
+          <div className="min-w-0 flex-1">
+            <div className={`text-[13px] font-medium ${isThinking ? 'text-primary' : 'text-foreground/80'}`}>
+              AI 正在执行
+            </div>
+            {(() => {
               const data = getActionSummaryData(thoughts)
-              return t(data.key, data.params)
-            })() : t('Thought process')}
-          </span>
+              return (
+                <div className="text-[11px] text-muted-foreground/70 truncate">
+                  {t(data.key, data.params)}
+                </div>
+              )
+            })()}
+          </div>
 
           {!isThinking && (
             <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/40 tabular-nums">
               <TimerDisplay startTime={startTime} isThinking={isThinking} />
             </div>
           )}
-
-          <div className="flex-1" />
 
           <ChevronDown
             size={14}
@@ -607,7 +665,7 @@ export function ThoughtProcess({
             {hasDisplayContent && (
               <div
                 ref={contentRef}
-                className="px-4 pt-3 max-h-[400px] overflow-y-auto"
+                className="px-4 pt-3 max-h-[300px] overflow-y-auto"
               >
                 {/* Parallel groups first */}
                 {displayParallelGroups.map(group => (
