@@ -271,11 +271,15 @@ function sanitizeStringMap(value: unknown): Record<string, string> | undefined {
     return undefined
   }
 
-  const sanitized = Object.fromEntries(
-    Object.entries(value).filter(([, mapValue]) => typeof mapValue === 'string')
+  const stringEntries = Object.entries(value).filter(
+    (entry): entry is [string, string] => typeof entry[1] === 'string'
   )
 
-  return Object.keys(sanitized).length > 0 ? sanitized : undefined
+  if (stringEntries.length === 0) {
+    return undefined
+  }
+
+  return Object.fromEntries(stringEntries)
 }
 
 function sanitizeMcpServerConfig(
