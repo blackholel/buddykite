@@ -511,13 +511,13 @@ function StreamingBubble({
     [segments]
   )
   const currentWidgetSegments = useMemo(() => {
-    const source = isStreaming ? displayContent : throttledMarkdownContent
+    const source = throttledMarkdownContent
     const parsed = isStreaming
       ? parseShowWidgetsForStreaming(source)
       : parseAllShowWidgets(source)
     if (parsed.length > 0) return parsed
     return source ? [{ type: 'text', key: 'current-plain', content: source } as const] : []
-  }, [displayContent, isStreaming, throttledMarkdownContent])
+  }, [isStreaming, throttledMarkdownContent])
 
   useEffect(() => {
     if (!isStreaming) {
@@ -526,7 +526,7 @@ function StreamingBubble({
     }
     const timer = window.setTimeout(() => {
       setThrottledMarkdownContent(displayContent)
-    }, 200)
+    }, 100)
     return () => window.clearTimeout(timer)
   }, [displayContent, isStreaming])
 
@@ -535,22 +535,18 @@ function StreamingBubble({
   const containerHeight = currentHeight > 0 ? currentHeight : 'auto'
 
   return (
-    <div className="rounded-xl px-3 py-2 message-assistant message-working w-full overflow-hidden">
-      {/* Working indicator */}
-      <div className="flex items-center gap-1 mb-1.5 pb-1.5 border-b border-border/20 working-indicator-fade">
-        <span className="text-[11px] text-muted-foreground/60">{t('Kite is working')}</span>
-      </div>
-
-      {/* Viewport - height matches current content only */}
-      <div
-        className="overflow-hidden transition-[height] duration-300"
-        style={{ height: containerHeight }}
-      >
-        {/* Scrollable container */}
+    <div className="space-studio-message-flat transition-all duration-300 message-assistant space-studio-message-assistant w-full">
+      <div className="space-studio-assistant-content">
+        {/* Viewport - height matches current content only */}
         <div
-          className="transition-transform duration-300"
-          style={{ transform: `translateY(-${scrollOffset}px)` }}
+          className="overflow-hidden transition-[height] duration-300"
+          style={{ height: containerHeight }}
         >
+          {/* Scrollable container */}
+          <div
+            className="transition-transform duration-300"
+            style={{ transform: `translateY(-${scrollOffset}px)` }}
+          >
           {/* History segments - will be scrolled out of view */}
           <div ref={historyRef}>
             {historyWidgetSegments.map((snapshotSegments, i) => (
@@ -589,54 +585,45 @@ function StreamingBubble({
             ))}
           </div>
 
-          {/* Current content - always visible, shows only NEW part after snapshots */}
-          <div ref={currentRef} className="break-words leading-relaxed space-y-3">
-            {currentWidgetSegments.map((segment) => {
-              if (segment.type === 'text') {
-                if (!segment.content) return null
-                if (isStreaming) {
+            {/* Current content - always visible, shows only NEW part after snapshots */}
+            <div ref={currentRef} className="break-words leading-relaxed space-y-3">
+              {currentWidgetSegments.map((segment) => {
+                if (segment.type === 'text') {
+                  if (!segment.content) return null
                   return (
-                    <span
+                    <MarkdownRenderer
                       key={`current:${segment.key}`}
-                      className="whitespace-pre-wrap"
-                    >
-                      {segment.content}
-                    </span>
+                      content={segment.content}
+                      workDir={workDir}
+                      className="space-studio-assistant-markdown"
+                    />
                   )
                 }
-                return (
-                  <MarkdownRenderer
-                    key={`current:${segment.key}`}
-                    content={segment.content}
-                    workDir={workDir}
-                    className="space-studio-assistant-markdown"
-                  />
-                )
-              }
 
-              return (
-                <WidgetErrorBoundary
-                  key={`current:${segment.key}`}
-                  fallbackTitle={t('Widget failed to render')}
-                  fallbackDetail={t('Widget render error')}
-                >
-                  <WidgetRenderer
-                    widgetKey={`current:${segment.key}`}
-                    title={segment.title}
-                    widgetCode={segment.widgetCode}
-                    isPartial={segment.isPartial}
-                    runId={runId}
-                    conversationId={conversationId}
-                  />
-                </WidgetErrorBoundary>
-              )
-            })}
-            {isStreaming && (
-              <span className="inline-block w-0.5 h-5 ml-0.5 bg-foreground/70 streaming-cursor align-middle" />
-            )}
-            {!isStreaming && (
-              <span className="waiting-dots ml-1 text-muted-foreground/60" />
-            )}
+                return (
+                  <WidgetErrorBoundary
+                    key={`current:${segment.key}`}
+                    fallbackTitle={t('Widget failed to render')}
+                    fallbackDetail={t('Widget render error')}
+                  >
+                    <WidgetRenderer
+                      widgetKey={`current:${segment.key}`}
+                      title={segment.title}
+                      widgetCode={segment.widgetCode}
+                      isPartial={segment.isPartial}
+                      runId={runId}
+                      conversationId={conversationId}
+                    />
+                  </WidgetErrorBoundary>
+                )
+              })}
+              {isStreaming && (
+                <span className="inline-block w-0.5 h-5 ml-0.5 bg-foreground/70 streaming-cursor align-middle" />
+              )}
+              {!isStreaming && (
+                <span className="waiting-dots ml-1 text-muted-foreground/60" />
+              )}
+            </div>
           </div>
         </div>
       </div>
