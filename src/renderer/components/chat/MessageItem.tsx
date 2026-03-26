@@ -14,8 +14,7 @@ import {
   Copy,
   Check,
   Bot,
-  Zap,
-  Terminal
+  Zap
 } from 'lucide-react'
 import { MarkdownRenderer } from './MarkdownRenderer'
 import { MessageImages } from './ImageAttachmentPreview'
@@ -47,7 +46,6 @@ interface MessageItemProps {
 
 const EMPTY_RESOURCE_DISPLAY_LOOKUPS: ComposerResourceDisplayLookups = {
   skills: new Map(),
-  commands: new Map(),
   agents: new Map()
 }
 
@@ -157,7 +155,7 @@ export const MessageItem = memo(function MessageItem({
               {parsedUserMessage && parsedUserMessage.chips.length > 0 && (
                 <div className="mb-2 flex flex-wrap items-center gap-2">
                   {parsedUserMessage.chips.map((chip) => {
-                    const Icon = chip.type === 'agent' ? Bot : chip.type === 'command' ? Terminal : Zap
+                    const Icon = chip.type === 'agent' ? Bot : Zap
                     return (
                       <span
                         key={chip.id}

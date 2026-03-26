@@ -24,7 +24,6 @@ import { TodoCard, parseTodoInput } from '../tool/TodoCard'
 import { SubAgentCard } from './SubAgentCard'
 import { SkillCard } from './SkillCard'
 import { useSkillsStore } from '../../stores/skills.store'
-import { useCommandsStore } from '../../stores/commands.store'
 import { useAgentsStore } from '../../stores/agents.store'
 import type { ComposerResourceDisplayLookups } from '../../utils/composer-resource-chip'
 import { normalizeChipDisplayName } from '../../utils/composer-resource-chip'
@@ -654,24 +653,16 @@ export function MessageList({
 }: MessageListProps) {
   const { t } = useTranslation()
   const skills = useSkillsStore(state => state.skills)
-  const commands = useCommandsStore(state => state.commands)
   const agents = useAgentsStore(state => state.agents)
 
   const resourceDisplayLookups = useMemo<ComposerResourceDisplayLookups>(() => {
     const skillMap = new Map<string, string>()
-    const commandMap = new Map<string, string>()
     const agentMap = new Map<string, string>()
 
     for (const skill of skills) {
       skillMap.set(
         toResourceKey({ name: skill.name, namespace: skill.namespace }),
         normalizeChipDisplayName(skill.displayName || skill.name)
-      )
-    }
-    for (const command of commands) {
-      commandMap.set(
-        toResourceKey({ name: command.name, namespace: command.namespace }),
-        normalizeChipDisplayName(command.displayName || command.name)
       )
     }
     for (const agent of agents) {
@@ -683,10 +674,9 @@ export function MessageList({
 
     return {
       skills: skillMap,
-      commands: commandMap,
       agents: agentMap
     }
-  }, [skills, commands, agents])
+  }, [skills, agents])
 
   const runtimeThoughts = useMemo(() => {
     if (thoughts.length > 0) {

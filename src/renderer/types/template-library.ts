@@ -1,1 +1,1 @@
-export type TemplateLibraryTab = 'skills' | 'agents' | 'commands'
+export type TemplateLibraryTab = 'skills' | 'agents'

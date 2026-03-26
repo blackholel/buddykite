@@ -1,4 +1,4 @@
-import { Bot, ChevronsDownUp, Globe, Terminal, Zap } from 'lucide-react'
+import { Bot, ChevronsDownUp, Globe, Zap } from 'lucide-react'
 import { useTranslation } from '../../i18n'
 import type {
   ComposerSuggestionItem,
@@ -18,7 +18,6 @@ interface ComposerTriggerPanelProps {
 
 function ItemIcon({ type }: { type: ComposerSuggestionItem['type'] }): JSX.Element {
   if (type === 'agent') return <Bot size={14} className="text-blue-500" />
-  if (type === 'command') return <Terminal size={14} className="text-orange-500" />
   return <Zap size={14} className="text-primary" />
 }
 
@@ -50,16 +49,6 @@ export function ComposerTriggerPanel({
             }`}
           >
             {t('Skills')} ({tabCounts.skills})
-          </button>
-          <button
-            onClick={() => onTabChange('commands')}
-            className={`px-2 py-1 text-xs rounded-md transition-colors ${
-              activeTab === 'commands'
-                ? 'bg-primary/10 text-primary'
-                : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-            }`}
-          >
-            {t('Commands')} ({tabCounts.commands})
           </button>
           <button
             onClick={() => onTabChange('agents')}

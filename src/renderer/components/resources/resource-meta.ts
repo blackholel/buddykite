@@ -1,6 +1,5 @@
 import type { LucideIcon } from 'lucide-react'
-import { Bot, Terminal, Zap } from 'lucide-react'
-import { commandKey } from '../../../shared/command-utils'
+import { Bot, Zap } from 'lucide-react'
 import { api } from '../../api'
 import type { AnyResource, ResourceType } from './types'
 
@@ -77,13 +76,13 @@ export function mapResourceMeta(resource: AnyResource, type: ResourceType): Reso
   }
 
   return {
-    title: `/${resourceDisplayKey(resource)}`,
+    title: resourceDisplayKey(resource),
     subtitle: resource.description,
     path: resource.path,
     source: resource.source as AnySource,
     namespace: resource.namespace,
-    icon: Terminal,
-    iconClassName: 'text-violet-500 bg-violet-500/10'
+    icon: Bot,
+    iconClassName: 'text-cyan-500 bg-cyan-500/10'
   }
 }
 
@@ -100,5 +99,5 @@ export function fetchResourceContent(
   if (type === 'agent') {
     return api.getAgentContent(resourceKey(resource), spaceWorkDir)
   }
-  return api.getCommandContent(commandKey(resource), spaceWorkDir)
+  return { success: false, error: `Unsupported resource type: ${String(type)}` }
 }

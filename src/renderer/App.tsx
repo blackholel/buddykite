@@ -9,7 +9,6 @@ import { useOnboardingStore } from './stores/onboarding.store'
 import { initPerfStoreListeners } from './stores/perf.store'
 import { initSkillsStoreListeners } from './stores/skills.store'
 import { initAgentsStoreListeners } from './stores/agents.store'
-import { initCommandsStoreListeners } from './stores/commands.store'
 import { useWorkflowsStore } from './stores/workflows.store'
 import { useSpaceStore } from './stores/space.store'
 import { useSearchStore } from './stores/search.store'
@@ -261,7 +260,6 @@ export default function App() {
     initPerfStoreListeners()
     initSkillsStoreListeners()
     initAgentsStoreListeners()
-    initCommandsStoreListeners()
     return undefined
   }, [])
 

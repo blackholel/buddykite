@@ -29,8 +29,8 @@ vi.mock('../../../src/main/services/plugins.service', () => ({
 }))
 
 vi.mock('../../../src/main/services/resource-index.service', () => ({
-  getResourceIndexSnapshot: vi.fn(() => ({ hash: 'h', generatedAt: '', reason: 'manual-refresh', counts: { skills: 0, agents: 0, commands: 0 } })),
-  rebuildResourceIndex: vi.fn(() => ({ hash: 'h', generatedAt: '', reason: 'manual-refresh', counts: { skills: 0, agents: 0, commands: 0 } })),
+  getResourceIndexSnapshot: vi.fn(() => ({ hash: 'h', generatedAt: '', reason: 'manual-refresh', counts: { skills: 0, agents: 0 } })),
+  rebuildResourceIndex: vi.fn(() => ({ hash: 'h', generatedAt: '', reason: 'manual-refresh', counts: { skills: 0, agents: 0 } })),
   rebuildAllResourceIndexes: vi.fn()
 }))
 

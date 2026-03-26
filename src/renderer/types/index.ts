@@ -315,7 +315,7 @@ export interface Conversation extends ConversationMeta {
 
 export interface WorkflowStep {
   id: string;
-  type: 'skill' | 'agent' | 'command' | 'message';
+  type: 'skill' | 'agent' | 'message';
   name?: string;
   input?: string;
   args?: string;

@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Bot, Puzzle, Search, Terminal, Zap } from 'lucide-react'
+import { Bot, Puzzle, Search, Zap } from 'lucide-react'
 import { api } from '../../api'
 import { useTranslation } from '../../i18n'
 import { type AgentDefinition, useAgentsStore } from '../../stores/agents.store'
 import { useChatStore } from '../../stores/chat.store'
-import { type CommandDefinition, useCommandsStore } from '../../stores/commands.store'
 import { type SkillDefinition, useSkillsStore } from '../../stores/skills.store'
 import { useSpaceStore } from '../../stores/space.store'
 import { ResourceCard } from '../resources/ResourceCard'
@@ -13,7 +12,6 @@ import {
   computeTypeCounts,
   groupByType,
   normalizeExtensionItems,
-  shouldShowRemoteCommandsUnavailable,
   sortExtensions,
   type FilterTab
 } from '../resources/extension-filtering'
@@ -43,7 +41,6 @@ export function ExtensionsView(): JSX.Element {
   const [activeFilter, setActiveFilter] = useState<FilterTab>('all')
   const [query, setQuery] = useState('')
   const [isRefreshing, setIsRefreshing] = useState(false)
-  const isRemote = api.isRemoteMode()
   const hasRequestedGlobalResources = useRef(false)
   const currentSpace = useSpaceStore((state) => state.currentSpace)
   const currentSpaceId = currentSpace?.id
@@ -71,28 +68,19 @@ export function ExtensionsView(): JSX.Element {
     loadAgents
   } = useAgentsStore()
 
-  const {
-    commands,
-    isLoading: commandsLoading,
-    loadCommands
-  } = useCommandsStore()
-
   useEffect(() => {
     if (hasRequestedGlobalResources.current) return
     hasRequestedGlobalResources.current = true
 
     if (!skillsLoading) loadSkills()
     if (!agentsLoading) loadAgents()
-    if (!isRemote && !commandsLoading) loadCommands()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const normalizedItems = useMemo(() => normalizeExtensionItems({
     skills: skills as SkillDefinition[],
-    agents: agents as AgentDefinition[],
-    commands: commands as CommandDefinition[],
-    isRemote
-  }), [agents, commands, isRemote, skills])
+    agents: agents as AgentDefinition[]
+  }), [agents, skills])
 
   const typeSearchFilteredItems = useMemo(
     () => sortExtensions(applyTypeAndSearchFilter(normalizedItems, activeFilter, query)),
@@ -103,22 +91,15 @@ export function ExtensionsView(): JSX.Element {
 
   const groupedItems = useMemo(() => groupByType(filteredItems), [filteredItems])
 
-  const isLoading = skillsLoading || agentsLoading || (!isRemote && commandsLoading)
+  const isLoading = skillsLoading || agentsLoading
 
   const typeCounts = useMemo(() => computeTypeCounts(normalizedItems), [normalizedItems])
 
   const tabs = useMemo<Array<{ key: FilterTab; label: string; count: number }>>(() => [
     { key: 'all', label: t('All'), count: normalizedItems.length },
     { key: 'skills', label: t('Skills'), count: typeCounts.skill },
-    { key: 'agents', label: t('Agents'), count: typeCounts.agent },
-    {
-      key: 'commands',
-      label: isRemote ? `${t('Commands')} (${t('Not available')})` : t('Commands'),
-      count: typeCounts.command
-    }
-  ], [normalizedItems.length, typeCounts, t, isRemote])
-
-  const showRemoteCommandsUnavailable = shouldShowRemoteCommandsUnavailable(isRemote, activeFilter)
+    { key: 'agents', label: t('Agents'), count: typeCounts.agent }
+  ], [normalizedItems.length, typeCounts, t])
 
   const sourceCounts = useMemo(() => {
     const counts = {
@@ -226,8 +207,7 @@ export function ExtensionsView(): JSX.Element {
       }
       await Promise.all([
         loadSkills(loadedWorkDir ?? undefined),
-        loadAgents(loadedWorkDir ?? undefined),
-        !isRemote ? loadCommands(loadedWorkDir ?? undefined, true) : Promise.resolve()
+        loadAgents(loadedWorkDir ?? undefined)
       ])
       useSkillsStore.setState({
         lastRefreshReason: 'manual-refresh',
@@ -236,7 +216,7 @@ export function ExtensionsView(): JSX.Element {
     } finally {
       setIsRefreshing(false)
     }
-  }, [isRefreshing, loadedWorkDir, loadAgents, loadCommands, loadSkills, isRemote, t])
+  }, [isRefreshing, loadedWorkDir, loadAgents, loadSkills, t])
 
   return (
     <div className="h-full overflow-auto">
@@ -254,7 +234,7 @@ export function ExtensionsView(): JSX.Element {
             </button>
           </div>
           <p className="text-sm text-muted-foreground mt-1">
-            {t('Browse system-wide skills, agents and commands')}
+            {t('Browse system-wide skills and agents')}
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <span className="text-[11px] px-2 py-0.5 rounded-md border border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">
@@ -326,14 +306,6 @@ export function ExtensionsView(): JSX.Element {
           </div>
         ) : (
           <>
-            {showRemoteCommandsUnavailable && (
-              <div className="glass-card p-4 mb-4 stagger-item" style={{ animationDelay: '100ms' }}>
-                <p className="text-sm text-muted-foreground">
-                  {t('Commands are not available in remote mode')}
-                </p>
-              </div>
-            )}
-
             {filteredItems.length === 0 ? (
               <div className="stagger-item" style={{ animationDelay: '120ms' }}>
                 <EmptyState
@@ -390,26 +362,6 @@ export function ExtensionsView(): JSX.Element {
                     ))}
                   </div>
                 </section>
-
-                {!isRemote && (
-                  <section className="stagger-item" style={{ animationDelay: '200ms' }}>
-                    <div className="flex items-center gap-2 mb-3">
-                      <Terminal className="w-4 h-4 text-violet-500" />
-                      <h3 className="text-sm font-medium">{t('Commands')} ({groupedItems.command.length})</h3>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                      {groupedItems.command.map((item, index) => (
-                        <ResourceCard
-                          key={item.id}
-                          resource={item.resource}
-                          type="command"
-                          index={index}
-                          actionMode="none"
-                        />
-                      ))}
-                    </div>
-                  </section>
-                )}
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 stagger-item" style={{ animationDelay: '120ms' }}>

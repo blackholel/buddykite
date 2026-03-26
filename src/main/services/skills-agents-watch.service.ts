@@ -1,5 +1,5 @@
 /**
- * Skills/Agents/Commands Watch Service
+ * Skills/Agents Watch Service
  *
  * Watches resource directories and plugin/config registries, then notifies renderer to refresh.
  */
@@ -11,7 +11,6 @@ import { getConfig, getSpacesDir } from './config.service'
 import { clearPluginsCache, listEnabledPlugins } from './plugins.service'
 import { clearSkillsCache, invalidateSkillsCache } from './skills.service'
 import { clearAgentsCache, invalidateAgentsCache } from './agents.service'
-import { clearCommandsCache, invalidateCommandsCache } from './commands.service'
 import { getAllSpacePaths } from './space.service'
 import { normalizePlatformPath } from '../utils/path-validation'
 import { getLockedConfigSourceMode, getLockedUserConfigRootDir } from './config-source-mode.service'
@@ -22,10 +21,12 @@ import {
   getResourceDisplayI18nRoots,
   RESOURCE_DISPLAY_I18N_FILE_NAME
 } from './resource-display-i18n.service'
-import type { ResourceChangedPayload, ResourceKind, ResourceRefreshReason } from '../../shared/resource-access'
+import type { ResourceChangedPayload, ResourceRefreshReason } from '../../shared/resource-access'
+
+type WatchedResourceKind = 'skills' | 'agents'
 
 type WatchKind =
-  | ResourceKind
+  | WatchedResourceKind
   | 'spaces-root'
   | 'display-i18n-root-dir'
   | 'display-i18n-dir'
@@ -50,7 +51,7 @@ interface DirEntry {
   workDir?: string
 }
 
-const RESOURCE_KINDS: ResourceKind[] = ['skills', 'agents', 'commands']
+const RESOURCE_KINDS: WatchedResourceKind[] = ['skills', 'agents']
 const REGISTRY_FILE_NAME = 'installed_plugins.json'
 const SETTINGS_FILE_NAME = 'settings.json'
 const watchers = new Map<string, WatchEntry>()
@@ -59,10 +60,9 @@ let mainWindow: BrowserWindow | null = null
 let linuxRescanTimer: NodeJS.Timeout | null = null
 const LINUX_RESCAN_INTERVAL = 60_000
 
-const invalidators: Record<ResourceKind, (workDir?: string | null) => void> = {
+const invalidators: Record<WatchedResourceKind, (workDir?: string | null) => void> = {
   skills: invalidateSkillsCache,
-  agents: invalidateAgentsCache,
-  commands: invalidateCommandsCache
+  agents: invalidateAgentsCache
 }
 
 function makeKey(kind: WatchKind, path: string): string {
@@ -82,7 +82,7 @@ function sendEvent(channel: string, payload: ResourceChangedPayload): void {
 function buildChangedPayload(
   workDir: string | null,
   reason: ResourceRefreshReason,
-  resources: ResourceKind[]
+  resources: WatchedResourceKind[]
 ): ResourceChangedPayload {
   return {
     workDir,
@@ -93,7 +93,7 @@ function buildChangedPayload(
 }
 
 function emitResourceChanged(
-  kind: ResourceKind,
+  kind: WatchedResourceKind,
   workDir: string | null,
   reason: ResourceRefreshReason
 ): void {
@@ -104,14 +104,12 @@ function emitAllResourceChanged(reason: ResourceRefreshReason): void {
   const payload = buildChangedPayload(null, reason, RESOURCE_KINDS)
   sendEvent('skills:changed', payload)
   sendEvent('agents:changed', payload)
-  sendEvent('commands:changed', payload)
 }
 
 function emitAllResourceChangedForScope(workDir: string | null, reason: ResourceRefreshReason): void {
   const payload = buildChangedPayload(workDir, reason, RESOURCE_KINDS)
   sendEvent('skills:changed', payload)
   sendEvent('agents:changed', payload)
-  sendEvent('commands:changed', payload)
 }
 
 function rebuildIndexForScope(workDir: string | null, reason: ResourceRefreshReason): void {
@@ -122,7 +120,7 @@ function rebuildIndexForScope(workDir: string | null, reason: ResourceRefreshRea
   rebuildAllResourceIndexes(reason)
 }
 
-function scheduleNotify(kind: ResourceKind, workDir?: string, reason: ResourceRefreshReason = 'file-change'): void {
+function scheduleNotify(kind: WatchedResourceKind, workDir?: string, reason: ResourceRefreshReason = 'file-change'): void {
   const scope = workDir || 'global'
   const key = `${kind}:${scope}:${reason}`
   const timer = debounceTimers.get(key)
@@ -149,7 +147,6 @@ function scheduleDisplayI18nNotify(workDir?: string): void {
     if (workDir) {
       invalidateSkillsCache(workDir)
       invalidateAgentsCache(workDir)
-      invalidateCommandsCache(workDir)
       clearResourceIndexSnapshot(workDir)
       rebuildResourceIndex(workDir, 'file-change')
       emitAllResourceChangedForScope(workDir, 'file-change')
@@ -158,7 +155,6 @@ function scheduleDisplayI18nNotify(workDir?: string): void {
 
     clearSkillsCache()
     clearAgentsCache()
-    clearCommandsCache()
     clearResourceIndexSnapshot()
     rebuildAllResourceIndexes('file-change')
     emitAllResourceChanged('file-change')
@@ -178,7 +174,6 @@ function schedulePluginConfigNotify(reason: 'plugin-registry-change' | 'settings
     clearResourceIndexSnapshot()
     clearSkillsCache()
     clearAgentsCache()
-    clearCommandsCache()
     rebuildAllResourceIndexes(reason)
     emitAllResourceChanged(reason)
   }, 200))
@@ -196,7 +191,6 @@ function scheduleExposureNotify(): void {
     clearResourceIndexSnapshot()
     clearSkillsCache()
     clearAgentsCache()
-    clearCommandsCache()
     rebuildAllResourceIndexes('resource-exposure-change')
     emitAllResourceChanged('resource-exposure-change')
   }, 200))
@@ -269,9 +263,9 @@ function createWatcher(kind: WatchKind, path: string, workDir?: string, opts?: {
         return
       }
 
-      scheduleNotify(kind as ResourceKind, workDir, 'file-change')
+      scheduleNotify(kind as WatchedResourceKind, workDir, 'file-change')
       if (!supportsRecursive && kind === 'skills') {
-        patchSubdirWatchers(kind as ResourceKind, path, workDir)
+        patchSubdirWatchers(kind as WatchedResourceKind, path, workDir)
       }
     })
     watchers.set(key, { kind, path, watcher, workDir, isRoot: opts?.isRoot ?? false })
@@ -291,7 +285,7 @@ function stopWatcher(key: string): void {
   watchers.delete(key)
 }
 
-function stopResourceWatcherTree(kind: ResourceKind, rootPath: string): void {
+function stopResourceWatcherTree(kind: WatchedResourceKind, rootPath: string): void {
   for (const [key, entry] of Array.from(watchers.entries())) {
     if (entry.kind !== kind) continue
     if (entry.path === rootPath || isChildPath(rootPath, entry.path)) {
@@ -309,7 +303,7 @@ function resolveGlobalPath(globalPath: string): string {
 /**
  * Collect directories to watch for a given resource kind.
  */
-function getResourceDirs(kind: ResourceKind): DirEntry[] {
+function getResourceDirs(kind: WatchedResourceKind): DirEntry[] {
   const dirs: DirEntry[] = []
   const sourceMode = getLockedConfigSourceMode()
   const userRoot = getLockedUserConfigRootDir()
@@ -368,7 +362,7 @@ function isChildPath(parent: string, child: string): boolean {
   return rel !== '' && !rel.startsWith('..') && !isAbsolute(rel)
 }
 
-function patchSubdirWatchers(kind: ResourceKind, dirPath: string, workDir?: string): void {
+function patchSubdirWatchers(kind: WatchedResourceKind, dirPath: string, workDir?: string): void {
   const normalizedDir = normalizePlatformPath(dirPath)
 
   // Remove watchers for deleted subdirectories
@@ -401,7 +395,7 @@ function patchSubdirWatchers(kind: ResourceKind, dirPath: string, workDir?: stri
   }
 }
 
-function reconcileResourceWatchers(kind: ResourceKind): void {
+function reconcileResourceWatchers(kind: WatchedResourceKind): void {
   const desiredDirs = getResourceDirs(kind)
   const desiredByIdentity = new Map<string, DirEntry>()
   for (const dir of desiredDirs) {
@@ -521,7 +515,7 @@ export function cleanupSkillAgentWatchers(): void {
 }
 
 // Test helper: expose resolved watch directories without creating filesystem watchers
-export function _testGetResourceDirs(kind: ResourceKind): Array<{ path: string; workDir?: string }> {
+export function _testGetResourceDirs(kind: WatchedResourceKind): Array<{ path: string; workDir?: string }> {
   return getResourceDirs(kind)
 }
 

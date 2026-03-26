@@ -1,24 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import {
-  buildTemplateFilterState,
-  shouldShowRemoteCommandsUnavailable
+  buildTemplateFilterState
 } from '../extension-filtering'
 
 describe('template library filter behavior', () => {
   it('keeps entry tab mapping and clears query on tab state build', () => {
     const skillsState = buildTemplateFilterState('skills')
     const agentsState = buildTemplateFilterState('agents')
-    const commandsState = buildTemplateFilterState('commands')
 
     expect(skillsState).toEqual({ activeFilter: 'skills', query: '' })
     expect(agentsState).toEqual({ activeFilter: 'agents', query: '' })
-    expect(commandsState).toEqual({ activeFilter: 'commands', query: '' })
-  })
-
-  it('keeps remote commands limitation independent from query state', () => {
-    expect(shouldShowRemoteCommandsUnavailable(true, 'all')).toBe(true)
-    expect(shouldShowRemoteCommandsUnavailable(true, 'commands')).toBe(true)
-    expect(shouldShowRemoteCommandsUnavailable(true, 'skills')).toBe(false)
-    expect(shouldShowRemoteCommandsUnavailable(false, 'commands')).toBe(false)
   })
 })

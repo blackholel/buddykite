@@ -50,7 +50,8 @@ interface WorkflowsState {
 }
 
 function buildMessageForStep(step: WorkflowStep): string {
-  if (step.type === 'command') {
+  const stepType = step.type as WorkflowStep['type'] | 'command'
+  if (stepType === 'command') {
     const input = step.input ? ` ${step.input}` : ''
     return `/${step.name}${input}`.trim()
   }
@@ -214,15 +215,13 @@ export const useWorkflowsStore = create<WorkflowsState>((set, get) => ({
       : useSpaceStore.getState().spaces.find(space => space.id === spaceId)
     if (knownSpace?.path) {
       const locale = getCurrentLanguage()
-      const [skillsResult, agentsResult, commandsResult] = await Promise.allSettled([
+      const [skillsResult, agentsResult] = await Promise.allSettled([
         api.listSkills(knownSpace.path, locale, 'workflow-validation'),
-        api.listAgents(knownSpace.path, locale, 'workflow-validation'),
-        api.listCommands(knownSpace.path, locale, 'workflow-validation')
+        api.listAgents(knownSpace.path, locale, 'workflow-validation')
       ])
 
       const skillsResponse = skillsResult.status === 'fulfilled' ? skillsResult.value : { success: false, data: undefined }
       const agentsResponse = agentsResult.status === 'fulfilled' ? agentsResult.value : { success: false, data: undefined }
-      const commandsResponse = commandsResult.status === 'fulfilled' ? commandsResult.value : { success: false, data: undefined }
 
       if (skillsResult.status === 'rejected') {
         console.error('[WorkflowsStore] Failed to list skills:', skillsResult.reason)
@@ -230,13 +229,9 @@ export const useWorkflowsStore = create<WorkflowsState>((set, get) => ({
       if (agentsResult.status === 'rejected') {
         console.error('[WorkflowsStore] Failed to list agents:', agentsResult.reason)
       }
-      if (commandsResult.status === 'rejected') {
-        console.error('[WorkflowsStore] Failed to list commands:', commandsResult.reason)
-      }
 
       const availableSkills = (skillsResponse.success ? (skillsResponse.data as Array<{ name: string; namespace?: string }>) : [])
       const availableAgents = (agentsResponse.success ? (agentsResponse.data as Array<{ name: string; namespace?: string }>) : [])
-      const availableCommands = (commandsResponse.success ? (commandsResponse.data as Array<{ name: string; namespace?: string }>) : [])
 
       const missingSteps: string[] = []
       workflow.steps.forEach((step, index) => {
@@ -247,9 +242,6 @@ export const useWorkflowsStore = create<WorkflowsState>((set, get) => ({
         }
         if (step.type === 'agent' && !hasAvailableResource(stepName, availableAgents)) {
           missingSteps.push(`Step ${index + 1}: agent ${stepName}`)
-        }
-        if (step.type === 'command' && !hasAvailableResource(stepName, availableCommands)) {
-          missingSteps.push(`Step ${index + 1}: command ${stepName}`)
         }
       })
 

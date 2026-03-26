@@ -19,7 +19,6 @@ interface LegacyToolkitDirectiveRef {
 
 interface LegacyToolkitResources {
   skills: LegacyToolkitDirectiveRef[]
-  commands: LegacyToolkitDirectiveRef[]
   agents: LegacyToolkitDirectiveRef[]
 }
 
@@ -48,7 +47,6 @@ const BUILTIN_PRESETS: ResourceBundlePreset[] = [
     resources: [
       resource('skill', 'coding-standards'),
       resource('skill', 'security-review'),
-      resource('command', 'review'),
       resource('agent', 'code-reviewer'),
       resource('agent', 'security-reviewer')
     ],
@@ -118,43 +116,48 @@ function loadPresetsFromDir(dirPath: string): ResourceBundlePreset[] {
   }
 }
 
-function normalizeResourceRef(ref: ResourceRef): ResourceRef {
+function normalizeResourceRef(ref: Partial<ResourceRef>): ResourceRef | null {
+  if (ref.type !== 'skill' && ref.type !== 'agent') {
+    return null
+  }
+  if (typeof ref.name !== 'string' || !ref.name.trim()) {
+    return null
+  }
+
   return {
     type: ref.type,
-    name: ref.name,
-    ...(ref.namespace && { namespace: ref.namespace }),
-    ...(ref.source && { source: ref.source }),
-    ...(ref.path && { path: ref.path })
+    name: ref.name.trim(),
+    ...(typeof ref.namespace === 'string' && ref.namespace.trim() && { namespace: ref.namespace.trim() }),
+    ...(typeof ref.source === 'string' && ref.source.trim() && { source: ref.source as ResourceRef['source'] }),
+    ...(typeof ref.path === 'string' && ref.path.trim() && { path: ref.path.trim() })
   }
 }
 
 function legacyPresetResourcesToRefs(resources: LegacyToolkitResources): ResourceRef[] {
   const skills = Array.isArray(resources.skills) ? resources.skills : []
-  const commands = Array.isArray(resources.commands) ? resources.commands : []
   const agents = Array.isArray(resources.agents) ? resources.agents : []
 
-  const skillRefs = skills.map((ref) => normalizeResourceRef({
-    type: 'skill',
-    name: ref.name,
-    namespace: ref.namespace,
-    source: ref.source as ResourceRef['source'] | undefined,
-    path: ref.path
-  }))
-  const commandRefs = commands.map((ref) => normalizeResourceRef({
-    type: 'command',
-    name: ref.name,
-    namespace: ref.namespace,
-    source: ref.source as ResourceRef['source'] | undefined,
-    path: ref.path
-  }))
-  const agentRefs = agents.map((ref) => normalizeResourceRef({
-    type: 'agent',
-    name: ref.name,
-    namespace: ref.namespace,
-    source: ref.source as ResourceRef['source'] | undefined,
-    path: ref.path
-  }))
-  return [...skillRefs, ...commandRefs, ...agentRefs]
+  const skillRefs = skills
+    .map((ref) => normalizeResourceRef({
+      type: 'skill',
+      name: ref.name,
+      namespace: ref.namespace,
+      source: ref.source as ResourceRef['source'] | undefined,
+      path: ref.path
+    }))
+    .filter((ref): ref is ResourceRef => ref !== null)
+
+  const agentRefs = agents
+    .map((ref) => normalizeResourceRef({
+      type: 'agent',
+      name: ref.name,
+      namespace: ref.namespace,
+      source: ref.source as ResourceRef['source'] | undefined,
+      path: ref.path
+    }))
+    .filter((ref): ref is ResourceRef => ref !== null)
+
+  return [...skillRefs, ...agentRefs]
 }
 
 function normalizePreset(input: unknown): ResourceBundlePreset | null {
@@ -167,9 +170,9 @@ function normalizePreset(input: unknown): ResourceBundlePreset | null {
   const resourcesValue = raw.resources
   if (Array.isArray(resourcesValue)) {
     const resources = resourcesValue
-      .filter((item): item is ResourceRef => Boolean(item && typeof item === 'object'))
+      .filter((item): item is Partial<ResourceRef> => Boolean(item && typeof item === 'object'))
       .map((item) => normalizeResourceRef(item))
-      .filter((item) => !!item.type && !!item.name)
+      .filter((item): item is ResourceRef => item !== null)
     return {
       id: raw.id,
       name: raw.name,
@@ -248,7 +251,9 @@ export function savePreset(
 
   const id = `custom:${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
   const normalizedResources = Array.isArray(resources)
-    ? resources.map((item) => normalizeResourceRef(item))
+    ? resources
+      .map((item) => normalizeResourceRef(item))
+      .filter((item): item is ResourceRef => item !== null)
     : legacyPresetResourcesToRefs(resources)
   const preset: ResourceBundlePreset = { id, name, description, resources: normalizedResources, readOnly: false }
 

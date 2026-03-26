@@ -19,7 +19,7 @@
  */
 
 import { useState, useRef, useEffect, useCallback, useMemo, KeyboardEvent, ClipboardEvent, DragEvent } from 'react'
-import { Plus, ImagePlus, Loader2, AlertCircle, Atom, ClipboardList, X, Bot, Zap, Terminal, Trash2, Pencil, FileText } from 'lucide-react'
+import { Plus, ImagePlus, Loader2, AlertCircle, Atom, ClipboardList, X, Bot, Zap, Trash2, Pencil, FileText } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 import { useOnboardingStore } from '../../stores/onboarding.store'
 import { api } from '../../api'
@@ -28,7 +28,6 @@ import { useAppStore } from '../../stores/app.store'
 import { useSpaceStore } from '../../stores/space.store'
 import { useSkillsStore } from '../../stores/skills.store'
 import { useAgentsStore } from '../../stores/agents.store'
-import { useCommandsStore } from '../../stores/commands.store'
 import { getOnboardingPrompt } from '../onboarding/onboardingData'
 import { ImageAttachmentPreview } from './ImageAttachmentPreview'
 import { FileContextPreview } from './FileContextPreview'
@@ -118,7 +117,6 @@ interface ImageError {
 }
 
 function toSuggestionTypeFromTab(tab: ComposerSuggestionTab): ComposerSuggestionType {
-  if (tab === 'commands') return 'command'
   if (tab === 'agents') return 'agent'
   return 'skill'
 }
@@ -254,7 +252,6 @@ export function InputArea({
   const inputContainerRef = useRef<HTMLDivElement>(null)
   const lastTriggerTypeRef = useRef<TriggerContext['type'] | null>(null)
   const lastExpandContextRef = useRef<{ stateKey: string | null; query: string } | null>(null)
-  const loggedSlashFallbackQueryRef = useRef<string | null>(null)
   const insertQueue = useComposerStore(state => state.insertQueue)
   const dequeueInsert = useComposerStore(state => state.dequeueInsert)
 
@@ -277,17 +274,6 @@ export function InputArea({
     }))
   )
   const {
-    commands,
-    loadedWorkDir: loadedCommandsWorkDir,
-    loadCommands
-  } = useCommandsStore(
-    useShallow((state) => ({
-      commands: state.commands,
-      loadedWorkDir: state.loadedWorkDir,
-      loadCommands: state.loadCommands
-    }))
-  )
-  const {
     agents,
     loadedWorkDir: loadedAgentsWorkDir,
     loadAgents
@@ -299,10 +285,8 @@ export function InputArea({
     }))
   )
   const skillsLoadInFlightWorkDirRef = useRef<string | null>(null)
-  const commandsLoadInFlightWorkDirRef = useRef<string | null>(null)
   const agentsLoadInFlightWorkDirRef = useRef<string | null>(null)
   const lastRequestedSkillsWorkDirRef = useRef<string | null>(null)
-  const lastRequestedCommandsWorkDirRef = useRef<string | null>(null)
   const lastRequestedAgentsWorkDirRef = useRef<string | null>(null)
   const resolvedSpace = useMemo(() => {
     if (!spaceId) return null
@@ -336,26 +320,6 @@ export function InputArea({
       }
     })
   }, [loadedSkillsWorkDir, loadSkills, resolvedWorkDir, skills.length])
-
-  useEffect(() => {
-    const targetWorkDir = resolvedWorkDir ?? null
-    const shouldLoad = loadedCommandsWorkDir !== targetWorkDir || commands.length === 0
-    if (!shouldLoad) return
-    if (commandsLoadInFlightWorkDirRef.current === targetWorkDir) return
-    if (lastRequestedCommandsWorkDirRef.current === targetWorkDir) return
-
-    lastRequestedCommandsWorkDirRef.current = targetWorkDir
-    commandsLoadInFlightWorkDirRef.current = targetWorkDir
-    void loadCommands(resolvedWorkDir).finally(() => {
-      const loadedWorkDir = useCommandsStore.getState().loadedWorkDir
-      if (commandsLoadInFlightWorkDirRef.current === targetWorkDir) {
-        commandsLoadInFlightWorkDirRef.current = null
-      }
-      if (loadedWorkDir !== targetWorkDir && lastRequestedCommandsWorkDirRef.current === targetWorkDir) {
-        lastRequestedCommandsWorkDirRef.current = null
-      }
-    })
-  }, [commands.length, loadCommands, loadedCommandsWorkDir, resolvedWorkDir])
 
   useEffect(() => {
     const targetWorkDir = resolvedWorkDir ?? null
@@ -416,7 +380,43 @@ export function InputArea({
   )
   const isAiConfigured = aiSetupState.configured
   const effectiveMode = mode
-  const isNativeSlashRuntime = slashRuntimeMode === 'native'
+  const sdkSlashCommandCandidates = useMemo<ComposerResourceSuggestionItem[]>(() => {
+    const raw = Array.isArray(slashCommandsSnapshot.commands) ? slashCommandsSnapshot.commands : []
+    const dedup = new Set<string>()
+    const suggestions: ComposerResourceSuggestionItem[] = []
+
+    for (const entry of raw) {
+      if (typeof entry !== 'string') continue
+      const trimmed = entry.trim()
+      if (!trimmed) continue
+      const command = trimmed.startsWith('/') ? trimmed : `/${trimmed}`
+      const key = command.toLowerCase()
+      if (dedup.has(key)) continue
+      dedup.add(key)
+
+      const displayName = command.replace(/^\//, '')
+      suggestions.push({
+        kind: 'resource',
+        id: `sdk-slash:${displayName}`,
+        type: 'skill',
+        source: 'global',
+        scope: 'space',
+        stableId: `sdk-slash|${displayName}`,
+        displayName,
+        insertText: command,
+        description: t('Native slash command from SDK'),
+        keywords: [displayName, command, displayName.toLowerCase(), command.toLowerCase()]
+      })
+    }
+
+    return suggestions
+  }, [slashCommandsSnapshot.commands, t])
+  const slashSuggestionSource = resolveSlashSuggestionSource({
+    slashRuntimeMode,
+    triggerType: triggerContext?.type,
+    snapshotCommandsCount: sdkSlashCommandCandidates.length
+  })
+  const shouldUseSdkSlashCommands = slashSuggestionSource === 'sdk_snapshot'
   const effectiveSuggestionTab: ComposerSuggestionTab = triggerContext?.type === 'mention'
     ? 'agents'
     : activeSuggestionTab
@@ -429,69 +429,22 @@ export function InputArea({
     : null
   const isGlobalExpanded = expandStateKey ? globalExpandState[expandStateKey] === true : false
 
-  const sdkSlashCommandCandidates = useMemo<ComposerResourceSuggestionItem[]>(() => {
-    if (!isNativeSlashRuntime) return []
-    const raw = Array.isArray(slashCommandsSnapshot.commands) ? slashCommandsSnapshot.commands : []
-    const dedup = new Set<string>()
-    const suggestions: ComposerResourceSuggestionItem[] = []
-    for (const entry of raw) {
-      if (typeof entry !== 'string') continue
-      const trimmed = entry.trim()
-      if (!trimmed) continue
-      const command = trimmed.startsWith('/') ? trimmed : `/${trimmed}`
-      const key = command.toLowerCase()
-      if (dedup.has(key)) continue
-      dedup.add(key)
-      const displayName = command.replace(/^\//, '')
-      suggestions.push({
-        kind: 'resource',
-        id: `sdk-slash:${displayName}`,
-        type: 'command',
-        source: 'global',
-        scope: 'space',
-        stableId: `sdk-slash|${displayName}`,
-        displayName,
-        insertText: command,
-        description: t('Native slash command from SDK'),
-        keywords: [displayName, command, displayName.toLowerCase(), command.toLowerCase()]
-      })
-    }
-    return suggestions
-  }, [isNativeSlashRuntime, slashCommandsSnapshot.commands, t])
-
-  const slashSuggestionSource = resolveSlashSuggestionSource({
-    slashRuntimeMode,
-    triggerType: triggerContext?.type,
-    snapshotCommandsCount: sdkSlashCommandCandidates.length
-  })
-  const shouldUseSdkSlashCommands = slashSuggestionSource === 'sdk_snapshot'
-
   const skillCandidates = useMemo<ComposerResourceSuggestionItem[]>(() => {
-    if (shouldUseSdkSlashCommands) return []
+    if (shouldUseSdkSlashCommands) return sdkSlashCommandCandidates
     const suggestions: ComposerResourceSuggestionItem[] = []
     for (const skill of skills) {
       suggestions.push(buildComposerResourceSuggestion('skill', skill))
     }
     return suggestions
-  }, [shouldUseSdkSlashCommands, skills])
-
-  const commandCandidates = useMemo<ComposerResourceSuggestionItem[]>(() => {
-    if (shouldUseSdkSlashCommands) return sdkSlashCommandCandidates
-    const suggestions: ComposerResourceSuggestionItem[] = []
-    for (const command of commands) {
-      suggestions.push(buildComposerResourceSuggestion('command', command))
-    }
-    return suggestions
-  }, [commands, sdkSlashCommandCandidates, shouldUseSdkSlashCommands])
+  }, [sdkSlashCommandCandidates, shouldUseSdkSlashCommands, skills])
 
   const agentCandidates = useMemo<ComposerResourceSuggestionItem[]>(() => {
-    if (shouldUseSdkSlashCommands) return []
     const suggestions: ComposerResourceSuggestionItem[] = []
     for (const agent of agents) {
       suggestions.push(buildComposerResourceSuggestion('agent', agent))
     }
     return suggestions
-  }, [agents, shouldUseSdkSlashCommands])
+  }, [agents])
 
   const rankedSkillSuggestions = useMemo(
     () => rankSuggestions(skillCandidates, {
@@ -499,13 +452,6 @@ export function InputArea({
       mruMap: getComposerMruMap(mruSpaceId, 'skill')
     }),
     [mruSpaceId, mruVersion, skillCandidates, triggerQuery]
-  )
-  const rankedCommandSuggestions = useMemo(
-    () => rankSuggestions(commandCandidates, {
-      query: triggerQuery,
-      mruMap: getComposerMruMap(mruSpaceId, 'command')
-    }),
-    [commandCandidates, mruSpaceId, mruVersion, triggerQuery]
   )
   const rankedAgentSuggestions = useMemo(
     () => rankSuggestions(agentCandidates, {
@@ -519,10 +465,6 @@ export function InputArea({
     () => splitSuggestionsByScope(rankedSkillSuggestions),
     [rankedSkillSuggestions]
   )
-  const commandSuggestionGroups = useMemo(
-    () => splitSuggestionsByScope(rankedCommandSuggestions),
-    [rankedCommandSuggestions]
-  )
   const agentSuggestionGroups = useMemo(
     () => splitSuggestionsByScope(rankedAgentSuggestions),
     [rankedAgentSuggestions]
@@ -530,15 +472,13 @@ export function InputArea({
 
   const suggestionCounts = useMemo<Record<ComposerSuggestionTab, number>>(() => ({
     skills: skillSuggestionGroups.space.length,
-    commands: commandSuggestionGroups.space.length,
     agents: agentSuggestionGroups.space.length
-  }), [agentSuggestionGroups.space.length, commandSuggestionGroups.space.length, skillSuggestionGroups.space.length])
+  }), [agentSuggestionGroups.space.length, skillSuggestionGroups.space.length])
 
   const activeSuggestionGroups = useMemo(() => {
-    if (effectiveSuggestionTab === 'commands') return commandSuggestionGroups
     if (effectiveSuggestionTab === 'agents') return agentSuggestionGroups
     return skillSuggestionGroups
-  }, [agentSuggestionGroups, commandSuggestionGroups, effectiveSuggestionTab, skillSuggestionGroups])
+  }, [agentSuggestionGroups, effectiveSuggestionTab, skillSuggestionGroups])
 
   const activeSuggestionType = toSuggestionTypeFromTab(effectiveSuggestionTab)
   const activeGlobalCount = activeSuggestionGroups.global.length
@@ -800,38 +740,17 @@ export function InputArea({
       setActiveSuggestionIndex(0)
       lastTriggerTypeRef.current = null
       lastExpandContextRef.current = null
-      loggedSlashFallbackQueryRef.current = null
       return
     }
     if (lastTriggerTypeRef.current !== triggerContext.type) {
       if (triggerContext.type === 'mention') {
         setActiveSuggestionTab('agents')
       } else {
-        setActiveSuggestionTab(shouldUseSdkSlashCommands ? 'commands' : 'skills')
+        setActiveSuggestionTab('skills')
       }
     }
     lastTriggerTypeRef.current = triggerContext.type
-  }, [shouldUseSdkSlashCommands, triggerContext])
-
-  useEffect(() => {
-    if (!triggerContext || triggerContext.type !== 'slash' || !isNativeSlashRuntime) {
-      return
-    }
-    if (sdkSlashCommandCandidates.length > 0) {
-      loggedSlashFallbackQueryRef.current = null
-      return
-    }
-    const key = `${slashRuntimeMode}:${triggerContext.query.trim().toLowerCase()}`
-    if (loggedSlashFallbackQueryRef.current === key) {
-      return
-    }
-    loggedSlashFallbackQueryRef.current = key
-    console.warn('[telemetry] slash_snapshot_fallback_local_count', {
-      mode: slashRuntimeMode,
-      reason: 'renderer_local_fallback',
-      query: triggerContext.query
-    })
-  }, [isNativeSlashRuntime, sdkSlashCommandCandidates.length, slashRuntimeMode, triggerContext])
+  }, [triggerContext])
 
   useEffect(() => {
     setActiveSuggestionIndex(0)
@@ -1382,7 +1301,7 @@ export function InputArea({
             {selectedResourceChips.length > 0 && (
               <div className="mb-2 flex flex-wrap items-center gap-2">
                 {selectedResourceChips.map((chip) => {
-                  const Icon = chip.type === 'agent' ? Bot : chip.type === 'command' ? Terminal : Zap
+                  const Icon = chip.type === 'agent' ? Bot : Zap
                   return (
                     <span
                       key={chip.id}

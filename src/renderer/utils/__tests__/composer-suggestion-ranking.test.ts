@@ -269,10 +269,10 @@ describe('composer-suggestion-ranking', () => {
       triggerMode: 'mention',
       tab: 'agents'
     })
-    const slashCommandsKey = buildGlobalExpandStateKey({
+    const slashAgentsKey = buildGlobalExpandStateKey({
       spaceId: 's1',
       triggerMode: 'slash',
-      tab: 'commands'
+      tab: 'agents'
     })
 
     expect(shouldResetGlobalExpandState({
@@ -285,23 +285,23 @@ describe('composer-suggestion-ranking', () => {
 
     expect(shouldResetGlobalExpandState({
       prevStateKey: mentionAgentsKey,
-      nextStateKey: slashCommandsKey,
+      nextStateKey: slashAgentsKey,
       prevQuery: 'a',
       nextQuery: 'a',
       isComposing: false
     })).toBe(true)
 
     expect(shouldResetGlobalExpandState({
-      prevStateKey: slashCommandsKey,
-      nextStateKey: slashCommandsKey,
+      prevStateKey: slashAgentsKey,
+      nextStateKey: slashAgentsKey,
       prevQuery: 'abc',
       nextQuery: 'abcd',
       isComposing: false
     })).toBe(true)
 
     expect(shouldResetGlobalExpandState({
-      prevStateKey: slashCommandsKey,
-      nextStateKey: slashCommandsKey,
+      prevStateKey: slashAgentsKey,
+      nextStateKey: slashAgentsKey,
       prevQuery: 'abc',
       nextQuery: 'abcd',
       isComposing: true

@@ -17,7 +17,6 @@ interface LegacyToolkitDirectiveRef {
 
 interface LegacyToolkitResources {
   skills: LegacyToolkitDirectiveRef[]
-  commands: LegacyToolkitDirectiveRef[]
   agents: LegacyToolkitDirectiveRef[]
 }
 

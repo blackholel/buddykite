@@ -4,17 +4,7 @@ import { getExecutionLayerAllowedSources } from '../space-resource-policy.servic
 const skillDefinitions = {
   'space-skill': { source: 'space', exposure: 'public' as const },
   'app-skill': { source: 'app', exposure: 'public' as const },
-  '创建技能': { source: 'space', exposure: 'public' as const }
-}
-
-const commandDefinitions = {
-  'space-command': { source: 'space', exposure: 'public' as const },
-  'space-command-with-skill': {
-    source: 'space',
-    exposure: 'public' as const,
-    requiresSkills: ['space-skill']
-  },
-  'app-command': { source: 'app', exposure: 'public' as const },
+  '创建技能': { source: 'space', exposure: 'public' as const },
   '创建命令': { source: 'space', exposure: 'public' as const }
 }
 
@@ -31,16 +21,6 @@ vi.mock('../../skills.service', () => ({
   getSkillContent: vi.fn((name: string) => {
     if (!(name in skillDefinitions)) return null
     return { name, content: `# ${name}` }
-  })
-}))
-
-vi.mock('../../commands.service', () => ({
-  getCommand: vi.fn((name: string) => (
-    (commandDefinitions as Record<string, { source: string; requiresSkills?: string[] }>)[name] || null
-  )),
-  getCommandContent: vi.fn((name: string) => {
-    if (!(name in commandDefinitions)) return null
-    return `# ${name}`
   })
 }))
 
@@ -68,7 +48,7 @@ describe('skill-expander strict allowSources', () => {
     expect(result.missing.agents).toEqual([])
   })
 
-  it('blocks non-space skill/agent/command when allowSources is space-only', () => {
+  it('blocks non-space skill/agent when allowSources is space-only', () => {
     const result = expandLazyDirectives('/app-skill\n@app-agent\n/app-command', undefined, {
       allowSources: ['space']
     })
@@ -76,9 +56,9 @@ describe('skill-expander strict allowSources', () => {
     expect(result.expanded.skills).toEqual([])
     expect(result.expanded.agents).toEqual([])
     expect(result.expanded.commands).toEqual([])
-    expect(result.missing.skills).toEqual(['app-skill'])
+    expect(result.missing.skills).toEqual(['app-skill', 'app-command'])
     expect(result.missing.agents).toEqual(['app-agent'])
-    expect(result.missing.commands).toEqual(['app-command'])
+    expect(result.missing.commands).toEqual([])
   })
 
   it('allows non-space resources when allowSources is not specified', () => {
@@ -86,7 +66,8 @@ describe('skill-expander strict allowSources', () => {
 
     expect(result.expanded.skills).toEqual(['app-skill'])
     expect(result.expanded.agents).toEqual(['app-agent'])
-    expect(result.expanded.commands).toEqual(['app-command'])
+    expect(result.expanded.commands).toEqual([])
+    expect(result.missing.skills).toEqual(['app-command'])
   })
 
   it('allows global and space resources with execution-layer allowSources', () => {
@@ -100,17 +81,17 @@ describe('skill-expander strict allowSources', () => {
 
     expect(result.expanded.skills).toEqual(['space-skill', 'app-skill'])
     expect(result.expanded.agents).toEqual(['app-agent'])
-    expect(result.expanded.commands).toEqual(['app-command'])
-    expect(result.missing.skills).toEqual([])
+    expect(result.expanded.commands).toEqual([])
+    expect(result.missing.skills).toEqual(['app-command'])
     expect(result.missing.agents).toEqual([])
     expect(result.missing.commands).toEqual([])
   })
 
-  it('passes command args to explicit required skills', () => {
-    const result = expandLazyDirectives('/space-command-with-skill target=prod')
+  it('passes slash args to skills', () => {
+    const result = expandLazyDirectives('/space-skill target=prod')
 
     expect(result.expanded.skills).toEqual(['space-skill'])
-    expect(result.expanded.commands).toEqual(['space-command-with-skill'])
+    expect(result.expanded.commands).toEqual([])
     expect(result.text).toContain('<skill name="space-skill" args="target=prod">')
   })
 
@@ -119,8 +100,8 @@ describe('skill-expander strict allowSources', () => {
       allowSources: ['space']
     })
 
-    expect(result.expanded.skills).toEqual(['创建技能'])
+    expect(result.expanded.skills).toEqual(['创建技能', '创建命令'])
     expect(result.expanded.agents).toEqual(['创建代理'])
-    expect(result.expanded.commands).toEqual(['创建命令'])
+    expect(result.expanded.commands).toEqual([])
   })
 })

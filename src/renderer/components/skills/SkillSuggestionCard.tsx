@@ -3,9 +3,8 @@ import { Check, Eye, Lightbulb, X, Zap } from 'lucide-react'
 import { useTranslation } from '../../i18n'
 import { useSkillsStore } from '../../stores/skills.store'
 import { useAgentsStore } from '../../stores/agents.store'
-import { useCommandsStore } from '../../stores/commands.store'
 
-export type ResourceSuggestionType = 'skill_suggestion' | 'agent_suggestion' | 'command_suggestion'
+export type ResourceSuggestionType = 'skill_suggestion' | 'agent_suggestion'
 
 export interface ResourceSuggestion {
   type: ResourceSuggestionType
@@ -25,9 +24,6 @@ function getLabel(type: ResourceSuggestionType): { title: string; createLabel: s
   if (type === 'agent_suggestion') {
     return { title: 'Suggested Agent', createLabel: 'Create Agent', prefix: '@' }
   }
-  if (type === 'command_suggestion') {
-    return { title: 'Suggested Command', createLabel: 'Create Command', prefix: '/' }
-  }
   return { title: 'Suggested Skill', createLabel: 'Create Skill', prefix: '/' }
 }
 
@@ -46,7 +42,6 @@ export function ResourceSuggestionCard({
 
   const createSkill = useSkillsStore(state => state.createSkill)
   const createAgent = useAgentsStore(state => state.createAgent)
-  const createCommand = useCommandsStore(state => state.createCommand)
 
   const { title, createLabel, prefix } = getLabel(suggestion.type)
 
@@ -57,9 +52,7 @@ export function ResourceSuggestionCard({
     try {
       const created = suggestion.type === 'agent_suggestion'
         ? await createAgent(workDir, suggestion.name, suggestion.content)
-        : suggestion.type === 'command_suggestion'
-          ? await createCommand(workDir, suggestion.name, suggestion.content)
-          : await createSkill(workDir, suggestion.name, suggestion.content)
+        : await createSkill(workDir, suggestion.name, suggestion.content)
 
       if (created) {
         setIsCreated(true)
@@ -168,7 +161,7 @@ function tryParseSuggestion(jsonString: string): ResourceSuggestion | null {
     const parsed = JSON.parse(jsonString)
     if (
       parsed &&
-      (parsed.type === 'skill_suggestion' || parsed.type === 'agent_suggestion' || parsed.type === 'command_suggestion') &&
+      (parsed.type === 'skill_suggestion' || parsed.type === 'agent_suggestion') &&
       typeof parsed.name === 'string' &&
       typeof parsed.description === 'string' &&
       typeof parsed.content === 'string'

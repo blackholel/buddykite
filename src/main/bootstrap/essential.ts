@@ -30,7 +30,6 @@ import { registerChangeSetHandlers } from '../ipc/change-set'
 import { registerSystemHandlers } from '../ipc/system'
 import { registerSkillsHandlers } from '../ipc/skills'
 import { registerAgentsHandlers } from '../ipc/agents'
-import { registerCommandsHandlers } from '../ipc/commands'
 import { registerPresetHandlers } from '../ipc/preset'
 import { registerUpdaterHandlers, initAutoUpdater } from '../services/updater.service'
 
@@ -72,9 +71,6 @@ export function initializeEssentialServices(mainWindow: BrowserWindow): void {
 
   // Agents: Agents management for sidebar and chat input
   registerAgentsHandlers()
-
-  // Commands: Commands management for sidebar and chat input
-  registerCommandsHandlers()
 
   registerPresetHandlers()
 

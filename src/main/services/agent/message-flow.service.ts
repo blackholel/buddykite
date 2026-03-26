@@ -11,7 +11,6 @@ import { getConfig } from '../config.service'
 import { ensureChromeDebugModeReadyForMcp } from '../chrome-debug-launcher.service'
 import { getSpaceConfig } from '../space-config.service'
 import { resolveResourceRuntimePolicy as resolveNormalizedRuntimePolicy } from '../resource-runtime-policy.service'
-import { getCommand } from '../commands.service'
 import { listSkills, resolveSkillDefinition } from '../skills.service'
 import {
   getConversation,
@@ -463,11 +462,6 @@ function resolveExplicitSkillDirectives(params: {
   }
 
   for (const token of tokens) {
-    const maybeCommand = getCommand(token, params.workDir)
-    if (maybeCommand && params.allowedSources.includes(maybeCommand.source)) {
-      continue
-    }
-
     const resolved = resolveSkillDefinition(token, params.workDir, {
       allowedSources: params.allowedSources as SkillSource[],
       locale: params.locale,
@@ -1551,7 +1545,7 @@ export async function sendMessage(
   const resourceIndexSnapshot = getResourceIndexSnapshot(workDir)
   const boundResourceIndexHash = resourceIndexSnapshot.hash
   console.log(
-    `[Agent][${conversationId}] Bound resource index snapshot: hash=${boundResourceIndexHash}, skills=${resourceIndexSnapshot.counts.skills}, commands=${resourceIndexSnapshot.counts.commands}, agents=${resourceIndexSnapshot.counts.agents}, runtimePolicy=${resourceRuntimePolicy}`
+    `[Agent][${conversationId}] Bound resource index snapshot: hash=${boundResourceIndexHash}, skills=${resourceIndexSnapshot.counts.skills}, agents=${resourceIndexSnapshot.counts.agents}, runtimePolicy=${resourceRuntimePolicy}`
   )
   const { effectiveLazyLoad: skillsLazyLoad } = getEffectiveSkillsLazyLoad(workDir, config)
   const exposureFlags = getResourceExposureRuntimeFlags()
@@ -2235,20 +2229,6 @@ export async function sendMessage(
       for (const token of expandedMessage.missing.skills) {
         emitAgentUnknownResourceEvent({
           type: 'skill',
-          token,
-          context: runtimeInvocationContext,
-          workDir,
-          sourceCandidates: allowedDirectiveSources
-        })
-      }
-    }
-    if (expandedMessage.missing.commands.length > 0) {
-      console.warn(
-        `[Agent][${conversationId}] Commands not found: ${expandedMessage.missing.commands.join(', ')}`
-      )
-      for (const token of expandedMessage.missing.commands) {
-        emitAgentUnknownResourceEvent({
-          type: 'command',
           token,
           context: runtimeInvocationContext,
           workDir,

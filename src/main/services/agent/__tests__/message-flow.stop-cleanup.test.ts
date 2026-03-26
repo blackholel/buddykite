@@ -147,7 +147,7 @@ vi.mock('../../resource-index.service', () => ({
   getResourceIndexHash: vi.fn(() => 'resource-hash'),
   getResourceIndexSnapshot: vi.fn(() => ({
     hash: 'resource-hash',
-    counts: { skills: 0, commands: 0, agents: 0 }
+    counts: { skills: 0, agents: 0 }
   }))
 }))
 

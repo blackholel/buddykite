@@ -3,7 +3,6 @@
  *
  * Expands:
  * - "/skill-name" → <skill>SKILL.md</skill>
- * - "/command-name" → <command>command.md</command>
  * - "@agent-name" → <task-request>agent.md</task-request>
  *
  * Only active when skillsLazyLoad is enabled.
@@ -11,7 +10,6 @@
 
 import { createHash } from 'crypto'
 import { getSkillContent, getSkillDefinition } from '../skills.service'
-import { getCommand, getCommandContent } from '../commands.service'
 import { getAgent, getAgentContent } from '../agents.service'
 import type { InvocationContext, ResourceExposure } from '../../../shared/resource-access'
 import type { DirectiveRef } from './types'
@@ -392,84 +390,14 @@ function expandCommandDirective(
   injectedType = 'command',
   fallbackToSkill = false
 ): string | null {
-  if (shouldSkipToken(token, options)) {
-    return null
-  }
-
-  const commandDefinition = getCommand(token.raw, workDir)
-  const command = commandDefinition ? getCommandContent(token.raw, workDir, { silent: true }) : null
-
-  if (!commandDefinition || !command) {
-    if (fallbackToSkill) {
-      return expandSkillDirective(token, state, workDir, args, options, 'skill')
-    }
-    pushMissing(state, 'commands', token.raw)
-    return null
-  }
-
-  if (!isAllowedSource(options?.allowSources, commandDefinition.source)) {
-    pushMissing(state, 'commands', token.raw)
-    return null
-  }
-
-  const invocationContext = options?.invocationContext || 'interactive'
-  if (!canUseExposure(commandDefinition.exposure, invocationContext, options)) {
-    emitResourceExposureBlockEvent('command', token, invocationContext, commandDefinition.exposure)
-    pushMissing(state, 'commands', token.raw)
-    return null
-  }
-  warnWorkflowLegacyInternal('command', token, invocationContext, commandDefinition.exposure, options)
-
-  const explicitRequiredSkills = commandDefinition.requiresSkills || []
-  const explicitRequiredAgents = commandDefinition.requiresAgents || []
-  const hasExplicitDependencies = explicitRequiredSkills.length > 0 || explicitRequiredAgents.length > 0
-  const dependencyBlocks: string[] = []
-
-  for (const requiredSkillRaw of explicitRequiredSkills) {
-    const parsedSkill = parseDirectiveToken(requiredSkillRaw)
-    if (!parsedSkill) continue
-    const block = expandRequiredSkillDependency(parsedSkill, state, workDir, options, args)
-    if (!block) return null
-    dependencyBlocks.push(block)
-  }
-
-  for (const requiredAgentRaw of explicitRequiredAgents) {
-    const parsedAgent = parseDirectiveToken(requiredAgentRaw)
-    if (!parsedAgent) continue
-    const block = expandRequiredAgentDependency(parsedAgent, state, workDir, options)
-    if (!block) return null
-    dependencyBlocks.push(block)
-  }
-
-  const commandBlock = buildCommandInjectionBlock(token.raw, command, args, injectedType)
-
-  if (hasExplicitDependencies) {
-    pushExpanded(state, 'commands', token.raw)
-    return [...dependencyBlocks, commandBlock].join('\n\n')
-  }
-
-  if (options?.legacyDependencyRegexEnabled !== false) {
-    const referencedSkillRaw = findReferencedSkill(command)
-    if (referencedSkillRaw) {
-      const referencedSkillToken = parseDirectiveToken(referencedSkillRaw)
-      if (referencedSkillToken) {
-        const commandSkillBlock = expandRequiredSkillDependency(
-          referencedSkillToken,
-          state,
-          workDir,
-          options,
-          args
-        )
-        if (commandSkillBlock) {
-          return commandSkillBlock
-        }
-        return null
-      }
-    }
-  }
-
-  pushExpanded(state, 'commands', token.raw)
-  return commandBlock
+  return expandSkillDirective(
+    token,
+    state,
+    workDir,
+    args,
+    options,
+    fallbackToSkill ? 'skill' : injectedType
+  )
 }
 
 function expandAgentDirective(

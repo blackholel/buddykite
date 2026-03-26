@@ -10,7 +10,6 @@ export interface SelectedComposerResourceChip {
 
 export interface ComposerResourceDisplayLookups {
   skills: Map<string, string>
-  commands: Map<string, string>
   agents: Map<string, string>
 }
 
@@ -83,16 +82,6 @@ function resolveChipFromToken(
     }
   }
 
-  const commandDisplayName = lookups.commands.get(key)
-  if (commandDisplayName) {
-    return {
-      id: `command:${key}`,
-      type: 'command',
-      displayName: normalizeChipDisplayName(commandDisplayName),
-      token: `/${key}`
-    }
-  }
-
   const skillDisplayName = lookups.skills.get(key)
   if (!skillDisplayName) return null
   return {
@@ -108,6 +97,7 @@ export function parseComposerMessageForDisplay(
   lookups: ComposerResourceDisplayLookups
 ): ParsedComposerMessageDisplay {
   const chips: SelectedComposerResourceChip[] = []
+  const unresolvedPrefixTokens: string[] = []
   if (!content.trim()) {
     return { chips, text: content }
   }
@@ -115,6 +105,7 @@ export function parseComposerMessageForDisplay(
   const len = content.length
   let pos = 0
   let consumedEnd = 0
+  let restStart = len
 
   while (pos < len && /\s/.test(content[pos])) {
     pos += 1
@@ -127,16 +118,21 @@ export function parseComposerMessageForDisplay(
     }
     const word = content.slice(tokenStart, pos)
     const matched = word.match(TOKEN_RE)
-    if (!matched) break
+    if (!matched) {
+      restStart = tokenStart
+      break
+    }
 
     const marker = matched[1] as '/' | '@'
     const key = matched[2]
     if (!key) break
 
     const chip = resolveChipFromToken(marker, key, lookups)
-    if (!chip) break
-
-    chips.push(chip)
+    if (chip) {
+      chips.push(chip)
+    } else {
+      unresolvedPrefixTokens.push(word)
+    }
     consumedEnd = pos
 
     while (pos < len && /\s/.test(content[pos])) {
@@ -149,8 +145,18 @@ export function parseComposerMessageForDisplay(
     return { chips, text: content }
   }
 
+  if (restStart === len) {
+    restStart = consumedEnd
+  }
+
+  const unresolvedPrefix = unresolvedPrefixTokens.join(' ')
+  const restText = content.slice(restStart).trimStart()
+  const text = unresolvedPrefix && restText
+    ? `${unresolvedPrefix} ${restText}`
+    : unresolvedPrefix || restText
+
   return {
     chips,
-    text: content.slice(consumedEnd).trimStart()
+    text
   }
 }

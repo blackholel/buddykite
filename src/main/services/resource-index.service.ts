@@ -4,7 +4,6 @@ import { join } from 'path'
 import { getAllSpacePaths } from './space.service'
 import { listSkills } from './skills.service'
 import { listAgents } from './agents.service'
-import { listCommands } from './commands.service'
 import { getResourceDisplayI18nIndexEntries } from './resource-display-i18n.service'
 import type { ResourceIndexSnapshot, ResourceRefreshReason } from '../../shared/resource-access'
 
@@ -48,12 +47,10 @@ export function rebuildResourceIndex(
 ): ResourceIndexSnapshot {
   const skills = listSkills(workDir, 'taxonomy-admin')
   const agents = listAgents(workDir, 'taxonomy-admin')
-  const commands = listCommands(workDir, 'taxonomy-admin')
 
   const entries: string[] = [
     ...skills.map((item) => `skill:${item.source}:${item.namespace || ''}:${item.name}:${item.path}:${safeSkillFingerprint(item.path)}`),
     ...agents.map((item) => `agent:${item.source}:${item.namespace || ''}:${item.name}:${item.path}:${safeFingerprint(item.path)}`),
-    ...commands.map((item) => `command:${item.source}:${item.namespace || ''}:${item.name}:${item.path}:${safeFingerprint(item.path)}`),
     ...getResourceDisplayI18nIndexEntries(workDir)
   ]
 
@@ -63,8 +60,7 @@ export function rebuildResourceIndex(
     reason,
     counts: {
       skills: skills.length,
-      agents: agents.length,
-      commands: commands.length
+      agents: agents.length
     }
   }
 

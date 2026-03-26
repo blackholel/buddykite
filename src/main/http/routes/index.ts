@@ -607,20 +607,17 @@ export function registerApiRoutes(app: Express, mainWindow: BrowserWindow | null
       { clearPluginsCache },
       { invalidateSkillsCache, clearSkillsCache },
       { clearAgentsCache, invalidateAgentsCache },
-      { clearCommandsCache, invalidateCommandsCache },
       { getResourceIndexSnapshot, rebuildResourceIndex, rebuildAllResourceIndexes }
     ] = await Promise.all([
       import('../../services/plugins.service'),
       import('../../services/skills.service'),
       import('../../services/agents.service'),
-      import('../../services/commands.service'),
       import('../../services/resource-index.service')
     ])
 
     if (normalizedWorkDir) {
       invalidateSkillsCache(normalizedWorkDir)
       invalidateAgentsCache(normalizedWorkDir)
-      invalidateCommandsCache(normalizedWorkDir)
       res.json({ success: true, data: rebuildResourceIndex(normalizedWorkDir, 'manual-refresh') })
       return
     }
@@ -628,7 +625,6 @@ export function registerApiRoutes(app: Express, mainWindow: BrowserWindow | null
     clearPluginsCache()
     clearSkillsCache()
     clearAgentsCache()
-    clearCommandsCache()
     rebuildAllResourceIndexes('manual-refresh')
     res.json({ success: true, data: getResourceIndexSnapshot(undefined) })
   }))
@@ -695,73 +691,6 @@ export function registerApiRoutes(app: Express, mainWindow: BrowserWindow | null
   app.post('/api/agents/clear-cache', safeRoute(async (_req, res) => {
     const { clearAgentsCache } = await import('../../services/agents.service')
     clearAgentsCache()
-    res.json({ success: true })
-  }))
-
-  // ===== Commands Routes =====
-  app.get('/api/commands', safeRoute(async (req, res) => {
-    const workDir = validateWorkDir(req, res)
-    if (workDir === null) return
-    const view = validateResourceListView(req, res)
-    if (!view) return
-    const { listCommands } = await import('../../services/commands.service')
-    const locale = typeof req.query.locale === 'string' ? req.query.locale : undefined
-    res.json({ success: true, data: listCommands(workDir || undefined, view, locale) })
-  }))
-
-  app.get('/api/commands/content', safeRoute(async (req, res) => {
-    const workDir = validateWorkDir(req, res)
-    if (workDir === null) return
-    const { getCommandContent } = await import('../../services/commands.service')
-    const name = (req.query.name as string) || ''
-    const locale = typeof req.query.locale === 'string' ? req.query.locale : undefined
-    const executionMode = req.query.executionMode === 'execute' ? 'execute' : 'display'
-    const content = getCommandContent(name, workDir || undefined, { locale, executionMode })
-    if (!content) {
-      res.json({ success: false, error: `Command not found: ${name}` })
-      return
-    }
-    res.json({ success: true, data: content })
-  }))
-
-  app.post('/api/commands', safeRoute(async (req, res) => {
-    const workDir = validateWorkDir(req, res, { required: true })
-    if (workDir === null) return
-    const { createCommand } = await import('../../services/commands.service')
-    const { name, content } = req.body
-    res.json({ success: true, data: createCommand(workDir, name, content) })
-  }))
-
-  app.put('/api/commands', safeRoute(async (req, res) => {
-    const { updateCommand } = await import('../../services/commands.service')
-    const { commandPath, content } = req.body
-    if (!updateCommand(commandPath, content)) {
-      res.json({ success: false, error: 'Failed to update command' })
-      return
-    }
-    res.json({ success: true, data: true })
-  }))
-
-  app.delete('/api/commands', safeRoute(async (req, res) => {
-    const { deleteCommand } = await import('../../services/commands.service')
-    if (!deleteCommand(req.query.path as string)) {
-      res.json({ success: false, error: 'Failed to delete command' })
-      return
-    }
-    res.json({ success: true, data: true })
-  }))
-
-  app.post('/api/commands/copy-by-ref', safeRoute(async (req, res) => {
-    const workDir = validateWorkDir(req, res, { required: true })
-    if (workDir === null) return
-    const { copyCommandToSpaceByRef } = await import('../../services/commands.service')
-    const { ref, options } = req.body
-    res.json({ success: true, data: copyCommandToSpaceByRef(ref, workDir, options) })
-  }))
-
-  app.post('/api/commands/clear-cache', safeRoute(async (_req, res) => {
-    const { clearCommandsCache } = await import('../../services/commands.service')
-    clearCommandsCache()
     res.json({ success: true })
   }))
 

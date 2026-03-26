@@ -223,7 +223,6 @@ export interface KiteAPI {
   onAgentMcpStatus: (callback: (data: unknown) => void) => () => void
   onAgentCompact: (callback: (data: unknown) => void) => () => void
   onSkillsChanged: (callback: (data: unknown) => void) => () => void
-  onCommandsChanged: (callback: (data: unknown) => void) => () => void
   onAgentsChanged: (callback: (data: unknown) => void) => () => void
 
   // Artifact
@@ -288,19 +287,6 @@ export interface KiteAPI {
   ) => Promise<IpcResponse>
   clearSkillsCache: () => Promise<IpcResponse>
   refreshSkillsIndex: (workDir?: string) => Promise<IpcResponse>
-
-  // Commands
-  listCommands: (workDir: string | undefined, locale: string | undefined, view: ResourceListView) => Promise<IpcResponse>
-  getCommandContent: (name: string, workDir?: string) => Promise<IpcResponse>
-  createCommand: (workDir: string, name: string, content: string) => Promise<IpcResponse>
-  updateCommand: (commandPath: string, content: string) => Promise<IpcResponse>
-  deleteCommand: (commandPath: string) => Promise<IpcResponse>
-  copyCommandToSpaceByRef: (
-    ref: Record<string, unknown>,
-    workDir: string,
-    options?: { overwrite?: boolean }
-  ) => Promise<IpcResponse>
-  clearCommandsCache: () => Promise<IpcResponse>
 
   // Agents
   listAgents: (workDir: string | undefined, locale: string | undefined, view: ResourceListView) => Promise<IpcResponse>
@@ -545,7 +531,6 @@ const api: KiteAPI = {
   onAgentMcpStatus: (callback) => createEventListener('agent:mcp-status', callback),
   onAgentCompact: (callback) => createEventListener('agent:compact', callback),
   onSkillsChanged: (callback) => createEventListener('skills:changed', callback),
-  onCommandsChanged: (callback) => createEventListener('commands:changed', callback),
   onAgentsChanged: (callback) => createEventListener('agents:changed', callback),
 
   // Artifact
@@ -579,15 +564,6 @@ const api: KiteAPI = {
   copySkillToSpaceByRef: (ref, workDir, options) => ipcRenderer.invoke('skills:copy-to-space-by-ref', ref, workDir, options),
   clearSkillsCache: () => ipcRenderer.invoke('skills:clear-cache'),
   refreshSkillsIndex: (workDir) => ipcRenderer.invoke('skills:refresh', workDir),
-
-  // Commands
-  listCommands: (workDir, locale, view) => ipcRenderer.invoke('commands:list', workDir, locale, view),
-  getCommandContent: (name, workDir) => ipcRenderer.invoke('commands:get-content', name, workDir),
-  createCommand: (workDir, name, content) => ipcRenderer.invoke('commands:create', workDir, name, content),
-  updateCommand: (commandPath, content) => ipcRenderer.invoke('commands:update', commandPath, content),
-  deleteCommand: (commandPath) => ipcRenderer.invoke('commands:delete', commandPath),
-  copyCommandToSpaceByRef: (ref, workDir, options) => ipcRenderer.invoke('commands:copy-to-space-by-ref', ref, workDir, options),
-  clearCommandsCache: () => ipcRenderer.invoke('commands:clear-cache'),
 
   // Agents
   listAgents: (workDir, locale, view) => ipcRenderer.invoke('agents:list', workDir, locale, view),

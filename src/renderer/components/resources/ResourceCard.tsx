@@ -31,8 +31,7 @@ function toResourceRef(resource: AnyResource, type: ResourceType) {
 
 function getTypeLabel(type: ResourceType, t: (key: string) => string): string {
   if (type === 'skill') return t('Skill')
-  if (type === 'agent') return t('Agent')
-  return t('Command')
+  return t('Agent')
 }
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
@@ -179,8 +178,7 @@ export function ResourceCard({
 
     const copyFn = async (overwrite?: boolean): Promise<CopyResourceResponse> => {
       if (type === 'skill') return api.copySkillToSpaceByRef(ref, workDir, { overwrite }) as Promise<CopyResourceResponse>
-      if (type === 'agent') return api.copyAgentToSpaceByRef(ref, workDir, { overwrite }) as Promise<CopyResourceResponse>
-      return api.copyCommandToSpaceByRef(ref, workDir, { overwrite }) as Promise<CopyResourceResponse>
+      return api.copyAgentToSpaceByRef(ref, workDir, { overwrite }) as Promise<CopyResourceResponse>
     }
 
     try {

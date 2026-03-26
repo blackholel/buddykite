@@ -1,5 +1,5 @@
 export type ResourceType = 'skill' | 'agent' | 'command'
-export type ResourceKind = 'skills' | 'agents' | 'commands'
+export type ResourceKind = 'skills' | 'agents'
 
 export type ResourceExposure = 'public' | 'internal-only'
 
@@ -94,6 +94,5 @@ export interface ResourceIndexSnapshot {
   counts: {
     skills: number
     agents: number
-    commands: number
   }
 }

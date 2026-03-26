@@ -949,71 +949,6 @@ export const api = {
     return httpRequest('POST', '/api/skills/refresh', { workDir })
   },
 
-  // ===== Commands =====
-  listCommands: async (
-    workDir: string | undefined,
-    locale: string | undefined,
-    view: ResourceListView
-  ): Promise<ApiResponse> => {
-    if (isElectron()) {
-      return window.kite.listCommands(workDir, locale, view)
-    }
-    const params = new URLSearchParams()
-    if (workDir) params.append('workDir', workDir)
-    if (locale) params.append('locale', locale)
-    params.append('view', view)
-    const query = params.toString()
-    return httpRequest('GET', `/api/commands${query ? `?${query}` : ''}`)
-  },
-
-  getCommandContent: async (name: string, workDir?: string): Promise<ApiResponse> => {
-    if (isElectron()) {
-      return window.kite.getCommandContent(name, workDir)
-    }
-    const params = new URLSearchParams({ name })
-    if (workDir) params.append('workDir', workDir)
-    return httpRequest('GET', `/api/commands/content?${params.toString()}`)
-  },
-
-  createCommand: async (workDir: string, name: string, content: string): Promise<ApiResponse> => {
-    if (isElectron()) {
-      return window.kite.createCommand(workDir, name, content)
-    }
-    return httpRequest('POST', '/api/commands', { workDir, name, content })
-  },
-
-  updateCommand: async (commandPath: string, content: string): Promise<ApiResponse> => {
-    if (isElectron()) {
-      return window.kite.updateCommand(commandPath, content)
-    }
-    return httpRequest('PUT', '/api/commands', { commandPath, content })
-  },
-
-  deleteCommand: async (commandPath: string): Promise<ApiResponse> => {
-    if (isElectron()) {
-      return window.kite.deleteCommand(commandPath)
-    }
-    return httpRequest('DELETE', `/api/commands?path=${encodeURIComponent(commandPath)}`)
-  },
-
-  copyCommandToSpaceByRef: async (
-    ref: Record<string, unknown>,
-    workDir: string,
-    options?: { overwrite?: boolean }
-  ): Promise<ApiResponse> => {
-    if (isElectron()) {
-      return window.kite.copyCommandToSpaceByRef(ref, workDir, options)
-    }
-    return httpRequest('POST', '/api/commands/copy-by-ref', { ref, workDir, options })
-  },
-
-  clearCommandsCache: async (): Promise<ApiResponse> => {
-    if (isElectron()) {
-      return window.kite.clearCommandsCache()
-    }
-    return httpRequest('POST', '/api/commands/clear-cache')
-  },
-
   // ===== Agents =====
   listAgents: async (
     workDir: string | undefined,
@@ -1279,8 +1214,6 @@ export const api = {
     onEvent('agent:compact', callback),
   onSkillsChanged: (callback: (data: unknown) => void) =>
     onEvent('skills:changed', callback),
-  onCommandsChanged: (callback: (data: unknown) => void) =>
-    onEvent('commands:changed', callback),
   onAgentsChanged: (callback: (data: unknown) => void) =>
     onEvent('agents:changed', callback),
   onRemoteStatusChange: (callback: (data: unknown) => void) =>

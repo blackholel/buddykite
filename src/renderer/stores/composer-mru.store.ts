@@ -12,7 +12,6 @@ let memoryState: ComposerMruState | null = null
 function createEmptySpaceMruMap(): SpaceMruMap {
   return {
     skill: {},
-    command: {},
     agent: {}
   }
 }
@@ -27,7 +26,7 @@ function normalizeState(raw: unknown): ComposerMruState {
     const typed = spaceEntry as Record<string, unknown>
     const next = createEmptySpaceMruMap()
 
-    for (const type of ['skill', 'command', 'agent'] as const) {
+    for (const type of ['skill', 'agent'] as const) {
       const source = typed[type]
       if (!source || typeof source !== 'object') continue
       for (const [stableId, value] of Object.entries(source as Record<string, unknown>)) {

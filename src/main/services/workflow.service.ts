@@ -8,12 +8,11 @@ import { v4 as uuidv4 } from 'uuid'
 import { getSpace } from './space.service'
 import { listSkills } from './skills.service'
 import { listAgents } from './agents.service'
-import { listCommands } from './commands.service'
 import { getConfig } from './config.service'
 
 export interface WorkflowStep {
   id: string
-  type: 'skill' | 'agent' | 'command' | 'message'
+  type: 'skill' | 'agent' | 'message'
   name?: string
   input?: string
   args?: string
@@ -176,7 +175,6 @@ function validateWorkflowSteps(spaceId: string, steps: WorkflowStep[]): void {
 
   const availableSkills = listSkills(space.path, 'workflow-validation')
   const availableAgents = listAgents(space.path, 'workflow-validation')
-  const availableCommands = listCommands(space.path, 'workflow-validation')
   const allowLegacyWorkflowInternalDirect = getConfig().workflow?.allowLegacyInternalDirect === true
 
   const missing: string[] = []
@@ -212,17 +210,6 @@ function validateWorkflowSteps(spaceId: string, steps: WorkflowStep[]): void {
       }
     }
 
-    if (step.type === 'command') {
-      const matchedCommand = availableCommands.find(command => (
-        command.name === parsed.name &&
-        (command.namespace || undefined) === (parsed.namespace || undefined)
-      ))
-      const disallowedInternal = matchedCommand?.exposure === 'internal-only' && !allowLegacyWorkflowInternalDirect
-      if (!matchedCommand || disallowedInternal) {
-        missing.push(`Step ${index + 1}: command ${step.name}`)
-        addReject(index + 1, `command:${step.name}`, !matchedCommand ? 'not-found' : 'internal-only-direct-blocked')
-      }
-    }
   }
 
   if (missing.length > 0) {

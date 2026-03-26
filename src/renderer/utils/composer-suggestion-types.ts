@@ -1,6 +1,6 @@
-export type ComposerSuggestionTab = 'skills' | 'commands' | 'agents'
+export type ComposerSuggestionTab = 'skills' | 'agents'
 
-export type ComposerSuggestionType = 'skill' | 'command' | 'agent'
+export type ComposerSuggestionType = 'skill' | 'agent'
 
 export type ComposerSuggestionSource = 'app' | 'global' | 'space' | 'installed' | 'plugin'
 

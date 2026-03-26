@@ -53,24 +53,24 @@ describe('composer-mru.store', () => {
     const store = await loadStoreModule()
 
     const appStableId = buildSuggestionStableId({
-      type: 'command',
+      type: 'skill',
       source: 'app',
       namespace: 'common',
       name: 'deploy',
       pluginRoot: '/plugins/a'
     })
     const pluginStableId = buildSuggestionStableId({
-      type: 'command',
+      type: 'skill',
       source: 'plugin',
       namespace: 'common',
       name: 'deploy',
       pluginRoot: '/plugins/a'
     })
 
-    store.touchComposerMru('space-a', 'command', appStableId, 1)
-    store.touchComposerMru('space-a', 'command', pluginStableId, 2)
+    store.touchComposerMru('space-a', 'skill', appStableId, 1)
+    store.touchComposerMru('space-a', 'skill', pluginStableId, 2)
 
-    const map = store.getComposerMruMap('space-a', 'command')
+    const map = store.getComposerMruMap('space-a', 'skill')
     expect(Object.keys(map)).toHaveLength(2)
     expect(map[appStableId]).toBe(1)
     expect(map[pluginStableId]).toBe(2)

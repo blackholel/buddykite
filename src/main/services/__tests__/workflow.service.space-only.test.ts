@@ -6,13 +6,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 const {
   listSkillsMock,
   listAgentsMock,
-  listCommandsMock,
   getSpaceMock,
   getConfigMock
 } = vi.hoisted(() => ({
   listSkillsMock: vi.fn(),
   listAgentsMock: vi.fn(),
-  listCommandsMock: vi.fn(),
   getSpaceMock: vi.fn(),
   getConfigMock: vi.fn()
 }))
@@ -23,10 +21,6 @@ vi.mock('../skills.service', () => ({
 
 vi.mock('../agents.service', () => ({
   listAgents: listAgentsMock
-}))
-
-vi.mock('../commands.service', () => ({
-  listCommands: listCommandsMock
 }))
 
 vi.mock('../space.service', () => ({
@@ -60,7 +54,6 @@ describe('workflow.service space-only validation', () => {
     getSpaceMock.mockReturnValue({ id: 'space-1', path: spacePath })
     listSkillsMock.mockReturnValue([{ name: 'space-skill', namespace: undefined, exposure: 'public' }])
     listAgentsMock.mockReturnValue([{ name: 'space-agent', namespace: undefined, exposure: 'public' }])
-    listCommandsMock.mockReturnValue([{ name: 'space-command', namespace: undefined, exposure: 'public' }])
 
     expect(() => createWorkflow('space-1', {
       spaceId: 'space-1',
@@ -83,7 +76,6 @@ describe('workflow.service space-only validation', () => {
       { name: 'space-agent', namespace: undefined, exposure: 'public' },
       { name: 'app-agent', namespace: undefined, exposure: 'public' }
     ])
-    listCommandsMock.mockReturnValue([{ name: 'space-command', namespace: undefined, exposure: 'public' }])
 
     const workflow = createWorkflow('space-1', {
       spaceId: 'space-1',
@@ -105,7 +97,6 @@ describe('workflow.service space-only validation', () => {
     getSpaceMock.mockReturnValue({ id: 'space-1', path: spacePath })
     listSkillsMock.mockReturnValue([{ name: 'space-skill', namespace: undefined, exposure: 'public' }])
     listAgentsMock.mockReturnValue([{ name: 'space-agent', namespace: undefined, exposure: 'public' }])
-    listCommandsMock.mockReturnValue([{ name: 'space-command', namespace: undefined, exposure: 'public' }])
 
     const workflow = createWorkflow('space-1', {
       spaceId: 'space-1',
@@ -126,7 +117,6 @@ describe('workflow.service space-only validation', () => {
     getSpaceMock.mockReturnValue({ id: 'space-1', path: spacePath })
     listSkillsMock.mockReturnValue([{ name: 'app-skill', namespace: undefined, exposure: 'internal-only' }])
     listAgentsMock.mockReturnValue([])
-    listCommandsMock.mockReturnValue([])
 
     expect(() => createWorkflow('space-1', {
       spaceId: 'space-1',

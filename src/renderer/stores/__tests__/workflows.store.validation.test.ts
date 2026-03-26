@@ -4,7 +4,6 @@ const {
   mockGetWorkflow,
   mockListSkills,
   mockListAgents,
-  mockListCommands,
   mockUpdateWorkflow,
   mockCreateConversation,
   mockSendMessageToConversation
@@ -12,7 +11,6 @@ const {
   mockGetWorkflow: vi.fn(),
   mockListSkills: vi.fn(),
   mockListAgents: vi.fn(),
-  mockListCommands: vi.fn(),
   mockUpdateWorkflow: vi.fn(),
   mockCreateConversation: vi.fn(),
   mockSendMessageToConversation: vi.fn()
@@ -23,7 +21,6 @@ vi.mock('../../api', () => ({
     getWorkflow: (...args: unknown[]) => mockGetWorkflow(...args),
     listSkills: (...args: unknown[]) => mockListSkills(...args),
     listAgents: (...args: unknown[]) => mockListAgents(...args),
-    listCommands: (...args: unknown[]) => mockListCommands(...args),
     updateWorkflow: (...args: unknown[]) => mockUpdateWorkflow(...args)
   }
 }))
@@ -74,13 +71,11 @@ describe('WorkflowsStore runtime validation', () => {
     mockGetWorkflow.mockReset()
     mockListSkills.mockReset()
     mockListAgents.mockReset()
-    mockListCommands.mockReset()
     mockUpdateWorkflow.mockReset()
     mockCreateConversation.mockReset()
     mockSendMessageToConversation.mockReset()
 
     mockListAgents.mockResolvedValue({ success: true, data: [] })
-    mockListCommands.mockResolvedValue({ success: true, data: [] })
     mockUpdateWorkflow.mockResolvedValue({ success: true, data: {} })
     mockCreateConversation.mockResolvedValue({ id: 'conv-1' })
     mockSendMessageToConversation.mockResolvedValue(undefined)
@@ -108,6 +103,27 @@ describe('WorkflowsStore runtime validation', () => {
     const firstCall = mockSendMessageToConversation.mock.calls[0]
     expect(firstCall[2]).toBe('/app-skill')
     expect(firstCall[7]).toBe('workflow-step')
+    expect(useWorkflowsStore.getState().error).toBeNull()
+  })
+
+  it('keeps legacy command step prefix when running historical workflows', async () => {
+    mockGetWorkflow.mockResolvedValue({
+      success: true,
+      data: {
+        id: 'wf-legacy-command',
+        spaceId: 'space-1',
+        name: 'legacy-command-flow',
+        steps: [{ id: 'step-1', type: 'command', name: 'review', input: 'target=prod' }]
+      }
+    })
+    mockListSkills.mockResolvedValue({ success: true, data: [] })
+
+    await useWorkflowsStore.getState().runWorkflow('space-1', 'wf-legacy-command')
+
+    expect(mockCreateConversation).toHaveBeenCalled()
+    expect(mockSendMessageToConversation).toHaveBeenCalled()
+    const firstCall = mockSendMessageToConversation.mock.calls[0]
+    expect(firstCall[2]).toBe('/review target=prod')
     expect(useWorkflowsStore.getState().error).toBeNull()
   })
 

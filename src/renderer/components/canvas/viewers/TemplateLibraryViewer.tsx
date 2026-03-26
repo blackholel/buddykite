@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Bot, Puzzle, Search, Terminal, X, Zap } from 'lucide-react'
+import { Bot, Puzzle, Search, X, Zap } from 'lucide-react'
 import { api } from '../../../api'
 import { getCurrentLanguage, useTranslation } from '../../../i18n'
 import { useCanvasLifecycle } from '../../../hooks/useCanvasLifecycle'
@@ -7,7 +7,6 @@ import { ResourceCard } from '../../resources/ResourceCard'
 import { resourceKey } from '../../resources/resource-meta'
 import type { ResourceType } from '../../resources/types'
 import { useAgentsStore, type AgentDefinition } from '../../../stores/agents.store'
-import { useCommandsStore, type CommandDefinition } from '../../../stores/commands.store'
 import { useSkillsStore, type SkillDefinition } from '../../../stores/skills.store'
 import type { TabState } from '../../../services/canvas-lifecycle'
 import {
@@ -16,7 +15,6 @@ import {
   computeTypeCounts,
   groupByType,
   normalizeExtensionItems,
-  shouldShowRemoteCommandsUnavailable,
   sortExtensions,
   type FilterTab
 } from '../../resources/extension-filtering'
@@ -46,7 +44,6 @@ function EmptyState({ icon: Icon, title, description }: EmptyStateProps): JSX.El
 export function TemplateLibraryViewer({ tab }: TemplateLibraryViewerProps): JSX.Element {
   const { t } = useTranslation()
   const { closeTab } = useCanvasLifecycle()
-  const isRemote = api.isRemoteMode()
   const workDir = tab.workDir
   const locale = getCurrentLanguage()
 
@@ -54,7 +51,6 @@ export function TemplateLibraryViewer({ tab }: TemplateLibraryViewerProps): JSX.
   const markSkillsDirty = useSkillsStore((state) => state.markDirty)
   const loadAgents = useAgentsStore((state) => state.loadAgents)
   const markAgentsDirty = useAgentsStore((state) => state.markDirty)
-  const loadCommands = useCommandsStore((state) => state.loadCommands)
 
   const initialState = buildTemplateFilterState(tab.templateLibraryTab ?? 'skills')
   const [activeFilter, setActiveFilter] = useState<FilterTab>(initialState.activeFilter)
@@ -63,10 +59,8 @@ export function TemplateLibraryViewer({ tab }: TemplateLibraryViewerProps): JSX.
   const [refreshToken, setRefreshToken] = useState(0)
   const [templateSkills, setTemplateSkills] = useState<SkillDefinition[]>([])
   const [templateAgents, setTemplateAgents] = useState<AgentDefinition[]>([])
-  const [templateCommands, setTemplateCommands] = useState<CommandDefinition[]>([])
   const [spaceSkillKeys, setSpaceSkillKeys] = useState<Set<string>>(new Set())
   const [spaceAgentKeys, setSpaceAgentKeys] = useState<Set<string>>(new Set())
-  const [spaceCommandKeys, setSpaceCommandKeys] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     const state = buildTemplateFilterState(tab.templateLibraryTab ?? 'skills')
@@ -80,37 +74,28 @@ export function TemplateLibraryViewer({ tab }: TemplateLibraryViewerProps): JSX.
     const loadResources = async (): Promise<void> => {
       setLoading(true)
 
-      const [globalSkillsRes, globalAgentsRes, globalCommandsRes] = await Promise.all([
+      const [globalSkillsRes, globalAgentsRes] = await Promise.all([
         api.listSkills(undefined, locale, 'template-library'),
-        api.listAgents(undefined, locale, 'template-library'),
-        isRemote
-          ? Promise.resolve({ success: true, data: [] as CommandDefinition[] })
-          : api.listCommands(undefined, locale, 'template-library')
+        api.listAgents(undefined, locale, 'template-library')
       ])
 
-      const [spaceSkillsRes, spaceAgentsRes, spaceCommandsRes] = workDir
+      const [spaceSkillsRes, spaceAgentsRes] = workDir
         ? await Promise.all([
           api.listSkills(workDir, locale, 'template-library'),
-          api.listAgents(workDir, locale, 'template-library'),
-          isRemote
-            ? Promise.resolve({ success: true, data: [] as CommandDefinition[] })
-            : api.listCommands(workDir, locale, 'template-library')
+          api.listAgents(workDir, locale, 'template-library')
         ])
         : [
           { success: true, data: [] as SkillDefinition[] },
-          { success: true, data: [] as AgentDefinition[] },
-          { success: true, data: [] as CommandDefinition[] }
+          { success: true, data: [] as AgentDefinition[] }
         ]
 
       if (cancelled) return
 
       setTemplateSkills(globalSkillsRes.success && globalSkillsRes.data ? globalSkillsRes.data as SkillDefinition[] : [])
       setTemplateAgents(globalAgentsRes.success && globalAgentsRes.data ? globalAgentsRes.data as AgentDefinition[] : [])
-      setTemplateCommands(globalCommandsRes.success && globalCommandsRes.data ? globalCommandsRes.data as CommandDefinition[] : [])
 
       const skillSet = new Set<string>()
       const agentSet = new Set<string>()
-      const commandSet = new Set<string>()
 
       if (spaceSkillsRes.success && spaceSkillsRes.data) {
         for (const skill of (spaceSkillsRes.data as SkillDefinition[]).filter((item) => item.source === 'space')) {
@@ -122,15 +107,8 @@ export function TemplateLibraryViewer({ tab }: TemplateLibraryViewerProps): JSX.
           agentSet.add(resourceKey(agent))
         }
       }
-      if (spaceCommandsRes.success && spaceCommandsRes.data) {
-        for (const command of (spaceCommandsRes.data as CommandDefinition[]).filter((item) => item.source === 'space')) {
-          commandSet.add(resourceKey(command))
-        }
-      }
-
       setSpaceSkillKeys(skillSet)
       setSpaceAgentKeys(agentSet)
-      setSpaceCommandKeys(commandSet)
       setLoading(false)
     }
 
@@ -139,17 +117,16 @@ export function TemplateLibraryViewer({ tab }: TemplateLibraryViewerProps): JSX.
     return () => {
       cancelled = true
     }
-  }, [isRemote, locale, refreshToken, workDir])
+  }, [locale, refreshToken, workDir])
 
   const refreshStores = useCallback(async (targetWorkDir: string): Promise<void> => {
     markSkillsDirty(targetWorkDir)
     markAgentsDirty(targetWorkDir)
     await Promise.all([
       loadSkills(targetWorkDir),
-      loadAgents(targetWorkDir),
-      loadCommands(targetWorkDir, true)
+      loadAgents(targetWorkDir)
     ])
-  }, [loadAgents, loadCommands, loadSkills, markAgentsDirty, markSkillsDirty])
+  }, [loadAgents, loadSkills, markAgentsDirty, markSkillsDirty])
 
   const triggerRefresh = useCallback(() => {
     setRefreshToken((value) => value + 1)
@@ -165,11 +142,9 @@ export function TemplateLibraryViewer({ tab }: TemplateLibraryViewerProps): JSX.
   const normalizedItems = useMemo(
     () => normalizeExtensionItems({
       skills: templateSkills,
-      agents: templateAgents,
-      commands: templateCommands,
-      isRemote
+      agents: templateAgents
     }),
-    [isRemote, templateAgents, templateCommands, templateSkills]
+    [templateAgents, templateSkills]
   )
 
   const typeSearchFilteredItems = useMemo(
@@ -186,29 +161,20 @@ export function TemplateLibraryViewer({ tab }: TemplateLibraryViewerProps): JSX.
   const tabs = useMemo<Array<{ key: FilterTab; label: string; count: number }>>(() => [
     { key: 'all', label: t('All'), count: normalizedItems.length },
     { key: 'skills', label: t('Skills'), count: counts.skill },
-    { key: 'agents', label: t('Agents'), count: counts.agent },
-    {
-      key: 'commands',
-      label: isRemote ? `${t('Commands')} (${t('Not available')})` : t('Commands'),
-      count: counts.command
-    }
-  ], [counts, isRemote, normalizedItems.length, t])
+    { key: 'agents', label: t('Agents'), count: counts.agent }
+  ], [counts, normalizedItems.length, t])
 
-  const isAdded = useCallback((item: { type: ResourceType; resource: SkillDefinition | AgentDefinition | CommandDefinition }): boolean => {
+  const isAdded = useCallback((item: { type: ResourceType; resource: SkillDefinition | AgentDefinition }): boolean => {
     const key = resourceKey(item.resource)
     if (item.type === 'skill') return spaceSkillKeys.has(key)
-    if (item.type === 'agent') return spaceAgentKeys.has(key)
-    return spaceCommandKeys.has(key)
-  }, [spaceAgentKeys, spaceCommandKeys, spaceSkillKeys])
+    return spaceAgentKeys.has(key)
+  }, [spaceAgentKeys, spaceSkillKeys])
 
-  const getDisabledReason = useCallback((item: { type: ResourceType; resource: SkillDefinition | AgentDefinition | CommandDefinition }): string | undefined => {
-    if (item.type === 'command' && isRemote) return t('Not available')
+  const getDisabledReason = useCallback((item: { type: ResourceType; resource: SkillDefinition | AgentDefinition }): string | undefined => {
     if (!workDir) return t('No space selected')
     if (isAdded(item)) return t('Already added')
     return undefined
-  }, [isAdded, isRemote, t, workDir])
-
-  const showRemoteCommandsUnavailable = shouldShowRemoteCommandsUnavailable(isRemote, activeFilter)
+  }, [isAdded, t, workDir])
 
   const handleClearFilters = (): void => {
     setQuery('')
@@ -232,7 +198,7 @@ export function TemplateLibraryViewer({ tab }: TemplateLibraryViewerProps): JSX.
           <div className="mb-6 stagger-item" style={{ animationDelay: '0ms' }}>
             <h2 className="text-lg font-semibold tracking-tight">{t('Template Library')}</h2>
             <p className="text-sm text-muted-foreground mt-1">
-              {t('Browse system-wide skills, agents and commands')}
+              {t('Browse system-wide skills and agents')}
             </p>
           </div>
 
@@ -277,14 +243,6 @@ export function TemplateLibraryViewer({ tab }: TemplateLibraryViewerProps): JSX.
             </div>
           ) : (
             <>
-              {showRemoteCommandsUnavailable && (
-                <div className="glass-card p-4 mb-4 stagger-item" style={{ animationDelay: '100ms' }}>
-                  <p className="text-sm text-muted-foreground">
-                    {t('Commands are not available in remote mode')}
-                  </p>
-                </div>
-              )}
-
               {filteredItems.length === 0 ? (
                 <div className="stagger-item" style={{ animationDelay: '120ms' }}>
                   <EmptyState
@@ -355,33 +313,6 @@ export function TemplateLibraryViewer({ tab }: TemplateLibraryViewerProps): JSX.
                       })}
                     </div>
                   </section>
-
-                  {!isRemote && (
-                    <section className="stagger-item" style={{ animationDelay: '200ms' }}>
-                      <div className="flex items-center gap-2 mb-3">
-                        <Terminal className="w-4 h-4 text-violet-500" />
-                        <h3 className="text-sm font-medium">{t('Commands')} ({groupedItems.command.length})</h3>
-                      </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                        {groupedItems.command.map((item, index) => {
-                          const disabledReason = getDisabledReason(item)
-                          return (
-                            <ResourceCard
-                              key={item.id}
-                              resource={item.resource}
-                              type="command"
-                            index={index}
-                            actionMode="copy-to-space"
-                            workDir={workDir}
-                            isActionDisabled={!!disabledReason}
-                            actionDisabledReason={disabledReason}
-                              onAfterAction={handleAfterImport}
-                            />
-                          )
-                        })}
-                      </div>
-                    </section>
-                  )}
                 </div>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 stagger-item" style={{ animationDelay: '120ms' }}>
