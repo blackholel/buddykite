@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react'
 import { shallow } from 'zustand/shallow'
 import { ChatView } from '../components/chat/ChatView'
 import { UnifiedSidebar } from '../components/unified/UnifiedSidebar'
@@ -38,6 +38,15 @@ function pickNextSpaceAfterDelete<T extends { id: string; updatedAt: string }>(
     return sorted[0]
   }
   return kiteSpace && kiteSpace.id !== deletingSpaceId ? kiteSpace : null
+}
+
+const SIDEBAR_WIDTH_STORAGE_KEY = 'hello-halo:unified-sidebar-width'
+const SIDEBAR_WIDTH_DEFAULT = 240
+const SIDEBAR_WIDTH_MIN = 220
+const SIDEBAR_WIDTH_MAX = 400
+
+function clampSidebarWidth(width: number): number {
+  return Math.max(SIDEBAR_WIDTH_MIN, Math.min(SIDEBAR_WIDTH_MAX, width))
 }
 
 export function UnifiedPage() {
@@ -138,6 +147,9 @@ export function UnifiedPage() {
   const [artifactRailExpanded, setArtifactRailExpanded] = useState(false)
   const [rightPanelMode, setRightPanelMode] = useState<'artifacts' | 'abilities'>('artifacts')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_WIDTH_DEFAULT)
+  const sidebarIsResizingRef = useRef(false)
+  const sidebarResizeLastXRef = useRef(0)
   const chromeInsets = getWindowChromeInsets()
   const topBarContentStyle: CSSProperties = {
     paddingLeft: '8px',
@@ -166,6 +178,14 @@ export function UnifiedPage() {
   useEffect(() => {
     void loadSpaces()
   }, [loadSpaces])
+
+  useEffect(() => {
+    const rawWidth = localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY)
+    if (!rawWidth) return
+    const parsed = Number.parseInt(rawWidth, 10)
+    if (!Number.isFinite(parsed)) return
+    setSidebarWidth(clampSidebarWidth(parsed))
+  }, [])
 
   // Keep both stores aligned when entering Unified page.
   useEffect(() => {
@@ -439,6 +459,34 @@ export function UnifiedPage() {
     setSidebarCollapsed((prev) => !prev)
   }, [])
 
+  const handleSidebarResizePointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    sidebarIsResizingRef.current = true
+    sidebarResizeLastXRef.current = event.clientX
+    event.currentTarget.setPointerCapture(event.pointerId)
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+  }, [])
+
+  const handleSidebarResizePointerMove = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!sidebarIsResizingRef.current) return
+    const delta = event.clientX - sidebarResizeLastXRef.current
+    sidebarResizeLastXRef.current = event.clientX
+    setSidebarWidth((current) => clampSidebarWidth(current + delta))
+  }, [])
+
+  const handleSidebarResizePointerUp = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!sidebarIsResizingRef.current) return
+    sidebarIsResizingRef.current = false
+    event.currentTarget.releasePointerCapture(event.pointerId)
+    document.body.style.cursor = ''
+    document.body.style.userSelect = ''
+    setSidebarWidth((current) => {
+      localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(current))
+      return current
+    })
+  }, [])
+
   return (
     <div className="unified-classic-theme space-studio-root h-full min-h-0 w-full flex flex-col">
       {mockBashMode && (
@@ -470,7 +518,24 @@ export function UnifiedPage() {
           onToggleCollapse={handleToggleSidebar}
           onGoSettings={() => setView('settings')}
           showCollapseControl={true}
+          expandedWidth={sidebarWidth}
         />
+
+        {!sidebarCollapsed && (
+          <div
+            data-testid="unified-sidebar-resize-handle"
+            onPointerDown={handleSidebarResizePointerDown}
+            onPointerMove={handleSidebarResizePointerMove}
+            onPointerUp={handleSidebarResizePointerUp}
+            className="group relative z-10 -ml-0.5 flex w-1 shrink-0 cursor-col-resize items-center justify-center touch-none"
+            title={t('Drag to resize width')}
+            aria-label={t('Drag to resize width')}
+            role="separator"
+            aria-orientation="vertical"
+          >
+            <div className="h-full w-px bg-transparent transition-colors duration-150 group-hover:bg-border" />
+          </div>
+        )}
 
         {rightPanelMode === 'abilities' ? (
           <div className="space-studio-pane space-studio-chat-pane flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden bg-background relative">

@@ -60,6 +60,7 @@ export default defineConfig({
       '../src/renderer/pages/__tests__/UnifiedPage.entry-state.test.tsx',
       '../src/renderer/pages/__tests__/UnifiedPage.space-session-flow.test.tsx',
       '../src/renderer/pages/__tests__/UnifiedPage.artifact-toggle.test.tsx',
+      '../src/renderer/pages/__tests__/UnifiedPage.sidebar-resize.test.tsx',
       '../src/renderer/components/unified/__tests__/UnifiedSidebar.structure.test.tsx',
       '../src/renderer/components/unified/__tests__/UnifiedSidebar.actions.test.tsx'
     ],

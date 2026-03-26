@@ -39,6 +39,7 @@ interface UnifiedSidebarProps {
   onGoSettings: () => void
   initialCreateDialogOpen?: boolean
   showCollapseControl?: boolean
+  expandedWidth?: number
 }
 
 function formatRelativeTime(dateString: string, t: (key: string, options?: Record<string, unknown>) => string): string {
@@ -85,7 +86,8 @@ export function UnifiedSidebar({
   onToggleCollapse,
   onGoSettings,
   initialCreateDialogOpen = false,
-  showCollapseControl = true
+  showCollapseControl = true,
+  expandedWidth = 320
 }: UnifiedSidebarProps) {
   const { t } = useTranslation()
   const [loadingSpaceIds, setLoadingSpaceIds] = useState<Set<string>>(new Set())
@@ -306,9 +308,10 @@ export function UnifiedSidebar({
 
   return (
     <aside
-      className={`space-studio-sidebar space-studio-conversation-panel space-studio-reveal h-full border-r border-border/60 bg-card backdrop-blur-sm overflow-hidden ${
-        isCollapsed ? 'space-studio-collapsed-rail w-[62px]' : 'w-[320px]'
+      className={`space-studio-sidebar space-studio-conversation-panel space-studio-reveal h-full shrink-0 border-r border-border/60 bg-card backdrop-blur-sm overflow-hidden ${
+        isCollapsed ? 'space-studio-collapsed-rail w-[62px]' : ''
       }`}
+      style={isCollapsed ? undefined : { width: expandedWidth }}
     >
       {isCollapsed ? (
         <div className="h-full flex flex-col">

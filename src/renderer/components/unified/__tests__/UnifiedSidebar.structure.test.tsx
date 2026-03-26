@@ -115,6 +115,10 @@ describe('UnifiedSidebar structure', () => {
     expect(html).toMatch(/data-conversation-id="conv-1"[\s\S]*?data-slot="actions"[^>]*is-active/)
     expect(html).toMatch(/data-conversation-id="conv-2"[\s\S]*?data-slot="time"[^>]*is-visible[^>]*>1 days ago</)
     expect(html).not.toMatch(/data-conversation-id="conv-2"[\s\S]*?data-slot="actions"[^>]*is-active/)
+    expect(html).toMatch(/data-conversation-id="conv-1"[\s\S]*?space-studio-history-simple-title/)
+    expect(html).toMatch(/data-conversation-id="conv-1"[\s\S]*?unified-sidebar-history-tail/)
+    expect(html).toMatch(/data-conversation-id="conv-2"[\s\S]*?space-studio-history-simple-title/)
+    expect(html).toMatch(/data-conversation-id="conv-2"[\s\S]*?unified-sidebar-history-tail/)
 
     vi.useRealTimers()
   })
