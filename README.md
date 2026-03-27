@@ -9,7 +9,7 @@
 An AI assistant designed for everyone — no coding required, no setup needed, just open and use.
 
 [![GitHub Stars](https://img.shields.io/github/stars/blackholel/buddykite?style=social)](https://github.com/blackholel/buddykite/stargazers)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-Personal%20Free%20%7C%20Commercial-orange.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey.svg)](#installation)
 
 [Download](#installation) · [Quick Start](#quick-start) · [Use Cases](#what-can-you-do-with-kite)
@@ -305,9 +305,11 @@ npm run dev
 
 ---
 
-## License
+## 授权
 
-MIT License — see [LICENSE](LICENSE) for details
+个人免费 / 商用授权 — 详见 [LICENSE](LICENSE)
+
+个人用户可免费使用；企业或商业用途需获得授权，联系：505855752@qq.com
 
 ---
 
