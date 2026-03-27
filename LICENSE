@@ -1,30 +1,109 @@
-MIT License
+个人免费 / 商用授权协议 (Personal Free / Commercial License)
 
+版权所有 (c) 2024-2025 OpenKursar
 Copyright (c) 2024-2025 OpenKursar
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+========================================
+中文版（以中文版为准）
+========================================
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+一、个人使用（免费）
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+  个人用户可免费使用、复制、修改和分发本软件，适用于以下场景：
 
----
+  1. 个人学习、研究、实验；
+  2. 个人非商业项目；
+  3. 个人小规模商业项目（年营收不超过人民币 20 万元）。
 
-Additional Terms
+  上述使用均须保留本协议全文及版权声明。
 
-The copyright holder reserves the right of final interpretation of this license
-and all related terms. In case of any ambiguity or dispute regarding the
-interpretation of this license, the copyright holder's interpretation shall
-prevail.
+二、商业使用（需授权）
+
+  以下情形须事先取得版权方的书面商业授权：
+
+  1. 任何企业、机构或组织使用本软件，无论是否营利；
+  2. 个人用户将本软件用于年营收超过人民币 20 万元的商业项目；
+  3. 将本软件作为 SaaS、PaaS 等在线服务的组成部分向第三方提供；
+  4. 将本软件整体或实质性部分嵌入商业产品进行再分发。
+
+  商业授权请联系：505855752@qq.com
+
+三、署名与分发
+
+  1. 分发本软件或其衍生作品时，须保留本协议全文。
+  2. 须保留原始版权声明，不得移除或篡改版权归属标记。
+  3. 须在显著位置注明原始项目名称及来源。
+
+四、免责声明
+
+  本软件按"原样"提供，不提供任何形式的明示或暗示担保，
+  包括但不限于对适销性、特定用途适用性和不侵权的担保。
+  在任何情况下，版权方不对因使用或无法使用本软件而产生的
+  任何直接、间接、附带、特殊或后果性损害承担责任。
+
+五、其他
+
+  1. 版权方保留对本协议的最终解释权。
+  2. 本协议未明确授予的权利均由版权方保留。
+  3. 如对使用范围有疑问，请联系版权方确认。
+
+========================================
+English Version (for reference only;
+Chinese version prevails in case of conflict)
+========================================
+
+1. Personal Use (Free)
+
+  Individual users may use, copy, modify, and distribute this software
+  free of charge for the following purposes:
+
+  a) Personal learning, research, and experimentation;
+  b) Personal non-commercial projects;
+  c) Personal small-scale commercial projects with annual revenue
+     not exceeding RMB 200,000 (or USD equivalent).
+
+  All such use must retain this license in full along with the
+  copyright notice.
+
+2. Commercial Use (License Required)
+
+  Prior written commercial authorization from the copyright holder
+  is required in the following cases:
+
+  a) Use by any enterprise, institution, or organization,
+     whether for-profit or not;
+  b) Use by individuals in commercial projects with annual revenue
+     exceeding RMB 200,000;
+  c) Offering this software as part of a SaaS, PaaS, or other
+     online service to third parties;
+  d) Embedding this software, in whole or in substantial part,
+     into a commercial product for redistribution.
+
+  For commercial licensing, contact: 505855752@qq.com
+
+3. Attribution and Distribution
+
+  a) This license must be retained in full when distributing this
+     software or derivative works.
+  b) Original copyright notices must be preserved; copyright
+     attribution marks must not be removed or altered.
+  c) The original project name and source must be credited in a
+     prominent location.
+
+4. Disclaimer
+
+  THIS SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+  EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+  MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+  IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY DIRECT,
+  INDIRECT, INCIDENTAL, SPECIAL, OR CONSEQUENTIAL DAMAGES ARISING
+  FROM THE USE OF OR INABILITY TO USE THIS SOFTWARE.
+
+5. Miscellaneous
+
+  a) The copyright holder reserves the final right of interpretation
+     of this license.
+  b) All rights not expressly granted herein are reserved by the
+     copyright holder.
+  c) If in doubt about whether your use case is permitted, contact
+     the copyright holder for clarification.
