@@ -5,7 +5,7 @@
   "type": "module",
   "main": "./out/main/index.mjs",
   "author": "Kite Team",
-  "license": "MIT",
+  "license": "Personal-Free-Commercial",
   "packageManager": "npm@10.9.4",
   "scripts": {
     "dev": "electron-vite dev",
