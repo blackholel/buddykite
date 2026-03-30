@@ -6,6 +6,7 @@ import { app } from 'electron'
 import { basename, dirname, join, posix as pathPosix, relative, resolve, sep, win32 as pathWin32 } from 'path'
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'fs'
 import { getConfigDir } from '../utils/instance'
+import { getKiteSpacesDir } from './kite-library.service'
 
 // Import analytics config type
 import type { AnalyticsConfig } from './analytics/types'
@@ -317,7 +318,7 @@ export function resolveSpacesRootFromConfigDir(
 }
 
 export function getSpacesDir(): string {
-  return resolveSpacesRootFromConfigDir(getKiteDir())
+  return getKiteSpacesDir(getKiteDir())
 }
 
 export function getLegacySpacesDir(

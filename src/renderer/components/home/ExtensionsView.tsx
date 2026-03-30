@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Bot, Puzzle, Search, Zap } from 'lucide-react'
+import { Bot, FolderOpen, Plus, Puzzle, Search, Zap } from 'lucide-react'
+import type { ResourceType } from '../resources/types'
 import { api } from '../../api'
 import { useTranslation } from '../../i18n'
 import { type AgentDefinition, useAgentsStore } from '../../stores/agents.store'
@@ -7,19 +8,17 @@ import { useChatStore } from '../../stores/chat.store'
 import { type SkillDefinition, useSkillsStore } from '../../stores/skills.store'
 import { useSpaceStore } from '../../stores/space.store'
 import { ResourceCard } from '../resources/ResourceCard'
-import {
-  applyTypeAndSearchFilter,
-  computeTypeCounts,
-  groupByType,
-  normalizeExtensionItems,
-  sortExtensions,
-  type FilterTab
-} from '../resources/extension-filtering'
+import { ResourceCreateModal } from '../resources/ResourceCreateModal'
+import { normalizeExtensionItems } from '../resources/extension-filtering'
 
 interface EmptyStateProps {
   icon: typeof Puzzle
   title: string
   description: string
+}
+
+interface ExtensionsViewProps {
+  resourceType: ResourceType
 }
 
 function EmptyState({ icon: Icon, title, description }: EmptyStateProps): JSX.Element {
@@ -36,9 +35,12 @@ function EmptyState({ icon: Icon, title, description }: EmptyStateProps): JSX.El
 
 type SessionReadyState = 'ready' | 'stale' | 'unknown' | 'na'
 
-export function ExtensionsView(): JSX.Element {
+function isEnabled(resource: SkillDefinition | AgentDefinition): boolean {
+  return resource.enabled !== false
+}
+
+export function ExtensionsView({ resourceType }: ExtensionsViewProps): JSX.Element {
   const { t } = useTranslation()
-  const [activeFilter, setActiveFilter] = useState<FilterTab>('all')
   const [query, setQuery] = useState('')
   const [isRefreshing, setIsRefreshing] = useState(false)
   const hasRequestedGlobalResources = useRef(false)
@@ -52,11 +54,17 @@ export function ExtensionsView(): JSX.Element {
   const [sessionResourceHash, setSessionResourceHash] = useState<string | null>(null)
   const [resourceHashError, setResourceHashError] = useState<string | null>(null)
   const [isCheckingResourceHash, setIsCheckingResourceHash] = useState(false)
+  const [libraryActionError, setLibraryActionError] = useState<string | null>(null)
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
+  const [autoOpenResourcePath, setAutoOpenResourcePath] = useState<string | null>(null)
+  const [isDragActive, setIsDragActive] = useState(false)
+  const [isImporting, setIsImporting] = useState(false)
 
   const {
     skills,
     isLoading: skillsLoading,
     loadSkills,
+    openSkillsLibraryFolder,
     loadedWorkDir,
     lastRefreshReason,
     lastRefreshTs
@@ -65,7 +73,8 @@ export function ExtensionsView(): JSX.Element {
   const {
     agents,
     isLoading: agentsLoading,
-    loadAgents
+    loadAgents,
+    openAgentsLibraryFolder
   } = useAgentsStore()
 
   useEffect(() => {
@@ -82,44 +91,19 @@ export function ExtensionsView(): JSX.Element {
     agents: agents as AgentDefinition[]
   }), [agents, skills])
 
-  const typeSearchFilteredItems = useMemo(
-    () => sortExtensions(applyTypeAndSearchFilter(normalizedItems, activeFilter, query)),
-    [activeFilter, normalizedItems, query]
-  )
-
-  const filteredItems = typeSearchFilteredItems
-
-  const groupedItems = useMemo(() => groupByType(filteredItems), [filteredItems])
+  const filteredItems = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase()
+    return normalizedItems
+      .filter((item) => item.type === resourceType)
+      .filter((item) => !normalizedQuery || item.searchable.includes(normalizedQuery))
+      .sort((a, b) => {
+        const enabledDiff = Number(isEnabled(b.resource)) - Number(isEnabled(a.resource))
+        if (enabledDiff !== 0) return enabledDiff
+        return a.displayName.localeCompare(b.displayName, 'en', { sensitivity: 'base' })
+      })
+  }, [normalizedItems, query, resourceType])
 
   const isLoading = skillsLoading || agentsLoading
-
-  const typeCounts = useMemo(() => computeTypeCounts(normalizedItems), [normalizedItems])
-
-  const tabs = useMemo<Array<{ key: FilterTab; label: string; count: number }>>(() => [
-    { key: 'all', label: t('All'), count: normalizedItems.length },
-    { key: 'skills', label: t('Skills'), count: typeCounts.skill },
-    { key: 'agents', label: t('Agents'), count: typeCounts.agent }
-  ], [normalizedItems.length, typeCounts, t])
-
-  const sourceCounts = useMemo(() => {
-    const counts = {
-      app: 0,
-      global: 0,
-      installed: 0,
-      plugin: 0,
-      space: 0,
-      other: 0
-    }
-    for (const item of normalizedItems) {
-      const source = (item.resource as { source?: string }).source
-      if (!source || !(source in counts)) {
-        counts.other += 1
-        continue
-      }
-      counts[source as keyof typeof counts] += 1
-    }
-    return counts
-  }, [normalizedItems])
 
   const refreshResourceHash = useCallback(async (): Promise<void> => {
     try {
@@ -149,7 +133,7 @@ export function ExtensionsView(): JSX.Element {
     } finally {
       setIsCheckingResourceHash(false)
     }
-  }, [currentConversationId, currentSpaceId, loadedWorkDir])
+  }, [currentConversationId, currentSpaceId, loadedWorkDir, t])
 
   useEffect(() => {
     void refreshResourceHash()
@@ -192,22 +176,18 @@ export function ExtensionsView(): JSX.Element {
     return 'border-border/60 bg-foreground/5 text-muted-foreground'
   }, [sessionReadyState])
 
-  const handleClearFilters = (): void => {
-    setQuery('')
-  }
-
   const handleRefreshResources = useCallback(async (): Promise<void> => {
     if (isRefreshing) return
     try {
       setIsRefreshing(true)
-      const refreshResult = await api.refreshSkillsIndex(loadedWorkDir ?? undefined)
+      const refreshResult = await api.refreshSkillsIndex(undefined)
       if (!refreshResult.success) {
         setResourceHashError(refreshResult.error || t('Failed to refresh resources'))
         return
       }
       await Promise.all([
-        loadSkills(loadedWorkDir ?? undefined),
-        loadAgents(loadedWorkDir ?? undefined)
+        loadSkills(),
+        loadAgents()
       ])
       useSkillsStore.setState({
         lastRefreshReason: 'manual-refresh',
@@ -216,29 +196,189 @@ export function ExtensionsView(): JSX.Element {
     } finally {
       setIsRefreshing(false)
     }
-  }, [isRefreshing, loadedWorkDir, loadAgents, loadSkills, t])
+  }, [isRefreshing, loadAgents, loadSkills, t])
+
+  const handleAfterLibraryAction = useCallback(async () => {
+    await Promise.all([loadSkills(), loadAgents()])
+    await refreshResourceHash()
+  }, [loadAgents, loadSkills, refreshResourceHash])
+
+  const handleOpenLibraryFolder = useCallback(async (): Promise<void> => {
+    setLibraryActionError(null)
+    const ok = resourceType === 'skill'
+      ? await openSkillsLibraryFolder()
+      : await openAgentsLibraryFolder()
+    if (!ok) {
+      setLibraryActionError(t('Failed to open folder'))
+    }
+  }, [openAgentsLibraryFolder, openSkillsLibraryFolder, resourceType, t])
+
+  const importPathToLibrary = useCallback(async (sourcePath: string): Promise<string | null> => {
+    const primaryResponse = resourceType === 'skill'
+      ? await api.importSkillToLibrary(sourcePath)
+      : await api.importAgentToLibrary(sourcePath)
+
+    if (!primaryResponse.success) {
+      setLibraryActionError(primaryResponse.error || t('Import failed'))
+      return null
+    }
+
+    const data = primaryResponse.data as { status?: string; existingPath?: string; path?: string } | undefined
+    if (data?.status === 'conflict') {
+      const shouldOverwrite = window.confirm(t('Resource already exists. Replace it?'))
+      if (!shouldOverwrite) return null
+      const overwriteResponse = resourceType === 'skill'
+        ? await api.importSkillToLibrary(sourcePath, { overwrite: true })
+        : await api.importAgentToLibrary(sourcePath, { overwrite: true })
+      if (!overwriteResponse.success) {
+        setLibraryActionError(overwriteResponse.error || t('Import failed'))
+        return null
+      }
+      const overwriteData = overwriteResponse.data as { status?: string; path?: string } | undefined
+      if (overwriteData?.status !== 'imported') {
+        setLibraryActionError(t('Import failed'))
+        return null
+      }
+      return overwriteData.path || null
+    }
+
+    if (data?.status !== 'imported') {
+      setLibraryActionError(t('Import failed'))
+      return null
+    }
+
+    return data.path || null
+  }, [resourceType, t])
+
+  const extractDroppedPaths = useCallback((event: React.DragEvent<HTMLDivElement>): string[] => {
+    const paths = new Set<string>()
+    const files = Array.from(event.dataTransfer.files || [])
+    for (const file of files) {
+      const candidate = (file as File & { path?: string }).path
+      if (candidate) paths.add(candidate)
+    }
+
+    const items = Array.from(event.dataTransfer.items || [])
+    for (const item of items) {
+      const candidateFile = item.getAsFile() as (File & { path?: string }) | null
+      if (candidateFile?.path) {
+        paths.add(candidateFile.path)
+      }
+    }
+
+    const plainText = event.dataTransfer.getData('text/plain')
+    if (plainText) {
+      plainText
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .forEach((pathValue) => paths.add(pathValue))
+    }
+
+    return Array.from(paths)
+  }, [])
+
+  const handleDragOver = useCallback((event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    if (!isDragActive) setIsDragActive(true)
+  }, [isDragActive])
+
+  const handleDragLeave = useCallback((event: React.DragEvent<HTMLDivElement>) => {
+    const relatedTarget = event.relatedTarget
+    if (relatedTarget instanceof Node && event.currentTarget.contains(relatedTarget)) {
+      return
+    }
+    setIsDragActive(false)
+  }, [])
+
+  const handleDrop = useCallback(async (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+    setIsDragActive(false)
+    setLibraryActionError(null)
+
+    const paths = extractDroppedPaths(event)
+    if (paths.length === 0 || isImporting) return
+
+    setIsImporting(true)
+    try {
+      let imported = false
+      let importedPath: string | null = null
+      for (const pathValue of paths) {
+        const path = await importPathToLibrary(pathValue)
+        if (path) {
+          imported = true
+          importedPath = importedPath || path
+        }
+      }
+      if (imported) {
+        if (importedPath) {
+          setAutoOpenResourcePath(importedPath)
+        }
+        await handleAfterLibraryAction()
+      }
+    } finally {
+      setIsImporting(false)
+    }
+  }, [extractDroppedPaths, handleAfterLibraryAction, importPathToLibrary, isImporting])
+
+  const title = resourceType === 'skill' ? t('技能资源库') : t('智能体资源库')
+  const subtitle = resourceType === 'skill'
+    ? t('浏览并管理所有技能资源')
+    : t('浏览并管理所有智能体资源')
+  const emptyTitle = query
+    ? (resourceType === 'skill' ? t('没有匹配的技能') : t('没有匹配的智能体'))
+    : (resourceType === 'skill' ? t('暂无技能') : t('暂无智能体'))
+  const emptyDescription = query
+    ? t('Try another search keyword')
+    : t('Resources will appear here after loading')
+  const searchPlaceholder = resourceType === 'skill' ? t('搜索技能...') : t('搜索智能体...')
+  const SectionIcon = resourceType === 'skill' ? Zap : Bot
+  const sectionIconClass = resourceType === 'skill' ? 'text-yellow-500' : 'text-cyan-500'
 
   return (
-    <div className="h-full overflow-auto">
+    <div
+      data-testid="resource-library-dropzone"
+      className={`h-full overflow-auto transition-colors ${isDragActive ? 'bg-primary/5' : ''}`}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={(event) => void handleDrop(event)}
+    >
       <div className="max-w-6xl mx-auto px-6 py-8">
         <div className="mb-6 stagger-item" style={{ animationDelay: '0ms' }}>
           <div className="flex items-center justify-between gap-3">
-            <h2 className="text-lg font-semibold tracking-tight">{t('Extensions')}</h2>
-            <button
-              type="button"
-              onClick={() => void handleRefreshResources()}
-              disabled={isRefreshing}
-              className="px-3 py-1.5 text-xs rounded-lg bg-secondary/70 hover:bg-secondary transition-colors disabled:opacity-50"
-            >
-              {isRefreshing ? t('Refreshing...') : t('Refresh')}
-            </button>
+            <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsCreateModalOpen(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                {t('Create')}
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleOpenLibraryFolder()}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-secondary/70 hover:bg-secondary transition-colors"
+              >
+                <FolderOpen className="w-3.5 h-3.5" />
+                {t('Open folder')}
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleRefreshResources()}
+                disabled={isRefreshing || isImporting}
+                className="px-3 py-1.5 text-xs rounded-lg bg-secondary/70 hover:bg-secondary transition-colors disabled:opacity-50"
+              >
+                {isRefreshing ? t('Refreshing...') : t('Refresh')}
+              </button>
+            </div>
           </div>
-          <p className="text-sm text-muted-foreground mt-1">
-            {t('Browse system-wide skills and agents')}
-          </p>
+          <p className="text-sm text-muted-foreground mt-1">{subtitle}</p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <span className="text-[11px] px-2 py-0.5 rounded-md border border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">
-              {t('Installed')}: {normalizedItems.length}
+              {t('Installed')}: {filteredItems.length}
             </span>
             <span className={`text-[11px] px-2 py-0.5 rounded-md border ${indexedBadgeClass}`}>
               {t('Indexed')}: {indexedDisplayText}
@@ -247,9 +387,6 @@ export function ExtensionsView(): JSX.Element {
               {t('Session Ready')}: {sessionReadyText}
             </span>
           </div>
-          <p className="text-[11px] text-muted-foreground/70 mt-1">
-            {t('App')} {sourceCounts.app} · {t('Global')} {sourceCounts.global} · {t('Plugin')} {sourceCounts.installed + sourceCounts.plugin} · {t('Space')} {sourceCounts.space}
-          </p>
           {sessionReadyState === 'stale' && (
             <p className="text-[11px] text-amber-700/90 dark:text-amber-300/90 mt-1">
               {t('Current session is using an older resource snapshot; next message will rebuild the session.')}
@@ -263,40 +400,29 @@ export function ExtensionsView(): JSX.Element {
           {resourceHashError && (
             <p className="text-xs text-destructive/80 mt-1">{resourceHashError}</p>
           )}
+          {libraryActionError && (
+            <p className="text-xs text-destructive/80 mt-1">{libraryActionError}</p>
+          )}
+          {isDragActive && (
+            <p className="text-xs text-primary mt-1">
+              {resourceType === 'skill'
+                ? t('Drop skill folders here to import')
+                : t('Drop markdown files here to import')}
+            </p>
+          )}
         </div>
 
         <div className="glass-card p-3 mb-6 stagger-item" style={{ animationDelay: '40ms' }}>
-          <div className="relative mb-3">
+          <div className="relative mb-0">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/60" />
             <input
               type="text"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder={t('Search extensions...')}
+              placeholder={searchPlaceholder}
               className="w-full pl-9 pr-3 py-2 input-apple text-sm"
             />
           </div>
-
-          <div className="flex flex-wrap gap-1.5">
-            {tabs.map((tab) => {
-              const isActive = activeFilter === tab.key
-              return (
-                <button
-                  key={tab.key}
-                  type="button"
-                  onClick={() => setActiveFilter(tab.key)}
-                  className={`px-3 py-1.5 text-xs rounded-lg transition-all duration-200 ${
-                    isActive
-                      ? 'bg-primary/15 text-primary font-medium'
-                      : 'text-muted-foreground hover:text-foreground hover:bg-secondary/70'
-                  }`}
-                >
-                  {tab.label} <span className="ml-1 text-[10px] opacity-80">{tab.count}</span>
-                </button>
-              )
-            })}
-          </div>
-
         </div>
 
         {isLoading ? (
@@ -310,75 +436,49 @@ export function ExtensionsView(): JSX.Element {
               <div className="stagger-item" style={{ animationDelay: '120ms' }}>
                 <EmptyState
                   icon={Puzzle}
-                  title={query ? t('No matching extensions') : t('No extensions available')}
-                  description={query ? t('Try another search keyword') : t('Resources will appear here after loading')}
+                  title={emptyTitle}
+                  description={emptyDescription}
                 />
-                {query && (
-                  <div className="mt-3 text-center">
-                    <button
-                      type="button"
-                      onClick={handleClearFilters}
-                      className="px-3 py-1.5 text-xs rounded-lg bg-secondary/80 hover:bg-secondary text-muted-foreground"
-                    >
-                      {t('Clear filters')}
-                    </button>
-                  </div>
-                )}
-              </div>
-            ) : activeFilter === 'all' ? (
-              <div className="space-y-8">
-                <section className="stagger-item" style={{ animationDelay: '120ms' }}>
-                  <div className="flex items-center gap-2 mb-3">
-                    <Zap className="w-4 h-4 text-yellow-500" />
-                    <h3 className="text-sm font-medium">{t('Skills')} ({groupedItems.skill.length})</h3>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {groupedItems.skill.map((item, index) => (
-                      <ResourceCard
-                        key={item.id}
-                        resource={item.resource}
-                        type="skill"
-                        index={index}
-                        actionMode="none"
-                      />
-                    ))}
-                  </div>
-                </section>
-
-                <section className="stagger-item" style={{ animationDelay: '160ms' }}>
-                  <div className="flex items-center gap-2 mb-3">
-                    <Bot className="w-4 h-4 text-cyan-500" />
-                    <h3 className="text-sm font-medium">{t('Agents')} ({groupedItems.agent.length})</h3>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {groupedItems.agent.map((item, index) => (
-                      <ResourceCard
-                        key={item.id}
-                        resource={item.resource}
-                        type="agent"
-                        index={index}
-                        actionMode="none"
-                      />
-                    ))}
-                  </div>
-                </section>
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 stagger-item" style={{ animationDelay: '120ms' }}>
-                {filteredItems.map((item, index) => (
-                  <ResourceCard
-                    key={item.id}
-                    resource={item.resource}
-                    type={item.type}
-                    index={index}
-                    actionMode="none"
-                  />
-                ))}
+              <div className="space-y-3 stagger-item" style={{ animationDelay: '120ms' }}>
+                <div className="flex items-center gap-2">
+                  <SectionIcon className={`w-4 h-4 ${sectionIconClass}`} />
+                  <h3 className="text-sm font-medium">
+                    {resourceType === 'skill' ? t('Skills') : t('Agents')} ({filteredItems.length})
+                  </h3>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {filteredItems.map((item, index) => (
+                    <ResourceCard
+                      key={item.id}
+                      resource={item.resource}
+                      type={item.type}
+                      index={index}
+                      actionMode="none"
+                      detailMode="library"
+                      workDir={currentSpace?.path}
+                      autoOpen={autoOpenResourcePath === item.resource.path}
+                      onAutoOpened={() => setAutoOpenResourcePath(null)}
+                      onAfterAction={() => void handleAfterLibraryAction()}
+                    />
+                  ))}
+                </div>
               </div>
             )}
           </>
         )}
       </div>
+      {isCreateModalOpen && (
+        <ResourceCreateModal
+          resourceType={resourceType}
+          onClose={() => setIsCreateModalOpen(false)}
+          onCreated={(resource) => {
+            setAutoOpenResourcePath(resource.path)
+            void handleAfterLibraryAction()
+          }}
+        />
+      )}
     </div>
   )
 }

@@ -209,6 +209,8 @@ export interface KiteAPI {
   listSkills: (workDir: string | undefined, locale: string | undefined, view: ResourceListView) => Promise<IpcResponse>
   getSkillContent: (name: string, workDir?: string) => Promise<IpcResponse>
   createSkill: (workDir: string, name: string, content: string) => Promise<IpcResponse>
+  createSkillInLibrary: (name: string, content: string) => Promise<IpcResponse>
+  generateSkillDraft: (description: string) => Promise<IpcResponse>
   saveSopSkill: (payload: {
     workDir: string
     skillName: string
@@ -235,7 +237,18 @@ export interface KiteAPI {
     }
   }) => Promise<IpcResponse>
   updateSkill: (skillPath: string, content: string) => Promise<IpcResponse>
+  updateSkillInLibrary: (skillPath: string, content: string) => Promise<IpcResponse>
   deleteSkill: (skillPath: string) => Promise<IpcResponse>
+  deleteSkillFromLibrary: (skillPath: string) => Promise<IpcResponse>
+  setSkillEnabled: (payload: {
+    source: 'app' | 'global' | 'space' | 'installed'
+    name: string
+    namespace?: string
+    enabled: boolean
+  }) => Promise<IpcResponse>
+  openSkillsLibraryFolder: () => Promise<IpcResponse>
+  importSkillToLibrary: (sourcePath: string, options?: { overwrite?: boolean }) => Promise<IpcResponse>
+  showSkillInFolder: (skillPath: string) => Promise<IpcResponse>
   copySkillToSpaceByRef: (
     ref: Record<string, unknown>,
     workDir: string,
@@ -248,8 +261,21 @@ export interface KiteAPI {
   listAgents: (workDir: string | undefined, locale: string | undefined, view: ResourceListView) => Promise<IpcResponse>
   getAgentContent: (name: string, workDir?: string) => Promise<IpcResponse>
   createAgent: (workDir: string, name: string, content: string) => Promise<IpcResponse>
+  createAgentInLibrary: (name: string, content: string) => Promise<IpcResponse>
+  generateAgentDraft: (description: string) => Promise<IpcResponse>
   updateAgent: (agentPath: string, content: string) => Promise<IpcResponse>
+  updateAgentInLibrary: (agentPath: string, content: string) => Promise<IpcResponse>
   deleteAgent: (agentPath: string) => Promise<IpcResponse>
+  deleteAgentFromLibrary: (agentPath: string) => Promise<IpcResponse>
+  setAgentEnabled: (payload: {
+    source: 'app' | 'global' | 'space' | 'plugin'
+    name: string
+    namespace?: string
+    enabled: boolean
+  }) => Promise<IpcResponse>
+  openAgentsLibraryFolder: () => Promise<IpcResponse>
+  importAgentToLibrary: (sourcePath: string, options?: { overwrite?: boolean }) => Promise<IpcResponse>
+  showAgentInFolder: (agentPath: string) => Promise<IpcResponse>
   copyAgentToSpaceByRef: (
     ref: Record<string, unknown>,
     workDir: string,
@@ -506,9 +532,17 @@ const api: KiteAPI = {
   listSkills: (workDir, locale, view) => ipcRenderer.invoke('skills:list', workDir, locale, view),
   getSkillContent: (name, workDir) => ipcRenderer.invoke('skills:get-content', name, workDir),
   createSkill: (workDir, name, content) => ipcRenderer.invoke('skills:create', workDir, name, content),
+  createSkillInLibrary: (name, content) => ipcRenderer.invoke('skills:create-library', name, content),
+  generateSkillDraft: (description) => ipcRenderer.invoke('skills:generate-draft', description),
   saveSopSkill: (payload) => ipcRenderer.invoke('skills:save-sop-recording', payload),
   updateSkill: (skillPath, content) => ipcRenderer.invoke('skills:update', skillPath, content),
+  updateSkillInLibrary: (skillPath, content) => ipcRenderer.invoke('skills:update-library', skillPath, content),
   deleteSkill: (skillPath) => ipcRenderer.invoke('skills:delete', skillPath),
+  deleteSkillFromLibrary: (skillPath) => ipcRenderer.invoke('skills:delete-library', skillPath),
+  setSkillEnabled: (payload) => ipcRenderer.invoke('skills:set-enabled', payload),
+  openSkillsLibraryFolder: () => ipcRenderer.invoke('skills:open-library-folder'),
+  importSkillToLibrary: (sourcePath, options) => ipcRenderer.invoke('skills:import-from-path', sourcePath, options),
+  showSkillInFolder: (skillPath) => ipcRenderer.invoke('skills:show-item-in-folder', skillPath),
   copySkillToSpaceByRef: (ref, workDir, options) => ipcRenderer.invoke('skills:copy-to-space-by-ref', ref, workDir, options),
   clearSkillsCache: () => ipcRenderer.invoke('skills:clear-cache'),
   refreshSkillsIndex: (workDir) => ipcRenderer.invoke('skills:refresh', workDir),
@@ -517,8 +551,16 @@ const api: KiteAPI = {
   listAgents: (workDir, locale, view) => ipcRenderer.invoke('agents:list', workDir, locale, view),
   getAgentContent: (name, workDir) => ipcRenderer.invoke('agents:get-content', name, workDir),
   createAgent: (workDir, name, content) => ipcRenderer.invoke('agents:create', workDir, name, content),
+  createAgentInLibrary: (name, content) => ipcRenderer.invoke('agents:create-library', name, content),
+  generateAgentDraft: (description) => ipcRenderer.invoke('agents:generate-draft', description),
   updateAgent: (agentPath, content) => ipcRenderer.invoke('agents:update', agentPath, content),
+  updateAgentInLibrary: (agentPath, content) => ipcRenderer.invoke('agents:update-library', agentPath, content),
   deleteAgent: (agentPath) => ipcRenderer.invoke('agents:delete', agentPath),
+  deleteAgentFromLibrary: (agentPath) => ipcRenderer.invoke('agents:delete-library', agentPath),
+  setAgentEnabled: (payload) => ipcRenderer.invoke('agents:set-enabled', payload),
+  openAgentsLibraryFolder: () => ipcRenderer.invoke('agents:open-library-folder'),
+  importAgentToLibrary: (sourcePath, options) => ipcRenderer.invoke('agents:import-from-path', sourcePath, options),
+  showAgentInFolder: (agentPath) => ipcRenderer.invoke('agents:show-item-in-folder', agentPath),
   copyAgentToSpaceByRef: (ref, workDir, options) => ipcRenderer.invoke('agents:copy-to-space-by-ref', ref, workDir, options),
   clearAgentsCache: () => ipcRenderer.invoke('agents:clear-cache'),
 

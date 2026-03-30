@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
+import { getKiteAgentsDir, getKiteSkillsDir } from '../../../src/main/services/kite-library.service'
 
 const testState = vi.hoisted(() => ({
   appRoot: '',
@@ -65,7 +66,7 @@ import {
 import { _testResetResourceRuntimePolicyWarnings } from '../../../src/main/services/resource-runtime-policy.service'
 
 function writeSkill(rootDir: string, name: string, content?: string): void {
-  const skillDir = join(rootDir, 'skills', name)
+  const skillDir = join(getKiteSkillsDir(rootDir), name)
   mkdirSync(skillDir, { recursive: true })
   writeFileSync(join(skillDir, 'SKILL.md'), content || `# ${name}\n`, 'utf-8')
 }
@@ -76,8 +77,9 @@ function writeCommand(rootDir: string, name: string, content?: string): void {
 }
 
 function writeAgent(rootDir: string, name: string, content?: string): void {
-  mkdirSync(join(rootDir, 'agents'), { recursive: true })
-  writeFileSync(join(rootDir, 'agents', `${name}.md`), content || `# ${name}\n`, 'utf-8')
+  const agentsDir = getKiteAgentsDir(rootDir)
+  mkdirSync(agentsDir, { recursive: true })
+  writeFileSync(join(agentsDir, `${name}.md`), content || `# ${name}\n`, 'utf-8')
 }
 
 function writeSpaceSkill(spaceDir: string, name: string, content?: string): void {
@@ -147,7 +149,7 @@ describe('full-mesh runtime fallback to app-single-source', () => {
     const all = listSkills(spaceB, 'taxonomy-admin')
 
     expect(shared?.path).toContain(join('space-b', '.claude', 'skills', 'shared'))
-    expect(lex?.path).toContain(join('app-root', 'skills', 'lex'))
+    expect(lex?.path).toContain(join('app-root', 'kite', 'Skills', 'lex'))
     expect(all.some((skill) => skill.path.includes(join('space-a', '.claude', 'skills', 'lex')))).toBe(false)
   })
 
@@ -167,7 +169,7 @@ describe('full-mesh runtime fallback to app-single-source', () => {
     const all = listAgents(spaceB, 'taxonomy-admin')
 
     expect(shared?.path).toContain(join('space-b', '.claude', 'agents', 'shared.md'))
-    expect(lex?.path).toContain(join('app-root', 'agents', 'lex.md'))
+    expect(lex?.path).toContain(join('app-root', 'kite', 'Agents', 'lex.md'))
     expect(all.some((agent) => agent.path.includes(join('space-a', '.claude', 'agents', 'lex.md')))).toBe(false)
   })
 

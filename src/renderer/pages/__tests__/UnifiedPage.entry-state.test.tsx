@@ -12,7 +12,7 @@ const mockCurrentSpace = {
 let mockCurrentSpaceId = 'space-1'
 let capturedSidebarProps: Record<string, any> | null = null
 let triggerTopTabClick: null | (() => Promise<void>) = null
-let rightPanelModeOverride: 'artifacts' | 'abilities' | null = null
+let rightPanelModeOverride: 'artifacts' | 'skills' | 'agents' | null = null
 const setRightPanelModeMock = vi.fn()
 const mockUpdateSpace = vi.fn(async () => null)
 const mockDeleteSpace = vi.fn(async () => true)
@@ -315,31 +315,31 @@ describe('UnifiedPage entry state', () => {
     expect(html).not.toContain('All spaces')
   })
 
-  it('点击能力入口时会请求右侧切到能力面板', async () => {
+  it('点击技能入口时会请求右侧切到技能面板', async () => {
     renderToStaticMarkup(<UnifiedPage />)
 
-    await capturedSidebarProps?.onOpenAbilities?.()
+    await capturedSidebarProps?.onOpenSkills?.()
 
     expect(setRightPanelModeMock).toHaveBeenCalledTimes(1)
     const updater = setRightPanelModeMock.mock.calls[0]?.[0]
     expect(typeof updater).toBe('function')
-    expect(updater('artifacts')).toBe('abilities')
+    expect(updater('artifacts')).toBe('skills')
   })
 
-  it('能力面板已打开时再次点击入口会切回文件栏', async () => {
-    rightPanelModeOverride = 'abilities'
+  it('智能体面板已打开时再次点击入口会切回文件栏', async () => {
+    rightPanelModeOverride = 'agents'
     renderToStaticMarkup(<UnifiedPage />)
 
-    await capturedSidebarProps?.onOpenAbilities?.()
+    await capturedSidebarProps?.onOpenAgents?.()
 
     expect(setRightPanelModeMock).toHaveBeenCalledTimes(1)
     const updater = setRightPanelModeMock.mock.calls[0]?.[0]
     expect(typeof updater).toBe('function')
-    expect(updater('abilities')).toBe('artifacts')
+    expect(updater('agents')).toBe('artifacts')
   })
 
-  it('能力模式会替换主对话区为扩展页，并隐藏文件栏', () => {
-    rightPanelModeOverride = 'abilities'
+  it('技能模式会替换主对话区为资源页，并隐藏文件栏', () => {
+    rightPanelModeOverride = 'skills'
 
     const html = renderToStaticMarkup(<UnifiedPage />)
 

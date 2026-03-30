@@ -17,6 +17,7 @@ import { pickEntryConversation } from '../utils/space-entry-conversation'
 import { getWindowChromeInsets } from '../utils/window-chrome'
 import { useTranslation } from '../i18n'
 import type { ConversationMeta, CreateSpaceInput } from '../types'
+import type { ResourceType } from '../components/resources/types'
 
 function pickPreferredSpace<T extends { id: string }>(
   currentSpace: T | null,
@@ -145,7 +146,7 @@ export function UnifiedPage() {
   const loadingSpaceIdsRef = useRef<Set<string>>(new Set())
   const conversationSelectTicketRef = useRef(0)
   const [artifactRailExpanded, setArtifactRailExpanded] = useState(false)
-  const [rightPanelMode, setRightPanelMode] = useState<'artifacts' | 'abilities'>('artifacts')
+  const [rightPanelMode, setRightPanelMode] = useState<'artifacts' | 'skills' | 'agents'>('artifacts')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_WIDTH_DEFAULT)
   const sidebarIsResizingRef = useRef(false)
@@ -442,8 +443,9 @@ export function UnifiedPage() {
     closeConversationTabs(spaceId, conversationId)
   }, [closeConversationTabs, deleteConversation])
 
-  const handleOpenAbilities = useCallback(() => {
-    setRightPanelMode((prev) => (prev === 'abilities' ? 'artifacts' : 'abilities'))
+  const handleOpenResourceLibrary = useCallback((type: ResourceType) => {
+    const targetMode = type === 'skill' ? 'skills' : 'agents'
+    setRightPanelMode((prev) => (prev === targetMode ? 'artifacts' : targetMode))
   }, [])
 
   const isWorkbenchSpace = Boolean(currentSpace?.isTemp)
@@ -512,8 +514,10 @@ export function UnifiedPage() {
           onDeleteSpace={handleDeleteSpace}
           onRenameConversation={handleRenameConversation}
           onDeleteConversation={handleDeleteConversation}
-          onOpenAbilities={handleOpenAbilities}
-          abilitiesOpen={rightPanelMode === 'abilities'}
+          onOpenSkills={() => handleOpenResourceLibrary('skill')}
+          onOpenAgents={() => handleOpenResourceLibrary('agent')}
+          skillsOpen={rightPanelMode === 'skills'}
+          agentsOpen={rightPanelMode === 'agents'}
           isCollapsed={sidebarCollapsed}
           onToggleCollapse={handleToggleSidebar}
           onGoSettings={() => setView('settings')}
@@ -537,13 +541,13 @@ export function UnifiedPage() {
           </div>
         )}
 
-        {rightPanelMode === 'abilities' ? (
+        {rightPanelMode === 'skills' || rightPanelMode === 'agents' ? (
           <div className="space-studio-pane space-studio-chat-pane flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden bg-background relative">
             <div className="drag-region flex-shrink-0 h-10 bg-background/95">
               <div className="h-full" style={topBarContentStyle} />
             </div>
             <div className="flex-1 min-h-0 overflow-hidden">
-              <ExtensionsView />
+              <ExtensionsView resourceType={rightPanelMode === 'skills' ? 'skill' : 'agent'} />
             </div>
           </div>
         ) : (

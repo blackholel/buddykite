@@ -9,7 +9,7 @@ import { useAgentsStore, type AgentDefinition } from '../../stores/agents.store'
 
 interface AgentEditorModalProps {
   agent?: AgentDefinition
-  workDir: string
+  workDir?: string
   onClose: () => void
   onSaved?: (agent: AgentDefinition) => void
 }
@@ -38,13 +38,18 @@ export function AgentEditorModal({ agent, workDir, onClose, onSaved }: AgentEdit
 
   const isEditMode = !!agent
 
-  const { loadAgentContent, createAgent, updateAgent } = useAgentsStore()
+  const {
+    loadAgentContent,
+    createAgentInLibrary,
+    updateAgent,
+    updateAgentInLibrary
+  } = useAgentsStore()
 
   useEffect(() => {
     if (isEditMode && agent) {
       const loadContent = async () => {
         setIsLoading(true)
-        const result = await loadAgentContent(agent.name, workDir)
+        const result = await loadAgentContent(agent.name, agent.source === 'space' ? workDir : undefined)
         if (result) {
           setContent(result.content)
         }
@@ -109,14 +114,16 @@ export function AgentEditorModal({ agent, workDir, onClose, onSaved }: AgentEdit
 
     try {
       if (isEditMode && agent) {
-        const success = await updateAgent(agent.path, content)
+        const success = agent.source === 'space'
+          ? await updateAgent(agent.path, content)
+          : await updateAgentInLibrary(agent.path, content)
         if (success) {
           onClose()
         } else {
           setError(t('Failed to update agent'))
         }
       } else {
-        const newAgent = await createAgent(workDir, name, content)
+        const newAgent = await createAgentInLibrary(name, content)
         if (newAgent) {
           if (onSaved) {
             onSaved(newAgent)

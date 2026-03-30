@@ -13,8 +13,11 @@ export interface ResourceCardProps {
   type: ResourceType
   index: number
   actionMode: ResourceActionMode
+  detailMode?: 'default' | 'library'
   workDir?: string
   onAfterAction?: () => void
+  autoOpen?: boolean
+  onAutoOpened?: () => void
   isActionDisabled?: boolean
   actionDisabledReason?: string
 }
@@ -58,8 +61,11 @@ export function ResourceCard({
   type,
   index,
   actionMode,
+  detailMode = 'default',
   workDir,
   onAfterAction,
+  autoOpen = false,
+  onAutoOpened,
   isActionDisabled,
   actionDisabledReason
 }: ResourceCardProps): JSX.Element {
@@ -70,6 +76,9 @@ export function ResourceCard({
   const [isLoadingContent, setIsLoadingContent] = useState(false)
   const [hasAttemptedLoadInCurrentOpen, setHasAttemptedLoadInCurrentOpen] = useState(false)
   const [isCopyingToSpace, setIsCopyingToSpace] = useState(false)
+  const [isTogglingEnabled, setIsTogglingEnabled] = useState(false)
+  const [isDeletingFromLibrary, setIsDeletingFromLibrary] = useState(false)
+  const [isShowingInFolder, setIsShowingInFolder] = useState(false)
   const contentRequestIdRef = useRef(0)
 
   const meta = useMemo(() => mapResourceMeta(resource, type), [resource, type])
@@ -91,6 +100,12 @@ export function ResourceCard({
   })
 
   const closeDialog = useCallback(() => setIsOpen(false), [])
+
+  useEffect(() => {
+    if (!autoOpen || isOpen) return
+    setIsOpen(true)
+    onAutoOpened?.()
+  }, [autoOpen, isOpen, onAutoOpened])
 
   useEffect(() => {
     if (!isOpen) return
@@ -202,6 +217,11 @@ export function ResourceCard({
   }
 
   const shouldShowAction = actionState.show
+  const isLibraryMode = detailMode === 'library'
+  const enabled = resource.enabled !== false
+  const canToggleEnabled = isLibraryMode && resource.source !== 'space'
+  const canDeleteFromLibrary = isLibraryMode && resource.source === 'app'
+  const canInsertToConversation = isLibraryMode
 
   const showActionReason = actionMode === 'copy-to-space'
     && !!actionState.reason
@@ -210,6 +230,67 @@ export function ResourceCard({
 
   const Icon = meta.icon
   const typeLabel = getTypeLabel(type, t)
+
+  const handleToggleEnabled = async (): Promise<void> => {
+    if (!canToggleEnabled || isTogglingEnabled) return
+
+    try {
+      setIsTogglingEnabled(true)
+      const nextEnabled = !enabled
+      const response = type === 'skill'
+        ? await api.setSkillEnabled({
+          source: resource.source as 'app' | 'global' | 'space' | 'installed',
+          name: resource.name,
+          namespace: resource.namespace,
+          enabled: nextEnabled
+        })
+        : await api.setAgentEnabled({
+          source: resource.source as 'app' | 'global' | 'space' | 'plugin',
+          name: resource.name,
+          namespace: resource.namespace,
+          enabled: nextEnabled
+        })
+      if (response.success) {
+        onAfterAction?.()
+      }
+    } finally {
+      setIsTogglingEnabled(false)
+    }
+  }
+
+  const handleShowInFolder = async (): Promise<void> => {
+    if (!isLibraryMode || isShowingInFolder) return
+
+    try {
+      setIsShowingInFolder(true)
+      const response = type === 'skill'
+        ? await api.showSkillInFolder(resource.path)
+        : await api.showAgentInFolder(resource.path)
+      if (response.success) {
+        onAfterAction?.()
+      }
+    } finally {
+      setIsShowingInFolder(false)
+    }
+  }
+
+  const handleDeleteFromLibrary = async (): Promise<void> => {
+    if (!canDeleteFromLibrary || isDeletingFromLibrary) return
+    if (!window.confirm(t('Delete this resource from library?'))) return
+
+    try {
+      setIsDeletingFromLibrary(true)
+      const response = type === 'skill'
+        ? await api.deleteSkillFromLibrary(resource.path)
+        : await api.deleteAgentFromLibrary(resource.path)
+      if (response.success) {
+        onAfterAction?.()
+        closeDialog()
+      }
+    } finally {
+      setIsDeletingFromLibrary(false)
+    }
+  }
 
   const modal = isOpen ? (
     <div
@@ -291,6 +372,50 @@ export function ResourceCard({
               <div className="text-muted-foreground">{t('No content')}</div>
             )}
           </div>
+
+          {isLibraryMode && (
+            <div className="glass-subtle rounded-xl p-3">
+              <div className="text-muted-foreground mb-2">{t('Actions')}</div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => void handleCopyToSpaceAction()}
+                  disabled={!workDir || isCopyingToSpace}
+                  className="px-2.5 py-1 rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition-colors disabled:opacity-50"
+                >
+                  {isCopyingToSpace ? t('Loading...') : t('插入到对话')}
+                </button>
+                {canToggleEnabled && (
+                  <button
+                    type="button"
+                    onClick={() => void handleToggleEnabled()}
+                    disabled={isTogglingEnabled}
+                    className="px-2.5 py-1 rounded-md bg-secondary text-foreground hover:bg-secondary/80 transition-colors disabled:opacity-50"
+                  >
+                    {isTogglingEnabled ? t('Loading...') : (enabled ? t('停用') : t('启用'))}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => void handleShowInFolder()}
+                  disabled={isShowingInFolder}
+                  className="px-2.5 py-1 rounded-md bg-secondary text-foreground hover:bg-secondary/80 transition-colors disabled:opacity-50"
+                >
+                  {isShowingInFolder ? t('Loading...') : t('打开所在文件夹')}
+                </button>
+                {canDeleteFromLibrary && (
+                  <button
+                    type="button"
+                    onClick={() => void handleDeleteFromLibrary()}
+                    disabled={isDeletingFromLibrary}
+                    className="px-2.5 py-1 rounded-md bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors disabled:opacity-50"
+                  >
+                    {isDeletingFromLibrary ? t('Loading...') : t('删除')}
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

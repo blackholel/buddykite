@@ -10,13 +10,20 @@
  * Each skill is a directory containing a SKILL.md file with frontmatter metadata.
  */
 
-import { join, dirname, resolve } from 'path'
+import { join, dirname, resolve, basename } from 'path'
 import { readdirSync, readFileSync, statSync, existsSync, mkdirSync, writeFileSync, rmSync, copyFileSync } from 'fs'
 import { getConfig } from './config.service'
 import { getLockedConfigSourceMode, getLockedUserConfigRootDir } from './config-source-mode.service'
 import { getSpaceConfig } from './space-config.service'
 import { listEnabledPlugins } from './plugins.service'
 import { getAllSpacePaths } from './space.service'
+import { getKiteSkillsDir } from './kite-library.service'
+import {
+  buildResourceLibraryStateKey,
+  deleteResourceState,
+  readResourceLibraryState,
+  setResourceEnabledState
+} from './resource-library-state.service'
 import { resolveResourceRuntimePolicy } from './resource-runtime-policy.service'
 import type { ResourceRef, CopyToSpaceOptions, CopyToSpaceResult } from './resource-ref.service'
 import { isPathWithinBasePaths, isValidDirectoryPath, isFileNotFoundError } from '../utils/path-validation'
@@ -40,6 +47,7 @@ export interface SkillDefinition {
   displayName?: string
   path: string
   source: 'app' | 'global' | 'space' | 'installed'
+  enabled?: boolean
   description?: string
   triggers?: string[]
   category?: string
@@ -58,6 +66,12 @@ export interface SkillLookupResult {
   skill: SkillDefinition | null
   ambiguous: SkillDefinition[]
   matchedBy: 'exact' | 'alias' | null
+}
+
+export interface SkillEnabledIdentity {
+  source: SkillDefinition['source']
+  name: string
+  namespace?: string
 }
 
 export type SopAction =
@@ -571,6 +585,7 @@ function scanSkillDir(
           name: entry,
           path: skillPath,
           source,
+          enabled: true,
           exposure: resolveResourceExposure({
             type: 'skill',
             source,
@@ -603,6 +618,22 @@ function mergeSkills(globalSkills: SkillDefinition[], spaceSkills: SkillDefiniti
   return Array.from(merged.values())
 }
 
+function applyEnabledState(skills: SkillDefinition[], configRootDir: string): SkillDefinition[] {
+  const state = readResourceLibraryState(configRootDir)
+  return skills.map((skill) => {
+    if (skill.source === 'space') {
+      return { ...skill, enabled: true }
+    }
+
+    const key = buildResourceLibraryStateKey('skill', skill.source, skill.name, skill.namespace)
+    const stateEntry = state.resources[key]
+    return {
+      ...skill,
+      enabled: stateEntry ? stateEntry.enabled !== false : true
+    }
+  })
+}
+
 function buildGlobalSkills(locale?: string): SkillDefinition[] {
   const sourceMode = getLockedConfigSourceMode()
   const skills: SkillDefinition[] = []
@@ -633,8 +664,9 @@ function buildGlobalSkills(locale?: string): SkillDefinition[] {
     }
   }
 
-  // 1. App-level skills ({locked-user-root}/skills/)
-  addSkills(scanSkillDir(join(getLockedUserConfigRootDir(), 'skills'), 'app', getLockedUserConfigRootDir(), undefined, undefined, undefined, locale))
+  // 1. App-level skills (Kite Library /Skills)
+  const userRoot = getLockedUserConfigRootDir()
+  addSkills(scanSkillDir(getKiteSkillsDir(userRoot), 'app', userRoot, undefined, undefined, undefined, locale))
 
   // 2. Kite mode only: global custom paths from config.claudeCode.plugins.globalPaths
   if (sourceMode === 'kite') {
@@ -650,7 +682,7 @@ function buildGlobalSkills(locale?: string): SkillDefinition[] {
     }
   }
 
-  return skills
+  return applyEnabledState(skills, userRoot)
 }
 
 function buildSpaceSkills(workDir: string, locale?: string): SkillDefinition[] {
@@ -834,6 +866,7 @@ export function createSkill(workDir: string, name: string, content: string): Ski
     name,
     path: skillDir,
     source: 'space',
+    enabled: true,
     exposure,
     description,
     triggers,
@@ -1038,4 +1071,123 @@ export function invalidateSkillsCache(workDir?: string | null): void {
   spaceSkillsCacheByLocale.delete(workDir)
   contentCache.clearForDir(workDir)
   listLogSignatureCache.clear()
+}
+
+function getLibrarySkillDir(name: string): string {
+  return join(getKiteSkillsDir(getLockedUserConfigRootDir()), name)
+}
+
+function getLibrarySkillMdPath(skillPathOrDir: string): string {
+  return skillPathOrDir.endsWith('SKILL.md')
+    ? skillPathOrDir
+    : join(skillPathOrDir, 'SKILL.md')
+}
+
+function isLibrarySkillPath(skillPathOrDir: string): boolean {
+  const libraryBase = getKiteSkillsDir(getLockedUserConfigRootDir())
+  const skillMdPath = getLibrarySkillMdPath(skillPathOrDir)
+  return isPathWithinBasePaths(skillMdPath, [libraryBase])
+}
+
+function parseSkillContentMetadata(content: string, skillName: string): {
+  description?: string
+  displayName?: string
+  triggers?: string[]
+  category?: string
+  exposure: ResourceExposure
+} {
+  const frontmatter = parseFrontmatter(content)
+  return {
+    description: getFrontmatterString(frontmatter, ['description']),
+    displayName: getFrontmatterString(frontmatter, ['name', 'title']),
+    triggers: getFrontmatterStringArray(frontmatter, ['triggers']),
+    category: getFrontmatterString(frontmatter, ['category']),
+    exposure: resolveResourceExposure({
+      type: 'skill',
+      source: 'app',
+      name: skillName,
+      frontmatterExposure: frontmatter?.exposure
+    })
+  }
+}
+
+export function createSkillInLibrary(name: string, content: string): SkillDefinition {
+  if (!name || name.includes('/') || name.includes('\\') || name.includes('..') || name.startsWith('.')) {
+    throw new Error(`Invalid skill name: ${name}`)
+  }
+
+  const skillDir = getLibrarySkillDir(name)
+  mkdirSync(skillDir, { recursive: true })
+  writeFileSync(join(skillDir, 'SKILL.md'), content, 'utf-8')
+  setResourceEnabledState(buildResourceLibraryStateKey('skill', 'app', name), true, getLockedUserConfigRootDir())
+  clearSkillsCache()
+
+  const metadata = parseSkillContentMetadata(content, name)
+  return {
+    name,
+    path: skillDir,
+    source: 'app',
+    enabled: true,
+    exposure: metadata.exposure,
+    description: metadata.description,
+    triggers: metadata.triggers,
+    category: metadata.category,
+    ...(metadata.displayName && { displayName: metadata.displayName })
+  }
+}
+
+export function updateSkillInLibrary(skillPath: string, content: string): boolean {
+  try {
+    if (!isLibrarySkillPath(skillPath)) {
+      console.warn(`[Skills] Cannot update library skill outside of Kite/Skills: ${skillPath}`)
+      return false
+    }
+
+    const skillMdPath = getLibrarySkillMdPath(skillPath)
+    if (!existsSync(skillMdPath)) {
+      console.warn(`[Skills] Library skill file not found: ${skillMdPath}`)
+      return false
+    }
+    writeFileSync(skillMdPath, content, 'utf-8')
+    clearSkillsCache()
+    return true
+  } catch (error) {
+    console.error('[Skills] Failed to update library skill:', error)
+    return false
+  }
+}
+
+export function deleteSkillFromLibrary(skillPath: string): boolean {
+  try {
+    if (!isLibrarySkillPath(skillPath)) {
+      console.warn(`[Skills] Cannot delete library skill outside of Kite/Skills: ${skillPath}`)
+      return false
+    }
+
+    const skillMdPath = getLibrarySkillMdPath(skillPath)
+    if (!existsSync(skillMdPath)) {
+      console.warn(`[Skills] Library skill file not found: ${skillMdPath}`)
+      return false
+    }
+
+    const skillDir = dirname(skillMdPath)
+    const skillName = basename(skillDir)
+    rmSync(skillDir, { recursive: true, force: true })
+    deleteResourceState(buildResourceLibraryStateKey('skill', 'app', skillName), getLockedUserConfigRootDir())
+    clearSkillsCache()
+    return true
+  } catch (error) {
+    console.error('[Skills] Failed to delete library skill:', error)
+    return false
+  }
+}
+
+export function setSkillEnabledState(identity: SkillEnabledIdentity, enabled: boolean): boolean {
+  if (identity.source === 'space') {
+    return false
+  }
+  const key = buildResourceLibraryStateKey('skill', identity.source, identity.name, identity.namespace)
+  setResourceEnabledState(key, enabled, getLockedUserConfigRootDir())
+  clearSkillsCache()
+  return true
 }

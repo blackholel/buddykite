@@ -4,13 +4,18 @@
  * Handles IPC communication for skills management between renderer and main process.
  */
 
-import { ipcMain } from 'electron'
+import { ipcMain, shell } from 'electron'
+import { join } from 'path'
 import {
   listSkills,
   getSkillContent,
   createSkill,
+  createSkillInLibrary,
   updateSkill,
+  updateSkillInLibrary,
   deleteSkill,
+  deleteSkillFromLibrary,
+  setSkillEnabledState,
   saveSopSkill,
   copySkillToSpaceByRef,
   clearSkillsCache,
@@ -18,6 +23,8 @@ import {
 } from '../services/skills.service'
 import { clearAgentsCache, invalidateAgentsCache } from '../services/agents.service'
 import { clearPluginsCache } from '../services/plugins.service'
+import { importSkillDirectory } from '../services/resource-library-import.service'
+import { generateSkillDraft } from '../services/resource-draft-generator.service'
 import type { ResourceRef } from '../services/resource-ref.service'
 import { isResourceListView } from '../../shared/resource-access'
 import {
@@ -25,6 +32,8 @@ import {
   rebuildAllResourceIndexes,
   rebuildResourceIndex
 } from '../services/resource-index.service'
+import { getKiteSkillsDir } from '../services/kite-library.service'
+import { getLockedUserConfigRootDir } from '../services/config-source-mode.service'
 
 export function registerSkillsHandlers(): void {
   // List all available skills
@@ -66,12 +75,45 @@ export function registerSkillsHandlers(): void {
     }
   })
 
+  ipcMain.handle('skills:create-library', async (_event, name: string, content: string) => {
+    try {
+      const skill = createSkillInLibrary(name, content)
+      return { success: true, data: skill }
+    } catch (error: unknown) {
+      const err = error as Error
+      return { success: false, error: err.message }
+    }
+  })
+
+  ipcMain.handle('skills:generate-draft', async (_event, description: string) => {
+    try {
+      const draft = generateSkillDraft(description)
+      return { success: true, data: draft }
+    } catch (error: unknown) {
+      const err = error as Error
+      return { success: false, error: err.message }
+    }
+  })
+
   // Update an existing skill
   ipcMain.handle('skills:update', async (_event, skillPath: string, content: string) => {
     try {
       const result = updateSkill(skillPath, content)
       if (!result) {
         return { success: false, error: 'Failed to update skill' }
+      }
+      return { success: true, data: true }
+    } catch (error: unknown) {
+      const err = error as Error
+      return { success: false, error: err.message }
+    }
+  })
+
+  ipcMain.handle('skills:update-library', async (_event, skillPath: string, content: string) => {
+    try {
+      const result = updateSkillInLibrary(skillPath, content)
+      if (!result) {
+        return { success: false, error: 'Failed to update library skill' }
       }
       return { success: true, data: true }
     } catch (error: unknown) {
@@ -114,6 +156,83 @@ export function registerSkillsHandlers(): void {
       if (!result) {
         return { success: false, error: 'Failed to delete skill' }
       }
+      return { success: true, data: true }
+    } catch (error: unknown) {
+      const err = error as Error
+      return { success: false, error: err.message }
+    }
+  })
+
+  ipcMain.handle('skills:delete-library', async (_event, skillPath: string) => {
+    try {
+      const result = deleteSkillFromLibrary(skillPath)
+      if (!result) {
+        return { success: false, error: 'Failed to delete library skill' }
+      }
+      return { success: true, data: true }
+    } catch (error: unknown) {
+      const err = error as Error
+      return { success: false, error: err.message }
+    }
+  })
+
+  ipcMain.handle(
+    'skills:set-enabled',
+    async (_event, payload: { source: 'app' | 'global' | 'space' | 'installed'; name: string; namespace?: string; enabled: boolean }) => {
+      try {
+        const result = setSkillEnabledState(
+          {
+            source: payload.source,
+            name: payload.name,
+            namespace: payload.namespace
+          },
+          payload.enabled
+        )
+        if (!result) {
+          return { success: false, error: 'Failed to update skill enabled state' }
+        }
+        return { success: true, data: true }
+      } catch (error: unknown) {
+        const err = error as Error
+        return { success: false, error: err.message }
+      }
+    }
+  )
+
+  ipcMain.handle('skills:open-library-folder', async () => {
+    try {
+      const libraryPath = getKiteSkillsDir(getLockedUserConfigRootDir())
+      const error = await shell.openPath(libraryPath)
+      if (error) return { success: false, error }
+      return { success: true, data: true }
+    } catch (error: unknown) {
+      const err = error as Error
+      return { success: false, error: err.message }
+    }
+  })
+
+  ipcMain.handle(
+    'skills:import-from-path',
+    async (_event, sourcePath: string, options?: { overwrite?: boolean }) => {
+      try {
+        const result = importSkillDirectory(sourcePath, options)
+        if (result.status === 'imported') {
+          clearSkillsCache()
+        }
+        return { success: true, data: result }
+      } catch (error: unknown) {
+        const err = error as Error
+        return { success: false, error: err.message }
+      }
+    }
+  )
+
+  ipcMain.handle('skills:show-item-in-folder', async (_event, skillPath: string) => {
+    try {
+      const targetPath = skillPath.endsWith('SKILL.md')
+        ? skillPath
+        : join(skillPath, 'SKILL.md')
+      shell.showItemInFolder(targetPath)
       return { success: true, data: true }
     } catch (error: unknown) {
       const err = error as Error

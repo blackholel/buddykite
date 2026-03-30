@@ -101,10 +101,12 @@ describe('UnifiedSidebar actions', () => {
     onDeleteSpace: vi.fn(async (_spaceId: string) => true),
     onRenameConversation: vi.fn(async (_spaceId: string, _conversationId: string, _title: string) => {}),
     onDeleteConversation: vi.fn(async (_spaceId: string, _conversationId: string) => {}),
-    onOpenAbilities: vi.fn(),
+    onOpenSkills: vi.fn(),
+    onOpenAgents: vi.fn(),
     onToggleCollapse: vi.fn(),
     onGoSettings: vi.fn(),
-    abilitiesOpen: false,
+    skillsOpen: false,
+    agentsOpen: false,
     isCollapsed: false
   }
 
@@ -114,6 +116,26 @@ describe('UnifiedSidebar actions', () => {
         handler.mockClear()
       }
     })
+  })
+
+  it('点击技能与智能体入口触发对应切换动作', async () => {
+    const renderer = createRenderer()
+    await renderer.render(
+      <UnifiedSidebar
+        spaces={[normalSpace]}
+        currentSpaceId="space-a"
+        currentConversationId={null}
+        conversationsBySpaceId={new Map([['space-a', []]])}
+        {...handlers}
+      />
+    )
+
+    await userClick(renderer.container.querySelector('button[aria-label="技能"]'))
+    await userClick(renderer.container.querySelector('button[aria-label="智能体"]'))
+
+    expect(handlers.onOpenSkills).toHaveBeenCalledTimes(1)
+    expect(handlers.onOpenAgents).toHaveBeenCalledTimes(1)
+    await renderer.unmount()
   })
 
   it('点击工作区行 + 会直接调用新建会话', async () => {

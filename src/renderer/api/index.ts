@@ -815,6 +815,20 @@ export const api = {
     return httpRequest('POST', '/api/skills', { workDir, name, content })
   },
 
+  createSkillInLibrary: async (name: string, content: string): Promise<ApiResponse> => {
+    if (isElectron()) {
+      return window.kite.createSkillInLibrary(name, content)
+    }
+    return { success: false, error: 'Only available in desktop app' }
+  },
+
+  generateSkillDraft: async (description: string): Promise<ApiResponse> => {
+    if (isElectron()) {
+      return window.kite.generateSkillDraft(description)
+    }
+    return { success: false, error: 'Only available in desktop app' }
+  },
+
   saveSopSkill: async (payload: {
     workDir: string
     skillName: string
@@ -853,11 +867,61 @@ export const api = {
     return httpRequest('PUT', '/api/skills', { skillPath, content })
   },
 
+  updateSkillInLibrary: async (skillPath: string, content: string): Promise<ApiResponse> => {
+    if (isElectron()) {
+      return window.kite.updateSkillInLibrary(skillPath, content)
+    }
+    return { success: false, error: 'Only available in desktop app' }
+  },
+
   deleteSkill: async (skillPath: string): Promise<ApiResponse> => {
     if (isElectron()) {
       return window.kite.deleteSkill(skillPath)
     }
     return httpRequest('DELETE', `/api/skills?path=${encodeURIComponent(skillPath)}`)
+  },
+
+  deleteSkillFromLibrary: async (skillPath: string): Promise<ApiResponse> => {
+    if (isElectron()) {
+      return window.kite.deleteSkillFromLibrary(skillPath)
+    }
+    return { success: false, error: 'Only available in desktop app' }
+  },
+
+  setSkillEnabled: async (payload: {
+    source: 'app' | 'global' | 'space' | 'installed'
+    name: string
+    namespace?: string
+    enabled: boolean
+  }): Promise<ApiResponse> => {
+    if (isElectron()) {
+      return window.kite.setSkillEnabled(payload)
+    }
+    return { success: false, error: 'Only available in desktop app' }
+  },
+
+  openSkillsLibraryFolder: async (): Promise<ApiResponse> => {
+    if (isElectron()) {
+      return window.kite.openSkillsLibraryFolder()
+    }
+    return { success: false, error: 'Only available in desktop app' }
+  },
+
+  importSkillToLibrary: async (
+    sourcePath: string,
+    options?: { overwrite?: boolean }
+  ): Promise<ApiResponse> => {
+    if (isElectron()) {
+      return window.kite.importSkillToLibrary(sourcePath, options)
+    }
+    return { success: false, error: 'Only available in desktop app' }
+  },
+
+  showSkillInFolder: async (skillPath: string): Promise<ApiResponse> => {
+    if (isElectron()) {
+      return window.kite.showSkillInFolder(skillPath)
+    }
+    return { success: false, error: 'Only available in desktop app' }
   },
 
   copySkillToSpaceByRef: async (
@@ -918,6 +982,20 @@ export const api = {
     return httpRequest('POST', '/api/agents', { workDir, name, content })
   },
 
+  createAgentInLibrary: async (name: string, content: string): Promise<ApiResponse> => {
+    if (isElectron()) {
+      return window.kite.createAgentInLibrary(name, content)
+    }
+    return { success: false, error: 'Only available in desktop app' }
+  },
+
+  generateAgentDraft: async (description: string): Promise<ApiResponse> => {
+    if (isElectron()) {
+      return window.kite.generateAgentDraft(description)
+    }
+    return { success: false, error: 'Only available in desktop app' }
+  },
+
   updateAgent: async (agentPath: string, content: string): Promise<ApiResponse> => {
     if (isElectron()) {
       return window.kite.updateAgent(agentPath, content)
@@ -925,11 +1003,61 @@ export const api = {
     return httpRequest('PUT', '/api/agents', { agentPath, content })
   },
 
+  updateAgentInLibrary: async (agentPath: string, content: string): Promise<ApiResponse> => {
+    if (isElectron()) {
+      return window.kite.updateAgentInLibrary(agentPath, content)
+    }
+    return { success: false, error: 'Only available in desktop app' }
+  },
+
   deleteAgent: async (agentPath: string): Promise<ApiResponse> => {
     if (isElectron()) {
       return window.kite.deleteAgent(agentPath)
     }
     return httpRequest('DELETE', `/api/agents?path=${encodeURIComponent(agentPath)}`)
+  },
+
+  deleteAgentFromLibrary: async (agentPath: string): Promise<ApiResponse> => {
+    if (isElectron()) {
+      return window.kite.deleteAgentFromLibrary(agentPath)
+    }
+    return { success: false, error: 'Only available in desktop app' }
+  },
+
+  setAgentEnabled: async (payload: {
+    source: 'app' | 'global' | 'space' | 'plugin'
+    name: string
+    namespace?: string
+    enabled: boolean
+  }): Promise<ApiResponse> => {
+    if (isElectron()) {
+      return window.kite.setAgentEnabled(payload)
+    }
+    return { success: false, error: 'Only available in desktop app' }
+  },
+
+  openAgentsLibraryFolder: async (): Promise<ApiResponse> => {
+    if (isElectron()) {
+      return window.kite.openAgentsLibraryFolder()
+    }
+    return { success: false, error: 'Only available in desktop app' }
+  },
+
+  importAgentToLibrary: async (
+    sourcePath: string,
+    options?: { overwrite?: boolean }
+  ): Promise<ApiResponse> => {
+    if (isElectron()) {
+      return window.kite.importAgentToLibrary(sourcePath, options)
+    }
+    return { success: false, error: 'Only available in desktop app' }
+  },
+
+  showAgentInFolder: async (agentPath: string): Promise<ApiResponse> => {
+    if (isElectron()) {
+      return window.kite.showAgentInFolder(agentPath)
+    }
+    return { success: false, error: 'Only available in desktop app' }
   },
 
   copyAgentToSpaceByRef: async (

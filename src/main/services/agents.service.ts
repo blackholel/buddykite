@@ -9,13 +9,20 @@
  * Each agent is a markdown file (.md) containing agent instructions.
  */
 
-import { join, dirname, resolve } from 'path'
+import { join, dirname, resolve, basename } from 'path'
 import { readdirSync, readFileSync, statSync, existsSync, mkdirSync, writeFileSync, rmSync, copyFileSync } from 'fs'
 import { getConfig } from './config.service'
 import { getLockedConfigSourceMode, getLockedUserConfigRootDir } from './config-source-mode.service'
 import { getSpaceConfig } from './space-config.service'
 import { getAllSpacePaths } from './space.service'
 import { resolveResourceRuntimePolicy } from './resource-runtime-policy.service'
+import { getKiteAgentsDir } from './kite-library.service'
+import {
+  buildResourceLibraryStateKey,
+  deleteResourceState,
+  readResourceLibraryState,
+  setResourceEnabledState
+} from './resource-library-state.service'
 import type { ResourceRef, CopyToSpaceOptions, CopyToSpaceResult } from './resource-ref.service'
 import { isPathWithinBasePaths, isValidDirectoryPath, isFileNotFoundError } from '../utils/path-validation'
 import { listEnabledPlugins } from './plugins.service'
@@ -38,10 +45,17 @@ export interface AgentDefinition {
   displayName?: string
   path: string
   source: 'app' | 'global' | 'space' | 'plugin'
+  enabled?: boolean
   description?: string
   pluginRoot?: string
   namespace?: string
   exposure: ResourceExposure
+}
+
+export interface AgentEnabledIdentity {
+  source: AgentDefinition['source']
+  name: string
+  namespace?: string
 }
 
 // Cache for agents list (in-memory only)
@@ -186,6 +200,7 @@ function scanAgentDir(
           name,
           path: filePath,
           source,
+          enabled: true,
           exposure: resolveResourceExposure({
             type: 'agent',
             source,
@@ -216,6 +231,22 @@ function mergeAgents(globalAgents: AgentDefinition[], spaceAgents: AgentDefiniti
   return Array.from(merged.values())
 }
 
+function applyEnabledState(agents: AgentDefinition[], configRootDir: string): AgentDefinition[] {
+  const state = readResourceLibraryState(configRootDir)
+  return agents.map((agent) => {
+    if (agent.source === 'space') {
+      return { ...agent, enabled: true }
+    }
+
+    const key = buildResourceLibraryStateKey('agent', agent.source, agent.name, agent.namespace)
+    const stateEntry = state.resources[key]
+    return {
+      ...agent,
+      enabled: stateEntry ? stateEntry.enabled !== false : true
+    }
+  })
+}
+
 function buildGlobalAgents(locale?: string): AgentDefinition[] {
   const sourceMode = getLockedConfigSourceMode()
   const agents: AgentDefinition[] = []
@@ -238,8 +269,9 @@ function buildGlobalAgents(locale?: string): AgentDefinition[] {
     addAgents(scanAgentDir(join(plugin.installPath, 'agents'), 'plugin', plugin.installPath, plugin.installPath, plugin.name, undefined, locale))
   }
 
-  // 1. App-level agents ({locked-user-root}/agents/)
-  addAgents(scanAgentDir(join(getLockedUserConfigRootDir(), 'agents'), 'app', getLockedUserConfigRootDir(), undefined, undefined, undefined, locale))
+  // 1. App-level agents (Kite Library /Agents)
+  const userRoot = getLockedUserConfigRootDir()
+  addAgents(scanAgentDir(getKiteAgentsDir(userRoot), 'app', userRoot, undefined, undefined, undefined, locale))
 
   // 2. Kite mode only: global custom paths from config.claudeCode.agents.paths
   if (sourceMode === 'kite') {
@@ -252,7 +284,7 @@ function buildGlobalAgents(locale?: string): AgentDefinition[] {
     }
   }
 
-  return agents
+  return applyEnabledState(agents, userRoot)
 }
 
 function buildSpaceAgents(workDir: string, locale?: string): AgentDefinition[] {
@@ -449,6 +481,7 @@ export function createAgent(workDir: string, name: string, content: string): Age
     name,
     path: agentPath,
     source: 'space',
+    enabled: true,
     exposure,
     description,
     ...(displayName && { displayName })
@@ -554,4 +587,93 @@ export function copyAgentToSpaceByRef(
     console.error('[Agents] Failed to copy agent to space:', error)
     return { status: 'not_found', error: (error as Error).message }
   }
+}
+
+function getLibraryAgentsDir(): string {
+  return getKiteAgentsDir(getLockedUserConfigRootDir())
+}
+
+function isLibraryAgentPath(agentPath: string): boolean {
+  return isPathWithinBasePaths(agentPath, [getLibraryAgentsDir()])
+}
+
+export function createAgentInLibrary(name: string, content: string): AgentDefinition {
+  if (!name || name.includes('/') || name.includes('\\') || name.includes('..') || name.startsWith('.')) {
+    throw new Error(`Invalid agent name: ${name}`)
+  }
+
+  const agentDir = getLibraryAgentsDir()
+  const agentPath = join(agentDir, `${name}.md`)
+  mkdirSync(agentDir, { recursive: true })
+  writeFileSync(agentPath, content, 'utf-8')
+  setResourceEnabledState(buildResourceLibraryStateKey('agent', 'app', name), true, getLockedUserConfigRootDir())
+  clearAgentsCache()
+
+  const metadata = parseResourceMetadata(content)
+  const displayName = getFrontmatterString(metadata.frontmatter, ['name', 'title'])
+  return {
+    name,
+    path: agentPath,
+    source: 'app',
+    enabled: true,
+    exposure: resolveResourceExposure({
+      type: 'agent',
+      source: 'app',
+      name,
+      frontmatterExposure: getFrontmatterString(metadata.frontmatter, ['exposure'])
+    }),
+    description: metadata.description,
+    ...(displayName && { displayName })
+  }
+}
+
+export function updateAgentInLibrary(agentPath: string, content: string): boolean {
+  try {
+    if (!isLibraryAgentPath(agentPath)) {
+      console.warn(`[Agents] Cannot update library agent outside of Kite/Agents: ${agentPath}`)
+      return false
+    }
+    if (!existsSync(agentPath)) {
+      console.warn(`[Agents] Library agent file not found: ${agentPath}`)
+      return false
+    }
+    writeFileSync(agentPath, content, 'utf-8')
+    clearAgentsCache()
+    return true
+  } catch (error) {
+    console.error('[Agents] Failed to update library agent:', error)
+    return false
+  }
+}
+
+export function deleteAgentFromLibrary(agentPath: string): boolean {
+  try {
+    if (!isLibraryAgentPath(agentPath)) {
+      console.warn(`[Agents] Cannot delete library agent outside of Kite/Agents: ${agentPath}`)
+      return false
+    }
+    if (!existsSync(agentPath)) {
+      console.warn(`[Agents] Library agent file not found: ${agentPath}`)
+      return false
+    }
+
+    const agentName = basename(agentPath).replace(/\.md$/i, '')
+    rmSync(agentPath, { force: true })
+    deleteResourceState(buildResourceLibraryStateKey('agent', 'app', agentName), getLockedUserConfigRootDir())
+    clearAgentsCache()
+    return true
+  } catch (error) {
+    console.error('[Agents] Failed to delete library agent:', error)
+    return false
+  }
+}
+
+export function setAgentEnabledState(identity: AgentEnabledIdentity, enabled: boolean): boolean {
+  if (identity.source === 'space') {
+    return false
+  }
+  const key = buildResourceLibraryStateKey('agent', identity.source, identity.name, identity.namespace)
+  setResourceEnabledState(key, enabled, getLockedUserConfigRootDir())
+  clearAgentsCache()
+  return true
 }

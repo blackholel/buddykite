@@ -23,6 +23,7 @@ export interface SkillDefinition {
   displayName?: string
   path: string
   source: 'app' | 'global' | 'space' | 'installed'
+  enabled?: boolean
   description?: string
   triggers?: string[]
   category?: string
@@ -60,8 +61,14 @@ interface SkillsState {
   loadSkillContent: (name: string, workDir?: string) => Promise<SkillContent | null>
   setSearchQuery: (query: string) => void
   createSkill: (workDir: string, name: string, content: string) => Promise<SkillDefinition | null>
+  createSkillInLibrary: (name: string, content: string) => Promise<SkillDefinition | null>
   updateSkill: (skillPath: string, content: string) => Promise<boolean>
+  updateSkillInLibrary: (skillPath: string, content: string) => Promise<boolean>
   deleteSkill: (skillPath: string) => Promise<boolean>
+  deleteSkillFromLibrary: (skillPath: string) => Promise<boolean>
+  toggleSkillEnabled: (skill: SkillDefinition, enabled?: boolean) => Promise<boolean>
+  openSkillsLibraryFolder: () => Promise<boolean>
+  showSkillInFolder: (skillPath: string) => Promise<boolean>
   copyToSpace: (
     skill: SkillDefinition,
     workDir: string,
@@ -204,6 +211,37 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
     }
   },
 
+  createSkillInLibrary: async (name, content) => {
+    try {
+      const response = await api.createSkillInLibrary(name, content)
+
+      if (response.success && response.data) {
+        const newSkill = response.data as SkillDefinition
+        set((state) => {
+          const cacheKey = getCacheKey(undefined)
+          const current = state.skillsByWorkDir[cacheKey]
+            ?? (state.loadedWorkDir === null ? state.skills : [])
+          return {
+            skills: [...current, newSkill],
+            loadedWorkDir: null,
+            skillsByWorkDir: {
+              ...state.skillsByWorkDir,
+              [cacheKey]: [...current, newSkill]
+            }
+          }
+        })
+        return newSkill
+      }
+
+      set({ error: response.error || 'Failed to create skill' })
+      return null
+    } catch (error) {
+      console.error('[SkillsStore] Failed to create skill in library:', error)
+      set({ error: 'Failed to create skill' })
+      return null
+    }
+  },
+
   // Update an existing skill
   updateSkill: async (skillPath, content) => {
     try {
@@ -258,6 +296,126 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
     } catch (error) {
       console.error('[SkillsStore] Failed to delete skill:', error)
       set({ error: 'Failed to delete skill' })
+      return false
+    }
+  },
+
+  updateSkillInLibrary: async (skillPath, content) => {
+    try {
+      const response = await api.updateSkillInLibrary(skillPath, content)
+
+      if (response.success) {
+        const { skills, selectedSkill, loadSkillContent } = get()
+        const skill = skills.find((s) => s.path === skillPath)
+        if (skill && selectedSkill?.path === skillPath) {
+          await loadSkillContent(skill.name)
+        }
+        return true
+      }
+
+      set({ error: response.error || 'Failed to update skill' })
+      return false
+    } catch (error) {
+      console.error('[SkillsStore] Failed to update library skill:', error)
+      set({ error: 'Failed to update skill' })
+      return false
+    }
+  },
+
+  deleteSkillFromLibrary: async (skillPath) => {
+    try {
+      const response = await api.deleteSkillFromLibrary(skillPath)
+      if (!response.success) {
+        set({ error: response.error || 'Failed to delete skill' })
+        return false
+      }
+
+      set((state) => {
+        const nextByWorkDir: Record<string | symbol, SkillDefinition[]> = {}
+        for (const [key, value] of Object.entries(state.skillsByWorkDir)) {
+          nextByWorkDir[key] = value.filter((item) => item.path !== skillPath)
+        }
+        return {
+          skills: state.skills.filter((item) => item.path !== skillPath),
+          skillsByWorkDir: nextByWorkDir,
+          selectedSkill: state.selectedSkill?.path === skillPath ? null : state.selectedSkill,
+          skillContent: state.selectedSkill?.path === skillPath ? null : state.skillContent
+        }
+      })
+      return true
+    } catch (error) {
+      console.error('[SkillsStore] Failed to delete library skill:', error)
+      set({ error: 'Failed to delete skill' })
+      return false
+    }
+  },
+
+  toggleSkillEnabled: async (skill, enabled) => {
+    const nextEnabled = typeof enabled === 'boolean' ? enabled : skill.enabled === false
+    try {
+      const response = await api.setSkillEnabled({
+        source: skill.source,
+        name: skill.name,
+        namespace: skill.namespace,
+        enabled: nextEnabled
+      })
+      if (!response.success) {
+        set({ error: response.error || 'Failed to update skill enabled state' })
+        return false
+      }
+
+      const isSameSkill = (item: SkillDefinition) =>
+        item.source === skill.source
+        && item.name === skill.name
+        && (item.namespace || '') === (skill.namespace || '')
+
+      set((state) => {
+        const nextByWorkDir: Record<string | symbol, SkillDefinition[]> = {}
+        for (const [key, value] of Object.entries(state.skillsByWorkDir)) {
+          nextByWorkDir[key] = value.map((item) => (isSameSkill(item) ? { ...item, enabled: nextEnabled } : item))
+        }
+        return {
+          skills: state.skills.map((item) => (isSameSkill(item) ? { ...item, enabled: nextEnabled } : item)),
+          skillsByWorkDir: nextByWorkDir,
+          selectedSkill: state.selectedSkill && isSameSkill(state.selectedSkill)
+            ? { ...state.selectedSkill, enabled: nextEnabled }
+            : state.selectedSkill
+        }
+      })
+      return true
+    } catch (error) {
+      console.error('[SkillsStore] Failed to toggle skill enabled state:', error)
+      set({ error: 'Failed to update skill enabled state' })
+      return false
+    }
+  },
+
+  openSkillsLibraryFolder: async () => {
+    try {
+      const response = await api.openSkillsLibraryFolder()
+      if (!response.success) {
+        set({ error: response.error || 'Failed to open folder' })
+        return false
+      }
+      return true
+    } catch (error) {
+      console.error('[SkillsStore] Failed to open skills library folder:', error)
+      set({ error: 'Failed to open folder' })
+      return false
+    }
+  },
+
+  showSkillInFolder: async (skillPath) => {
+    try {
+      const response = await api.showSkillInFolder(skillPath)
+      if (!response.success) {
+        set({ error: response.error || 'Failed to show item in folder' })
+        return false
+      }
+      return true
+    } catch (error) {
+      console.error('[SkillsStore] Failed to show skill in folder:', error)
+      set({ error: 'Failed to show item in folder' })
       return false
     }
   },

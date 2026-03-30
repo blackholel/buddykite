@@ -3,7 +3,7 @@
  */
 
 import { useEffect, useState } from 'react'
-import { X, Edit2, Copy, Trash2, Bot } from 'lucide-react'
+import { X, Edit2, FolderOpen, Trash2, Bot } from 'lucide-react'
 import { useTranslation } from '../../i18n'
 import { useAgentsStore, type AgentDefinition, type AgentContent } from '../../stores/agents.store'
 import { getResourceDisplayName } from '../../utils/resource-display-name'
@@ -11,7 +11,6 @@ import { MarkdownRenderer } from '../chat/MarkdownRenderer'
 
 interface AgentDetailModalProps {
   agent: AgentDefinition
-  workDir?: string
   onClose: () => void
   onEdit?: (agent: AgentDefinition) => void
 }
@@ -30,40 +29,60 @@ const SOURCE_COLORS: Record<AgentDefinition['source'], string> = {
   plugin: 'bg-orange-500/10 text-orange-500'
 }
 
-export function AgentDetailModal({ agent, workDir, onClose, onEdit }: AgentDetailModalProps) {
+export function AgentDetailModal({ agent, onClose, onEdit }: AgentDetailModalProps) {
   const { t } = useTranslation()
   const [content, setContent] = useState<AgentContent | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [isTogglingEnabled, setIsTogglingEnabled] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [isShowingInFolder, setIsShowingInFolder] = useState(false)
 
-  const { loadAgentContent, deleteAgent, copyToSpace } = useAgentsStore()
+  const {
+    loadAgentContent,
+    deleteAgentFromLibrary,
+    toggleAgentEnabled,
+    showAgentInFolder
+  } = useAgentsStore()
 
   useEffect(() => {
     const loadContent = async () => {
       setIsLoading(true)
-      const result = await loadAgentContent(agent.name, workDir)
+      const result = await loadAgentContent(agent.name)
       setContent(result)
       setIsLoading(false)
     }
     loadContent()
-  }, [agent.name, workDir, loadAgentContent])
+  }, [agent.name, loadAgentContent])
 
-  const handleCopyToSpace = async () => {
-    if (workDir && agent.source !== 'space') {
-      const result = await copyToSpace(agent, workDir)
-      if (result.status === 'conflict') {
-        const overwrite = window.confirm(t('Already added. Overwrite existing resource?'))
-        if (overwrite) {
-          await copyToSpace(agent, workDir, { overwrite: true })
-        }
-      }
-      onClose()
+  const handleToggleEnabled = async () => {
+    if (agent.source === 'space' || isTogglingEnabled) return
+    setIsTogglingEnabled(true)
+    try {
+      await toggleAgentEnabled(agent)
+    } finally {
+      setIsTogglingEnabled(false)
+    }
+  }
+
+  const handleShowInFolder = async () => {
+    if (isShowingInFolder) return
+    setIsShowingInFolder(true)
+    try {
+      await showAgentInFolder(agent.path)
+    } finally {
+      setIsShowingInFolder(false)
     }
   }
 
   const handleDelete = async () => {
-    if (agent.source === 'space') {
-      await deleteAgent(agent.path)
-      onClose()
+    if (agent.source !== 'app' || isDeleting) return
+    if (!window.confirm(t('Delete this resource from library?'))) return
+    setIsDeleting(true)
+    try {
+      const success = await deleteAgentFromLibrary(agent.path)
+      if (success) onClose()
+    } finally {
+      setIsDeleting(false)
     }
   }
 
@@ -84,9 +103,10 @@ export function AgentDetailModal({ agent, workDir, onClose, onEdit }: AgentDetai
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [onClose])
 
-  const canEdit = agent.source === 'space'
-  const canDelete = agent.source === 'space'
-  const canCopyToSpace = agent.source !== 'space' && workDir
+  const canEdit = agent.source === 'app'
+  const canDelete = agent.source === 'app'
+  const canToggleEnabled = agent.source !== 'space'
+  const isEnabled = agent.enabled !== false
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -141,27 +161,37 @@ export function AgentDetailModal({ agent, workDir, onClose, onEdit }: AgentDetai
 
         <div className="flex items-center justify-between px-6 py-4 border-t border-border/50 bg-muted/30">
           <div className="flex items-center gap-2">
-            {canCopyToSpace && (
+            {canToggleEnabled && (
               <button
-                onClick={handleCopyToSpace}
+                onClick={handleToggleEnabled}
+                disabled={isTogglingEnabled}
                 className="flex items-center gap-2 px-3 py-2 rounded-lg
-                  hover:bg-muted text-muted-foreground transition-colors"
+                  hover:bg-muted text-muted-foreground transition-colors disabled:opacity-50"
               >
-                <Copy size={16} />
-                <span className="text-sm">{t('Copy to Space')}</span>
+                <span className="text-sm">{isTogglingEnabled ? t('Loading...') : (isEnabled ? t('停用') : t('启用'))}</span>
               </button>
             )}
+            <button
+              onClick={handleShowInFolder}
+              disabled={isShowingInFolder}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg
+                hover:bg-muted text-muted-foreground transition-colors disabled:opacity-50"
+            >
+              <FolderOpen size={16} />
+              <span className="text-sm">{isShowingInFolder ? t('Loading...') : t('打开所在文件夹')}</span>
+            </button>
           </div>
 
           <div className="flex items-center gap-2">
             {canDelete && (
               <button
                 onClick={handleDelete}
+                disabled={isDeleting}
                 className="flex items-center gap-2 px-3 py-2 rounded-lg
-                  hover:bg-destructive/10 text-destructive transition-colors"
+                  hover:bg-destructive/10 text-destructive transition-colors disabled:opacity-50"
               >
                 <Trash2 size={16} />
-                <span className="text-sm">{t('Delete')}</span>
+                <span className="text-sm">{isDeleting ? t('Loading...') : t('Delete')}</span>
               </button>
             )}
 

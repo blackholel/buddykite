@@ -23,6 +23,7 @@ export interface AgentDefinition {
   displayName?: string
   path: string
   source: 'app' | 'global' | 'space' | 'plugin'
+  enabled?: boolean
   description?: string
   namespace?: string
   exposure: ResourceExposure
@@ -54,8 +55,14 @@ interface AgentsState {
   loadAgentContent: (name: string, workDir?: string) => Promise<AgentContent | null>
   setSearchQuery: (query: string) => void
   createAgent: (workDir: string, name: string, content: string) => Promise<AgentDefinition | null>
+  createAgentInLibrary: (name: string, content: string) => Promise<AgentDefinition | null>
   updateAgent: (agentPath: string, content: string) => Promise<boolean>
+  updateAgentInLibrary: (agentPath: string, content: string) => Promise<boolean>
   deleteAgent: (agentPath: string) => Promise<boolean>
+  deleteAgentFromLibrary: (agentPath: string) => Promise<boolean>
+  toggleAgentEnabled: (agent: AgentDefinition, enabled?: boolean) => Promise<boolean>
+  openAgentsLibraryFolder: () => Promise<boolean>
+  showAgentInFolder: (agentPath: string) => Promise<boolean>
   copyToSpace: (
     agent: AgentDefinition,
     workDir: string,
@@ -195,6 +202,37 @@ export const useAgentsStore = create<AgentsState>((set, get) => ({
     }
   },
 
+  createAgentInLibrary: async (name, content) => {
+    try {
+      const response = await api.createAgentInLibrary(name, content)
+
+      if (response.success && response.data) {
+        const newAgent = response.data as AgentDefinition
+        set((state) => {
+          const cacheKey = getCacheKey(undefined)
+          const current = state.agentsByWorkDir[cacheKey]
+            ?? (state.loadedWorkDir === null ? state.agents : [])
+          return {
+            agents: [...current, newAgent],
+            loadedWorkDir: null,
+            agentsByWorkDir: {
+              ...state.agentsByWorkDir,
+              [cacheKey]: [...current, newAgent]
+            }
+          }
+        })
+        return newAgent
+      }
+
+      set({ error: response.error || 'Failed to create agent' })
+      return null
+    } catch (error) {
+      console.error('[AgentsStore] Failed to create agent in library:', error)
+      set({ error: 'Failed to create agent' })
+      return null
+    }
+  },
+
   // Update an existing agent
   updateAgent: async (agentPath, content) => {
     try {
@@ -241,6 +279,123 @@ export const useAgentsStore = create<AgentsState>((set, get) => ({
     } catch (error) {
       console.error('[AgentsStore] Failed to delete agent:', error)
       set({ error: 'Failed to delete agent' })
+      return false
+    }
+  },
+
+  updateAgentInLibrary: async (agentPath, content) => {
+    try {
+      const response = await api.updateAgentInLibrary(agentPath, content)
+      if (!response.success) {
+        set({ error: response.error || 'Failed to update agent' })
+        return false
+      }
+      const { agents, selectedAgent, loadAgentContent } = get()
+      const target = agents.find((agent) => agent.path === agentPath)
+      if (target && selectedAgent?.path === agentPath) {
+        await loadAgentContent(target.name)
+      }
+      return true
+    } catch (error) {
+      console.error('[AgentsStore] Failed to update library agent:', error)
+      set({ error: 'Failed to update agent' })
+      return false
+    }
+  },
+
+  deleteAgentFromLibrary: async (agentPath) => {
+    try {
+      const response = await api.deleteAgentFromLibrary(agentPath)
+      if (!response.success) {
+        set({ error: response.error || 'Failed to delete agent' })
+        return false
+      }
+      set((state) => {
+        const nextByWorkDir: Record<string | symbol, AgentDefinition[]> = {}
+        for (const [key, value] of Object.entries(state.agentsByWorkDir)) {
+          nextByWorkDir[key] = value.filter((item) => item.path !== agentPath)
+        }
+        return {
+          agents: state.agents.filter((item) => item.path !== agentPath),
+          agentsByWorkDir: nextByWorkDir,
+          selectedAgent: state.selectedAgent?.path === agentPath ? null : state.selectedAgent,
+          agentContent: state.selectedAgent?.path === agentPath ? null : state.agentContent
+        }
+      })
+      return true
+    } catch (error) {
+      console.error('[AgentsStore] Failed to delete library agent:', error)
+      set({ error: 'Failed to delete agent' })
+      return false
+    }
+  },
+
+  toggleAgentEnabled: async (agent, enabled) => {
+    const nextEnabled = typeof enabled === 'boolean' ? enabled : agent.enabled === false
+    try {
+      const response = await api.setAgentEnabled({
+        source: agent.source,
+        name: agent.name,
+        namespace: agent.namespace,
+        enabled: nextEnabled
+      })
+      if (!response.success) {
+        set({ error: response.error || 'Failed to update agent enabled state' })
+        return false
+      }
+
+      const isSameAgent = (item: AgentDefinition) =>
+        item.source === agent.source
+        && item.name === agent.name
+        && (item.namespace || '') === (agent.namespace || '')
+
+      set((state) => {
+        const nextByWorkDir: Record<string | symbol, AgentDefinition[]> = {}
+        for (const [key, value] of Object.entries(state.agentsByWorkDir)) {
+          nextByWorkDir[key] = value.map((item) => (isSameAgent(item) ? { ...item, enabled: nextEnabled } : item))
+        }
+        return {
+          agents: state.agents.map((item) => (isSameAgent(item) ? { ...item, enabled: nextEnabled } : item)),
+          agentsByWorkDir: nextByWorkDir,
+          selectedAgent: state.selectedAgent && isSameAgent(state.selectedAgent)
+            ? { ...state.selectedAgent, enabled: nextEnabled }
+            : state.selectedAgent
+        }
+      })
+      return true
+    } catch (error) {
+      console.error('[AgentsStore] Failed to toggle agent enabled state:', error)
+      set({ error: 'Failed to update agent enabled state' })
+      return false
+    }
+  },
+
+  openAgentsLibraryFolder: async () => {
+    try {
+      const response = await api.openAgentsLibraryFolder()
+      if (!response.success) {
+        set({ error: response.error || 'Failed to open folder' })
+        return false
+      }
+      return true
+    } catch (error) {
+      console.error('[AgentsStore] Failed to open agents library folder:', error)
+      set({ error: 'Failed to open folder' })
+      return false
+    }
+  },
+
+  showAgentInFolder: async (agentPath) => {
+    try {
+      const response = await api.showAgentInFolder(agentPath)
+      if (!response.success) {
+        set({ error: response.error || 'Failed to show item in folder' })
+        return false
+      }
+      return true
+    } catch (error) {
+      console.error('[AgentsStore] Failed to show agent in folder:', error)
+      set({ error: 'Failed to show item in folder' })
       return false
     }
   },

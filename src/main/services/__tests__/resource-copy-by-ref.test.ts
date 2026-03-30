@@ -15,6 +15,7 @@ vi.mock('../plugins.service', () => ({
 import { copySkillToSpaceByRef, clearSkillsCache } from '../skills.service'
 import { copyAgentToSpaceByRef, clearAgentsCache } from '../agents.service'
 import { copyCommandToSpaceByRef, clearCommandsCache } from '../commands.service'
+import { getKiteAgentsDir, getKiteSkillsDir } from '../kite-library.service'
 
 function ensureDir(pathValue: string): void {
   mkdirSync(pathValue, { recursive: true })
@@ -40,18 +41,19 @@ describe('resource copy by ref', () => {
   }
 
   function setupAppResources(): void {
-    const appRoot = join(homedir(), '.kite')
-    cleanupDirs.push(appRoot)
+    const configRoot = join(homedir(), '.kite')
+    const appSkillsDir = getKiteSkillsDir(configRoot)
+    const appAgentsDir = getKiteAgentsDir(configRoot)
+    cleanupDirs.push(configRoot, join(homedir(), 'kite'))
 
-    const skillDir = join(appRoot, 'skills', 'review')
+    const skillDir = join(appSkillsDir, 'review')
     ensureDir(skillDir)
     writeFileSync(join(skillDir, 'SKILL.md'), '# review from app\n', 'utf-8')
 
-    const agentsDir = join(appRoot, 'agents')
-    ensureDir(agentsDir)
-    writeFileSync(join(agentsDir, 'reviewer.md'), '# reviewer from app\n', 'utf-8')
+    ensureDir(appAgentsDir)
+    writeFileSync(join(appAgentsDir, 'reviewer.md'), '# reviewer from app\n', 'utf-8')
 
-    const commandsDir = join(appRoot, 'commands')
+    const commandsDir = join(configRoot, 'commands')
     ensureDir(commandsDir)
     writeFileSync(join(commandsDir, 'lint.md'), '# lint from app\n', 'utf-8')
   }

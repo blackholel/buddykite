@@ -15,7 +15,7 @@ export interface ResourceSuggestion {
 
 interface ResourceSuggestionCardProps {
   suggestion: ResourceSuggestion
-  workDir: string
+  workDir?: string
   onCreated?: () => void
   onDismissed?: () => void
 }
@@ -40,8 +40,8 @@ export function ResourceSuggestionCard({
   const [isDismissed, setIsDismissed] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const createSkill = useSkillsStore(state => state.createSkill)
-  const createAgent = useAgentsStore(state => state.createAgent)
+  const createSkillInLibrary = useSkillsStore(state => state.createSkillInLibrary)
+  const createAgentInLibrary = useAgentsStore(state => state.createAgentInLibrary)
 
   const { title, createLabel, prefix } = getLabel(suggestion.type)
 
@@ -51,8 +51,8 @@ export function ResourceSuggestionCard({
 
     try {
       const created = suggestion.type === 'agent_suggestion'
-        ? await createAgent(workDir, suggestion.name, suggestion.content)
-        : await createSkill(workDir, suggestion.name, suggestion.content)
+        ? await createAgentInLibrary(suggestion.name, suggestion.content)
+        : await createSkillInLibrary(suggestion.name, suggestion.content)
 
       if (created) {
         setIsCreated(true)

@@ -239,20 +239,20 @@ describe('UnifiedPage artifact rail toggle', () => {
     await renderer.unmount()
   })
 
-  it('abilities 模式不再显示顶部文件按钮，并可通过侧栏切回 artifacts', async () => {
+  it('技能资源模式不再显示顶部文件按钮，并可通过侧栏切回 artifacts', async () => {
     const renderer = createRenderer()
     await renderer.render(<UnifiedPage />)
 
     expect(mockState.capturedSidebarProps).toBeTruthy()
     await act(async () => {
-      await mockState.capturedSidebarProps?.onOpenAbilities?.()
+      await mockState.capturedSidebarProps?.onOpenSkills?.()
     })
 
     expect(renderer.container.querySelector('[data-testid=\"extensions-surface\"]')).not.toBeNull()
     expect(renderer.container.querySelector('button[aria-label="显示文件面板"],button[aria-label="隐藏文件面板"]')).toBeNull()
 
     await act(async () => {
-      await mockState.capturedSidebarProps?.onOpenAbilities?.()
+      await mockState.capturedSidebarProps?.onOpenSkills?.()
     })
 
     expect(renderer.container.querySelector('[data-testid=\"extensions-surface\"]')).toBeNull()

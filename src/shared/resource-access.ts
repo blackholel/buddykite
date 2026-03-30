@@ -64,6 +64,7 @@ export type ResourceRefreshReason =
   | 'file-change'
   | 'plugin-registry-change'
   | 'settings-change'
+  | 'resource-library-state-change'
   | 'resource-exposure-change'
   | 'manual-refresh'
   | 'install-complete'

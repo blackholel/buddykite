@@ -14,7 +14,9 @@ import { clearAgentsCache, invalidateAgentsCache } from './agents.service'
 import { getAllSpacePaths } from './space.service'
 import { normalizePlatformPath } from '../utils/path-validation'
 import { getLockedConfigSourceMode, getLockedUserConfigRootDir } from './config-source-mode.service'
+import { getKiteAgentsDir, getKiteSkillsDir } from './kite-library.service'
 import { clearResourceExposureCache, getResourceExposureConfigPath } from './resource-exposure.service'
+import { getResourceLibraryStatePath } from './resource-library-state.service'
 import { clearResourceIndexSnapshot, rebuildAllResourceIndexes, rebuildResourceIndex } from './resource-index.service'
 import {
   clearResourceDisplayI18nCache,
@@ -37,6 +39,8 @@ type WatchKind =
   | 'plugins-registry-dir'
   | 'settings-file'
   | 'settings-dir'
+  | 'resource-library-state-file'
+  | 'resource-library-state-dir'
 
 interface WatchEntry {
   kind: WatchKind
@@ -196,6 +200,22 @@ function scheduleExposureNotify(): void {
   }, 200))
 }
 
+function scheduleResourceLibraryStateNotify(): void {
+  const key = 'resource-library-state:global'
+  const timer = debounceTimers.get(key)
+  if (timer) clearTimeout(timer)
+
+  debounceTimers.set(key, setTimeout(() => {
+    debounceTimers.delete(key)
+    clearResourceDisplayI18nCache()
+    clearResourceIndexSnapshot()
+    clearSkillsCache()
+    clearAgentsCache()
+    rebuildAllResourceIndexes('resource-library-state-change')
+    emitAllResourceChanged('resource-library-state-change')
+  }, 200))
+}
+
 function parseChangedPath(filename: string | Buffer | null | undefined): string | undefined {
   if (typeof filename === 'string') return normalizePlatformPath(filename)
   if (Buffer.isBuffer(filename)) return normalizePlatformPath(filename.toString('utf-8'))
@@ -263,6 +283,16 @@ function createWatcher(kind: WatchKind, path: string, workDir?: string, opts?: {
         return
       }
 
+      if (kind === 'resource-library-state-file') {
+        scheduleResourceLibraryStateNotify()
+        return
+      }
+      if (kind === 'resource-library-state-dir') {
+        if (changedName && changedName !== 'resource-library-state.json') return
+        scheduleResourceLibraryStateNotify()
+        return
+      }
+
       scheduleNotify(kind as WatchedResourceKind, workDir, 'file-change')
       if (!supportsRecursive && kind === 'skills') {
         patchSubdirWatchers(kind as WatchedResourceKind, path, workDir)
@@ -310,7 +340,11 @@ function getResourceDirs(kind: WatchedResourceKind): DirEntry[] {
   const config = getConfig()
 
   // App-level directory
-  dirs.push({ path: join(userRoot, kind) })
+  if (kind === 'skills') {
+    dirs.push({ path: getKiteSkillsDir(userRoot) })
+  } else {
+    dirs.push({ path: getKiteAgentsDir(userRoot) })
+  }
 
   // Kite mode only: config-driven global paths
   if (sourceMode === 'kite') {
@@ -496,6 +530,14 @@ export function initSkillAgentWatchers(window: BrowserWindow): void {
   }
   createWatcher('resource-exposure', exposurePath)
   createWatcher('resource-exposure-dir', exposureDir)
+
+  const resourceLibraryStatePath = getResourceLibraryStatePath()
+  const resourceLibraryStateDir = dirname(resourceLibraryStatePath)
+  if (!existsSync(resourceLibraryStateDir)) {
+    mkdirSync(resourceLibraryStateDir, { recursive: true })
+  }
+  createWatcher('resource-library-state-file', resourceLibraryStatePath)
+  createWatcher('resource-library-state-dir', resourceLibraryStateDir)
 
   initPluginConfigWatchers()
   reconcileAllResourceWatchers()

@@ -49,8 +49,8 @@ export function rebuildResourceIndex(
   const agents = listAgents(workDir, 'taxonomy-admin')
 
   const entries: string[] = [
-    ...skills.map((item) => `skill:${item.source}:${item.namespace || ''}:${item.name}:${item.path}:${safeSkillFingerprint(item.path)}`),
-    ...agents.map((item) => `agent:${item.source}:${item.namespace || ''}:${item.name}:${item.path}:${safeFingerprint(item.path)}`),
+    ...skills.map((item) => `skill:${item.source}:${item.namespace || ''}:${item.name}:${item.path}:${item.enabled !== false ? '1' : '0'}:${safeSkillFingerprint(item.path)}`),
+    ...agents.map((item) => `agent:${item.source}:${item.namespace || ''}:${item.name}:${item.path}:${item.enabled !== false ? '1' : '0'}:${safeFingerprint(item.path)}`),
     ...getResourceDisplayI18nIndexEntries(workDir)
   ]
 

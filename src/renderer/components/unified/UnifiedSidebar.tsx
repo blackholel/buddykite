@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
+  Bot,
   ChevronDown,
   ChevronRight,
   FolderPlus,
@@ -32,8 +33,10 @@ interface UnifiedSidebarProps {
   onDeleteSpace: (spaceId: string) => Promise<boolean>
   onRenameConversation: (spaceId: string, conversationId: string, title: string) => Promise<void>
   onDeleteConversation: (spaceId: string, conversationId: string) => Promise<void>
-  onOpenAbilities: () => void
-  abilitiesOpen: boolean
+  onOpenSkills: () => void
+  onOpenAgents: () => void
+  skillsOpen: boolean
+  agentsOpen: boolean
   isCollapsed: boolean
   onToggleCollapse: () => void
   onGoSettings: () => void
@@ -80,8 +83,10 @@ export function UnifiedSidebar({
   onDeleteSpace,
   onRenameConversation,
   onDeleteConversation,
-  onOpenAbilities,
-  abilitiesOpen,
+  onOpenSkills,
+  onOpenAgents,
+  skillsOpen,
+  agentsOpen,
   isCollapsed,
   onToggleCollapse,
   onGoSettings,
@@ -339,13 +344,22 @@ export function UnifiedSidebar({
               <FolderPlus className="w-4 h-4" />
             </button>
             <button
-              onClick={onOpenAbilities}
+              onClick={onOpenSkills}
               className="space-studio-collapsed-rail-btn"
               title={t('技能')}
               aria-label={t('技能')}
-              aria-pressed={abilitiesOpen}
+              aria-pressed={skillsOpen}
             >
               <Sparkles className="w-4 h-4" />
+            </button>
+            <button
+              onClick={onOpenAgents}
+              className="space-studio-collapsed-rail-btn"
+              title={t('智能体')}
+              aria-label={t('智能体')}
+              aria-pressed={agentsOpen}
+            >
+              <Bot className="w-4 h-4" />
             </button>
             <span className="space-studio-collapsed-rail-count">{sortedSpaces.length}</span>
             <div className="mt-auto mb-2">
@@ -391,14 +405,24 @@ export function UnifiedSidebar({
             </div>
 
             <button
-              onClick={onOpenAbilities}
+              onClick={onOpenSkills}
               className="mt-1 inline-flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-left text-foreground transition-colors hover:bg-secondary/70"
               title={t('技能')}
               aria-label={t('技能')}
-              aria-pressed={abilitiesOpen}
+              aria-pressed={skillsOpen}
             >
               <Sparkles className="w-4 h-4 text-muted-foreground" />
               <span>{t('技能')}</span>
+            </button>
+            <button
+              onClick={onOpenAgents}
+              className="mt-1 inline-flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-left text-foreground transition-colors hover:bg-secondary/70"
+              title={t('智能体')}
+              aria-label={t('智能体')}
+              aria-pressed={agentsOpen}
+            >
+              <Bot className="w-4 h-4 text-muted-foreground" />
+              <span>{t('智能体')}</span>
             </button>
           </div>
 

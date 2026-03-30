@@ -109,7 +109,7 @@ describe('Config Service', () => {
   describe('getSpacesDir', () => {
     it('should use instance-isolated kite root derived from config dir', () => {
       const spacesDir = getSpacesDir()
-      expect(spacesDir.endsWith(path.join('kite'))).toBe(true)
+      expect(spacesDir.endsWith(path.join('kite', 'Spaces'))).toBe(true)
       expect(spacesDir.includes(path.join('.kite', 'spaces'))).toBe(false)
     })
   })

@@ -4,16 +4,14 @@
  */
 
 import { useState, useEffect } from 'react'
-import { X, Edit2, Copy, Trash2, Star, Zap } from 'lucide-react'
+import { X, Edit2, FolderOpen, Trash2, Zap } from 'lucide-react'
 import { useTranslation } from '../../i18n'
 import { useSkillsStore, type SkillDefinition, type SkillContent } from '../../stores/skills.store'
-import { useSpaceStore } from '../../stores/space.store'
 import { getResourceDisplayName } from '../../utils/resource-display-name'
 import { MarkdownRenderer } from '../chat/MarkdownRenderer'
 
 interface SkillDetailModalProps {
   skill: SkillDefinition
-  workDir?: string
   onClose: () => void
   onEdit?: (skill: SkillDefinition) => void
 }
@@ -34,62 +32,63 @@ const SOURCE_COLORS: Record<SkillDefinition['source'], string> = {
   installed: 'bg-orange-500/10 text-orange-500'
 }
 
-export function SkillDetailModal({ skill, workDir, onClose, onEdit }: SkillDetailModalProps) {
+export function SkillDetailModal({ skill, onClose, onEdit }: SkillDetailModalProps) {
   const { t } = useTranslation()
   const [content, setContent] = useState<SkillContent | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [isTogglingEnabled, setIsTogglingEnabled] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [isShowingInFolder, setIsShowingInFolder] = useState(false)
 
   // Skills store
-  const { loadSkillContent, deleteSkill, copyToSpace } = useSkillsStore()
-
-  // Space store for favorites
-  const { currentSpace, updateSpacePreferences } = useSpaceStore()
-  const favorites = currentSpace?.preferences?.skills?.favorites || []
-  const isFavorite = favorites.includes(skill.name)
+  const {
+    loadSkillContent,
+    deleteSkillFromLibrary,
+    toggleSkillEnabled,
+    showSkillInFolder
+  } = useSkillsStore()
 
   // Load skill content
   useEffect(() => {
     const loadContent = async () => {
       setIsLoading(true)
-      const result = await loadSkillContent(skill.name, workDir)
+      const result = await loadSkillContent(skill.name)
       setContent(result)
       setIsLoading(false)
     }
     loadContent()
-  }, [skill.name, workDir, loadSkillContent])
+  }, [skill.name, loadSkillContent])
 
-  // Toggle favorite
-  const toggleFavorite = async () => {
-    const newFavorites = isFavorite
-      ? favorites.filter(f => f !== skill.name)
-      : [...favorites, skill.name]
-
-    if (currentSpace) {
-      await updateSpacePreferences(currentSpace.id, {
-        skills: { favorites: newFavorites }
-      })
+  const handleToggleEnabled = async () => {
+    if (skill.source === 'space' || isTogglingEnabled) return
+    setIsTogglingEnabled(true)
+    try {
+      await toggleSkillEnabled(skill)
+    } finally {
+      setIsTogglingEnabled(false)
     }
   }
 
-  // Handle copy to space
-  const handleCopyToSpace = async () => {
-    if (workDir && skill.source !== 'space') {
-      const result = await copyToSpace(skill, workDir)
-      if (result.status === 'conflict') {
-        const overwrite = window.confirm(t('Already added. Overwrite existing resource?'))
-        if (overwrite) {
-          await copyToSpace(skill, workDir, { overwrite: true })
-        }
-      }
-      onClose()
+  const handleShowInFolder = async () => {
+    if (isShowingInFolder) return
+    setIsShowingInFolder(true)
+    try {
+      await showSkillInFolder(skill.path)
+    } finally {
+      setIsShowingInFolder(false)
     }
   }
 
   // Handle delete
   const handleDelete = async () => {
-    if (skill.source === 'space') {
-      await deleteSkill(skill.path)
-      onClose()
+    if (skill.source !== 'app' || isDeleting) return
+    if (!window.confirm(t('Delete this resource from library?'))) return
+    setIsDeleting(true)
+    try {
+      const success = await deleteSkillFromLibrary(skill.path)
+      if (success) onClose()
+    } finally {
+      setIsDeleting(false)
     }
   }
 
@@ -112,9 +111,10 @@ export function SkillDetailModal({ skill, workDir, onClose, onEdit }: SkillDetai
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [onClose])
 
-  const canEdit = skill.source === 'space'
-  const canDelete = skill.source === 'space'
-  const canCopyToSpace = skill.source !== 'space' && workDir
+  const canEdit = skill.source === 'app'
+  const canDelete = skill.source === 'app'
+  const canToggleEnabled = skill.source !== 'space'
+  const isEnabled = skill.enabled !== false
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -173,30 +173,25 @@ export function SkillDetailModal({ skill, workDir, onClose, onEdit }: SkillDetai
         {/* Footer */}
         <div className="flex items-center justify-between px-6 py-4 border-t border-border/50 bg-muted/30">
           <div className="flex items-center gap-2">
-            {/* Favorite button */}
-            <button
-              onClick={toggleFavorite}
-              className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
-                isFavorite
-                  ? 'bg-yellow-500/10 text-yellow-500'
-                  : 'hover:bg-muted text-muted-foreground'
-              }`}
-            >
-              <Star size={16} fill={isFavorite ? 'currentColor' : 'none'} />
-              <span className="text-sm">{isFavorite ? t('Favorited') : t('Favorite')}</span>
-            </button>
-
-            {/* Copy to space button */}
-            {canCopyToSpace && (
+            {canToggleEnabled && (
               <button
-                onClick={handleCopyToSpace}
+                onClick={handleToggleEnabled}
+                disabled={isTogglingEnabled}
                 className="flex items-center gap-2 px-3 py-2 rounded-lg
-                  hover:bg-muted text-muted-foreground transition-colors"
+                  hover:bg-muted text-muted-foreground transition-colors disabled:opacity-50"
               >
-                <Copy size={16} />
-                <span className="text-sm">{t('Copy to Space')}</span>
+                <span className="text-sm">{isTogglingEnabled ? t('Loading...') : (isEnabled ? t('停用') : t('启用'))}</span>
               </button>
             )}
+            <button
+              onClick={handleShowInFolder}
+              disabled={isShowingInFolder}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg
+                hover:bg-muted text-muted-foreground transition-colors disabled:opacity-50"
+            >
+              <FolderOpen size={16} />
+              <span className="text-sm">{isShowingInFolder ? t('Loading...') : t('打开所在文件夹')}</span>
+            </button>
           </div>
 
           <div className="flex items-center gap-2">
@@ -204,11 +199,12 @@ export function SkillDetailModal({ skill, workDir, onClose, onEdit }: SkillDetai
             {canDelete && (
               <button
                 onClick={handleDelete}
+                disabled={isDeleting}
                 className="flex items-center gap-2 px-3 py-2 rounded-lg
-                  hover:bg-destructive/10 text-destructive transition-colors"
+                  hover:bg-destructive/10 text-destructive transition-colors disabled:opacity-50"
               >
                 <Trash2 size={16} />
-                <span className="text-sm">{t('Delete')}</span>
+                <span className="text-sm">{isDeleting ? t('Loading...') : t('Delete')}</span>
               </button>
             )}
 

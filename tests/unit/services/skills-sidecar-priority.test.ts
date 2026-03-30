@@ -33,6 +33,7 @@ vi.mock('../../../src/main/services/resource-exposure.service', () => ({
 
 import { getLockedUserConfigRootDir } from '../../../src/main/services/config-source-mode.service'
 import { listEnabledPlugins } from '../../../src/main/services/plugins.service'
+import { getKiteSkillsDir } from '../../../src/main/services/kite-library.service'
 import { clearSkillsCache, getSkillDefinition, listSkills } from '../../../src/main/services/skills.service'
 
 describe('skills sidecar priority', () => {
@@ -46,7 +47,7 @@ describe('skills sidecar priority', () => {
   it('prefers frontmatter locale over sidecar default locale', () => {
     vi.mocked(getLockedUserConfigRootDir).mockReturnValue(tempRoot)
 
-    const skillDir = path.join(tempRoot, 'skills', 'demo-skill')
+    const skillDir = path.join(getKiteSkillsDir(tempRoot), 'demo-skill')
     fs.mkdirSync(skillDir, { recursive: true })
     fs.writeFileSync(path.join(skillDir, 'SKILL.md'), [
       '---',
@@ -118,7 +119,7 @@ describe('skills sidecar priority', () => {
   it('resolves localized skill displayName for runtime lookup', () => {
     vi.mocked(getLockedUserConfigRootDir).mockReturnValue(tempRoot)
 
-    const skillDir = path.join(tempRoot, 'skills', 'brainstorming')
+    const skillDir = path.join(getKiteSkillsDir(tempRoot), 'brainstorming')
     fs.mkdirSync(skillDir, { recursive: true })
     fs.writeFileSync(path.join(skillDir, 'SKILL.md'), [
       '---',

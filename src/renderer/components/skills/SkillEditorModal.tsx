@@ -10,7 +10,7 @@ import { useSkillsStore, type SkillDefinition } from '../../stores/skills.store'
 
 interface SkillEditorModalProps {
   skill?: SkillDefinition  // If provided, edit mode; otherwise create mode
-  workDir: string
+  workDir?: string
   onClose: () => void
   onSaved?: (skill: SkillDefinition) => void
 }
@@ -49,14 +49,19 @@ export function SkillEditorModal({ skill, workDir, onClose, onSaved }: SkillEdit
   const isEditMode = !!skill
 
   // Skills store
-  const { loadSkillContent, createSkill, updateSkill } = useSkillsStore()
+  const {
+    loadSkillContent,
+    createSkillInLibrary,
+    updateSkill,
+    updateSkillInLibrary
+  } = useSkillsStore()
 
   // Load skill content in edit mode
   useEffect(() => {
     if (isEditMode && skill) {
       const loadContent = async () => {
         setIsLoading(true)
-        const result = await loadSkillContent(skill.name, workDir)
+        const result = await loadSkillContent(skill.name, skill.source === 'space' ? workDir : undefined)
         if (result) {
           setContent(result.content)
         }
@@ -130,7 +135,9 @@ export function SkillEditorModal({ skill, workDir, onClose, onSaved }: SkillEdit
     try {
       if (isEditMode && skill) {
         // Update existing skill
-        const success = await updateSkill(skill.path, content)
+        const success = skill.source === 'space'
+          ? await updateSkill(skill.path, content)
+          : await updateSkillInLibrary(skill.path, content)
         if (success) {
           onClose()
         } else {
@@ -138,7 +145,7 @@ export function SkillEditorModal({ skill, workDir, onClose, onSaved }: SkillEdit
         }
       } else {
         // Create new skill
-        const newSkill = await createSkill(workDir, name, content)
+        const newSkill = await createSkillInLibrary(name, content)
         if (newSkill) {
           if (onSaved) {
             onSaved(newSkill)
