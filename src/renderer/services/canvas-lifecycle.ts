@@ -55,6 +55,13 @@ export interface SpaceSessionState {
   lastVisitedAt: number
 }
 
+export interface CloseConversationTabsResult {
+  removedTabIds: string[]
+  removedActiveTab: boolean
+  nextActiveTabId: string | null
+  nextActiveChatConversationId: string | null
+}
+
 // Callback types
 type TabsChangeCallback = (tabs: TabState[]) => void
 type ActiveTabChangeCallback = (tabId: string | null) => void
@@ -276,6 +283,20 @@ class CanvasLifecycle {
     }
   }
 
+  private pickMostRecentlyActiveTab(tabs: TabState[]): TabState | undefined {
+    if (tabs.length === 0) return undefined
+    return tabs.reduce((latest, current) => {
+      const latestAt = latest.lastActiveAt || 0
+      const currentAt = current.lastActiveAt || 0
+      return currentAt > latestAt ? current : latest
+    })
+  }
+
+  private pickMostRecentlyActiveChatConversationId(tabs: TabState[]): string | null {
+    const nextChatTab = this.pickMostRecentlyActiveTab(tabs.filter((tab) => tab.type === 'chat'))
+    return nextChatTab?.conversationId ?? null
+  }
+
   private removeTabFromSession(session: SpaceSessionState, tabId: string): void {
     const tabIndex = session.tabs.findIndex((tab) => tab.id === tabId)
     if (tabIndex < 0) {
@@ -286,7 +307,7 @@ class CanvasLifecycle {
     session.tabs.splice(tabIndex, 1)
 
     if (session.activeTabId === tabId) {
-      const nextActive = session.tabs[session.tabs.length - 1]
+      const nextActive = this.pickMostRecentlyActiveTab(session.tabs)
       session.activeTabId = nextActive?.id ?? null
     }
 
@@ -376,10 +397,16 @@ class CanvasLifecycle {
     this.notifyTabsChange()
   }
 
-  closeConversationTabs(spaceId: string, conversationId: string): void {
+  closeConversationTabs(spaceId: string, conversationId: string): CloseConversationTabsResult {
+    const emptyResult: CloseConversationTabsResult = {
+      removedTabIds: [],
+      removedActiveTab: false,
+      nextActiveTabId: null,
+      nextActiveChatConversationId: null
+    }
     const session = this.spaceSessions.get(spaceId)
     if (!session) {
-      return
+      return emptyResult
     }
 
     const tabIds = session.tabs
@@ -387,15 +414,52 @@ class CanvasLifecycle {
       .map((tab) => tab.id)
 
     if (tabIds.length === 0) {
-      return
+      const nextActiveTabId = session.activeTabId
+      const nextActiveChatConversationId = this.pickMostRecentlyActiveChatConversationId(session.tabs)
+      return {
+        ...emptyResult,
+        nextActiveTabId,
+        nextActiveChatConversationId
+      }
     }
 
-    for (const tabId of tabIds) {
-      this.removeTabFromSession(session, tabId)
+    const removedTabIds = new Set(tabIds)
+    const previousActiveTabId = session.activeTabId
+    const removedActiveTab = previousActiveTabId ? removedTabIds.has(previousActiveTabId) : false
+    session.tabs = session.tabs.filter((tab) => !removedTabIds.has(tab.id))
+
+    if (removedActiveTab) {
+      const nextActive = this.pickMostRecentlyActiveTab(session.tabs)
+      session.activeTabId = nextActive?.id ?? null
     }
+
+    const nextActiveTabId = session.activeTabId
+    const nextActiveChatConversationId = this.pickMostRecentlyActiveChatConversationId(session.tabs)
+
+    if (this.currentSpaceId === spaceId) {
+      this.syncActiveTabFromCurrentSession()
+      if (previousActiveTabId !== session.activeTabId) {
+        this.notifyActiveTabChange()
+      }
+      this.maybeCloseCanvasForCurrentSession()
+    }
+
+    this.notifyTabsChange()
 
     if (this.currentSpaceId !== spaceId) {
-      this.notifyTabsChange()
+      return {
+        removedTabIds: tabIds,
+        removedActiveTab,
+        nextActiveTabId,
+        nextActiveChatConversationId
+      }
+    }
+
+    return {
+      removedTabIds: tabIds,
+      removedActiveTab,
+      nextActiveTabId,
+      nextActiveChatConversationId
     }
   }
 

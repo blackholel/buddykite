@@ -112,6 +112,7 @@ export interface ConversationMeta {
   spaceId: string
   title: string
   mode: ChatMode
+  status: ConversationStatus
   createdAt: string
   updatedAt: string
   messageCount: number
@@ -140,6 +141,15 @@ interface ConversationIndex {
 const INDEX_VERSION = 3
 const PREVIEW_LENGTH = 50
 
+export type ConversationStatus = 'active' | 'deleting' | 'delete_failed_hidden'
+
+function normalizeConversationStatus(status: unknown): ConversationStatus {
+  if (status === 'active' || status === 'deleting' || status === 'delete_failed_hidden') {
+    return status
+  }
+  return 'active'
+}
+
 function normalizeConversationMeta(
   meta: Partial<ConversationMeta> & { id: string; spaceId: string; title: string }
 ): ConversationMeta {
@@ -148,6 +158,7 @@ function normalizeConversationMeta(
     spaceId: meta.spaceId,
     title: meta.title,
     mode: normalizeChatMode(meta.mode),
+    status: normalizeConversationStatus(meta.status),
     createdAt: meta.createdAt || new Date().toISOString(),
     updatedAt: meta.updatedAt || new Date().toISOString(),
     messageCount: typeof meta.messageCount === 'number' ? meta.messageCount : 0,
@@ -182,6 +193,7 @@ function normalizeConversation(conversation: Conversation): Conversation {
   return {
     ...conversation,
     mode: normalizeChatMode((conversation as Partial<Conversation>).mode),
+    status: normalizeConversationStatus((conversation as Partial<Conversation>).status),
     messages,
     messageCount: messages.length,
     ...(sessionScope ? { sessionScope } : {})
@@ -262,6 +274,7 @@ function toMeta(conversation: Conversation): ConversationMeta {
     spaceId: conversation.spaceId,
     title: conversation.title,
     mode: conversation.mode,
+    status: conversation.status,
     createdAt: conversation.createdAt,
     updatedAt: conversation.updatedAt,
     messageCount: conversation.messages.length,
@@ -404,7 +417,7 @@ export function listConversations(spaceId: string): ConversationMeta[] {
   const index = readIndex(conversationsDir)
   if (index) {
     console.log(`[Conversation] Using index: ${index.conversations.length} conversations`)
-    return index.conversations
+    return index.conversations.filter((conversation) => conversation.status === 'active')
   }
 
   // Strategy 2: Fallback to full scan + async index rebuild
@@ -416,7 +429,7 @@ export function listConversations(spaceId: string): ConversationMeta[] {
     writeIndex(conversationsDir, metas)
   }
 
-  return metas
+  return metas.filter((conversation) => conversation.status === 'active')
 }
 
 // Create a new conversation
@@ -430,6 +443,7 @@ export function createConversation(spaceId: string, title?: string): Conversatio
     spaceId,
     title: title || generateTitle(),
     mode: 'code',
+    status: 'active',
     createdAt: now,
     updatedAt: now,
     messageCount: 0,
@@ -455,7 +469,11 @@ export function createConversation(spaceId: string, title?: string): Conversatio
 }
 
 // Get a specific conversation
-export function getConversation(spaceId: string, conversationId: string): Conversation | null {
+export function getConversation(
+  spaceId: string,
+  conversationId: string,
+  options: { includeHidden?: boolean } = {}
+): Conversation | null {
   console.log(`[Conversation] getConversation called - spaceId: ${spaceId}, conversationId: ${conversationId}`)
   
   const conversationsDir = getConversationsDir(spaceId)
@@ -467,6 +485,10 @@ export function getConversation(spaceId: string, conversationId: string): Conver
   if (existsSync(filePath)) {
     try {
       const conversation = normalizeConversation(JSON.parse(readFileSync(filePath, 'utf-8')) as Conversation)
+      if (!options.includeHidden && conversation.status !== 'active') {
+        console.log(`[Conversation] Conversation hidden by status: ${conversation.status}`)
+        return null
+      }
       console.log(`[Conversation] Found conversation: ${conversation.title}`)
       return conversation
     } catch (error) {
@@ -476,6 +498,26 @@ export function getConversation(spaceId: string, conversationId: string): Conver
 
   console.log(`[Conversation] Conversation not found`)
   return null
+}
+
+export function setConversationStatus(
+  spaceId: string,
+  conversationId: string,
+  status: ConversationStatus
+): Conversation | null {
+  const conversation = getConversation(spaceId, conversationId, { includeHidden: true })
+  if (!conversation) {
+    return null
+  }
+  if (conversation.status === status) {
+    return conversation
+  }
+  conversation.status = status
+  conversation.updatedAt = new Date().toISOString()
+  const conversationsDir = getConversationsDir(spaceId)
+  writeConversationFile(conversationsDir, conversationId, conversation)
+  updateIndexEntry(conversationsDir, spaceId, conversationId, toMeta(conversation))
+  return conversation
 }
 
 // Update a conversation

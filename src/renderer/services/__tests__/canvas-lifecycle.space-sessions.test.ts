@@ -131,4 +131,35 @@ describe('canvasLifecycle space sessions', () => {
     expect(spaceATabs.every((tab) => tab.conversationId !== 'conv-1')).toBe(true)
     expect(spaceBTabs.some((tab) => tab.conversationId === 'conv-1')).toBe(true)
   })
+
+  it('删除后下一聊天会话优先取最近活跃 chat tab，而不是仅看当前 active tab 类型', async () => {
+    await canvasLifecycle.openChat('space-a', 'conv-delete', '待删除会话')
+    await new Promise((resolve) => setTimeout(resolve, 2))
+    await canvasLifecycle.openChat('space-a', 'conv-keep', '保留会话')
+    await new Promise((resolve) => setTimeout(resolve, 2))
+    const fileTabId = await canvasLifecycle.openFile('space-a', '/tmp/space-a/notes.md', 'Notes')
+
+    const result = canvasLifecycle.closeConversationTabs('space-a', 'conv-delete')
+
+    expect(result.nextActiveTabId).toBe(fileTabId)
+    expect(result.nextActiveChatConversationId).toBe('conv-keep')
+  })
+
+  it('删除会话相关 tabs 仅触发一次 tabs 变更通知', async () => {
+    await canvasLifecycle.openChat('space-a', 'conv-1', '会话 1')
+    await canvasLifecycle.openPlan('计划 1', 'Plan 1', 'space-a', 'conv-1')
+    await canvasLifecycle.openChat('space-a', 'conv-2', '会话 2')
+
+    const notifications: string[][] = []
+    const unsubscribe = canvasLifecycle.onTabsChange((tabs) => {
+      notifications.push(tabs.map((tab) => tab.id))
+    })
+
+    notifications.length = 0
+    const result = canvasLifecycle.closeConversationTabs('space-a', 'conv-1')
+    unsubscribe()
+
+    expect(result.removedTabIds).toHaveLength(2)
+    expect(notifications).toHaveLength(1)
+  })
 })

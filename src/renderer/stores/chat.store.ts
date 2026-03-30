@@ -147,6 +147,15 @@ export type QueueSendResult = {
   error?: string
 }
 
+export interface DeleteConversationResult {
+  accepted: boolean
+  conversationId: string
+  wasCurrent: boolean
+  nextConversationId: string | null
+  autoCreated: boolean
+  remainingCount: number
+}
+
 type ConversationReadyStatus = 'preparing' | 'ready' | 'timeout' | 'failed'
 
 interface ConversationReadyState {
@@ -613,7 +622,7 @@ interface ChatState {
   ) => Promise<void>
   selectConversation: (conversationId: string) => Promise<void>
   hydrateConversation: (spaceId: string, conversationId: string) => Promise<void>
-  deleteConversation: (spaceId: string, conversationId: string) => Promise<boolean>
+  deleteConversation: (spaceId: string, conversationId: string) => Promise<DeleteConversationResult>
   renameConversation: (spaceId: string, conversationId: string, newTitle: string) => Promise<boolean>
   updateConversationAi: (spaceId: string, conversationId: string, ai: ConversationAiConfig) => Promise<boolean>
 
@@ -1409,10 +1418,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
       if (response.success && response.data) {
         // Now receives ConversationMeta[] (lightweight, no messages)
-        const conversations = (response.data as ConversationMetaWithAi[]).map((conversation) => ({
-          ...conversation,
-          mode: normalizeChatMode((conversation as { mode?: ChatMode }).mode)
-        }))
+        const conversations = (response.data as ConversationMetaWithAi[])
+          .filter((conversation) => !conversation.status || conversation.status === 'active')
+          .map((conversation) => ({
+            ...conversation,
+            mode: normalizeChatMode((conversation as { mode?: ChatMode }).mode)
+          }))
 
         set((state) => {
           const newSpaceStates = new Map(state.spaceStates)
@@ -1448,6 +1459,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
           spaceId: newConversation.spaceId,
           title: newConversation.title,
           mode,
+          status: 'active',
           createdAt: newConversation.createdAt,
           updatedAt: newConversation.updatedAt,
           messageCount: newConversation.messages?.length || 0,
@@ -1516,39 +1528,20 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   // Delete conversation
   deleteConversation: async (spaceId, conversationId) => {
-    let removedConversationMeta: ConversationMetaWithAi | null = null
-    let removedConversationIndex = -1
-    let previousCurrentConversationId: string | null = null
-    let nextCurrentConversationIdAfterOptimistic: string | null = null
-
-    let removedSession: SessionState | undefined
-    let removedCachedConversation: Conversation | undefined
-    let removedChangeSet: ChangeSet[] | undefined
-    let removedLoadingCount: number | undefined
-    let removedReadyState: ConversationReadyState | undefined
-
-    let queueKey: string | null = null
-    let removedQueuedTurns: QueuedUserTurn[] | undefined
-    let removedQueueDispatching: boolean | undefined
-    let removedQueueError: string | null | undefined
-    let removedQueueInFlightTurnId: string | undefined
-    let removedQueueSuppressedRestore: Set<string> | undefined
+    let wasCurrent = false
+    let nextCurrentConversationId: string | null = null
+    let remainingCount = 0
 
     set((state) => {
       const newSpaceStates = new Map(state.spaceStates)
       const existingState = newSpaceStates.get(spaceId) || createEmptySpaceState()
-      removedConversationIndex = existingState.conversations.findIndex((c) => c.id === conversationId)
-      removedConversationMeta = removedConversationIndex >= 0
-        ? (existingState.conversations[removedConversationIndex] as ConversationMetaWithAi)
-        : null
-      previousCurrentConversationId = existingState.currentConversationId
+      wasCurrent = existingState.currentConversationId === conversationId
 
       const newConversations = existingState.conversations.filter((c) => c.id !== conversationId)
-      const nextCurrentConversationId =
-        existingState.currentConversationId === conversationId
-          ? (newConversations[0]?.id || null)
-          : existingState.currentConversationId
-      nextCurrentConversationIdAfterOptimistic = nextCurrentConversationId
+      nextCurrentConversationId = wasCurrent
+        ? (newConversations[0]?.id || null)
+        : existingState.currentConversationId
+      remainingCount = newConversations.length
 
       newSpaceStates.set(spaceId, {
         conversations: newConversations,
@@ -1556,26 +1549,21 @@ export const useChatStore = create<ChatState>((set, get) => ({
       })
 
       const newSessions = new Map(state.sessions)
-      removedSession = newSessions.get(conversationId)
       newSessions.delete(conversationId)
 
       const newCache = new Map(state.conversationCache)
-      removedCachedConversation = newCache.get(conversationId) as Conversation | undefined
       newCache.delete(conversationId)
 
       const newChangeSets = new Map(state.changeSets)
-      removedChangeSet = newChangeSets.get(conversationId)
       newChangeSets.delete(conversationId)
 
       const newLoadingConversationCounts = new Map(state.loadingConversationCounts)
-      removedLoadingCount = newLoadingConversationCounts.get(conversationId)
       newLoadingConversationCounts.delete(conversationId)
 
       const conversationReadyByConversation = new Map(state.conversationReadyByConversation)
-      removedReadyState = conversationReadyByConversation.get(conversationId)
       conversationReadyByConversation.delete(conversationId)
 
-      queueKey = resolveSessionKey(state, conversationId, spaceId)
+      const queueKey = resolveSessionKey(state, conversationId, spaceId)
 
       const queuedTurnsByConversation = new Map(state.queuedTurnsByConversation)
       const queueDispatchingByConversation = new Map(state.queueDispatchingByConversation)
@@ -1584,14 +1572,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const queueSuppressedRestoreByConversation = new Map(state.queueSuppressedRestoreByConversation)
 
       if (queueKey) {
-        const queued = queuedTurnsByConversation.get(queueKey)
-        removedQueuedTurns = queued ? [...queued] : undefined
-        removedQueueDispatching = queueDispatchingByConversation.get(queueKey)
-        removedQueueError = queueErrorByConversation.get(queueKey) ?? undefined
-        removedQueueInFlightTurnId = queueInFlightTurnByConversation.get(queueKey)
-        const suppressed = queueSuppressedRestoreByConversation.get(queueKey)
-        removedQueueSuppressedRestore = suppressed ? new Set(suppressed) : undefined
-
         queuedTurnsByConversation.delete(queueKey)
         queueDispatchingByConversation.delete(queueKey)
         queueErrorByConversation.delete(queueKey)
@@ -1614,112 +1594,46 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }
     })
 
-    const rollbackOptimisticDelete = () => {
-      set((state) => {
-        if (!removedConversationMeta) {
-          return {}
+    void api.deleteConversation(spaceId, conversationId)
+      .then((response) => {
+        if (!response.success) {
+          console.warn('[ChatStore] Delete request not accepted by backend:', {
+            spaceId,
+            conversationId,
+            error: response.error
+          })
+          return
         }
-
-        const newSpaceStates = new Map(state.spaceStates)
-        const existingState = newSpaceStates.get(spaceId) || createEmptySpaceState()
-        if (!existingState.conversations.some((c) => c.id === conversationId)) {
-          const restoredConversations = [...existingState.conversations]
-          const restoreIndex = removedConversationIndex >= 0 && removedConversationIndex <= restoredConversations.length
-            ? removedConversationIndex
-            : restoredConversations.length
-          restoredConversations.splice(restoreIndex, 0, removedConversationMeta)
-
-          const shouldRestoreCurrent =
-            existingState.currentConversationId === nextCurrentConversationIdAfterOptimistic
-            || existingState.currentConversationId == null
-          const restoredCurrentConversationId = shouldRestoreCurrent
-            ? (previousCurrentConversationId || existingState.currentConversationId)
-            : existingState.currentConversationId
-
-          newSpaceStates.set(spaceId, {
-            conversations: restoredConversations,
-            currentConversationId: restoredCurrentConversationId
+        const payload = (response.data || {}) as { accepted?: boolean; opId?: string }
+        if (payload.accepted !== true) {
+          console.warn('[ChatStore] Delete request response missing accepted=true:', {
+            spaceId,
+            conversationId,
+            data: response.data
           })
         }
-
-        const newSessions = new Map(state.sessions)
-        if (removedSession && !newSessions.has(conversationId)) {
-          newSessions.set(conversationId, removedSession)
-        }
-
-        const newCache = new Map(state.conversationCache)
-        if (removedCachedConversation && !newCache.has(conversationId)) {
-          newCache.set(conversationId, removedCachedConversation)
-        }
-
-        const newChangeSets = new Map(state.changeSets)
-        if (removedChangeSet && !newChangeSets.has(conversationId)) {
-          newChangeSets.set(conversationId, removedChangeSet)
-        }
-
-        const newLoadingConversationCounts = new Map(state.loadingConversationCounts)
-        if (removedLoadingCount !== undefined && !newLoadingConversationCounts.has(conversationId)) {
-          newLoadingConversationCounts.set(conversationId, removedLoadingCount)
-        }
-
-        const conversationReadyByConversation = new Map(state.conversationReadyByConversation)
-        if (removedReadyState && !conversationReadyByConversation.has(conversationId)) {
-          conversationReadyByConversation.set(conversationId, removedReadyState)
-        }
-
-        const queuedTurnsByConversation = new Map(state.queuedTurnsByConversation)
-        const queueDispatchingByConversation = new Map(state.queueDispatchingByConversation)
-        const queueErrorByConversation = new Map(state.queueErrorByConversation)
-        const queueInFlightTurnByConversation = new Map(state.queueInFlightTurnByConversation)
-        const queueSuppressedRestoreByConversation = new Map(state.queueSuppressedRestoreByConversation)
-
-        if (queueKey) {
-          if (removedQueuedTurns && !queuedTurnsByConversation.has(queueKey)) {
-            queuedTurnsByConversation.set(queueKey, [...removedQueuedTurns])
-          }
-          if (removedQueueDispatching !== undefined && !queueDispatchingByConversation.has(queueKey)) {
-            queueDispatchingByConversation.set(queueKey, removedQueueDispatching)
-          }
-          if (removedQueueError !== undefined && !queueErrorByConversation.has(queueKey)) {
-            queueErrorByConversation.set(queueKey, removedQueueError)
-          }
-          if (removedQueueInFlightTurnId !== undefined && !queueInFlightTurnByConversation.has(queueKey)) {
-            queueInFlightTurnByConversation.set(queueKey, removedQueueInFlightTurnId)
-          }
-          if (removedQueueSuppressedRestore && !queueSuppressedRestoreByConversation.has(queueKey)) {
-            queueSuppressedRestoreByConversation.set(queueKey, new Set(removedQueueSuppressedRestore))
-          }
-        }
-
-        return {
-          spaceStates: newSpaceStates,
-          sessions: newSessions,
-          conversationCache: newCache,
-          changeSets: newChangeSets,
-          loadingConversationCounts: newLoadingConversationCounts,
-          conversationReadyByConversation,
-          queuedTurnsByConversation,
-          queueDispatchingByConversation,
-          queueErrorByConversation,
-          queueInFlightTurnByConversation,
-          queueSuppressedRestoreByConversation
-        }
       })
+      .catch((error) => {
+        console.error('[ChatStore] Failed to dispatch delete request:', error)
+      })
+
+    let autoCreated = false
+    if (wasCurrent && !nextCurrentConversationId) {
+      const createdConversation = await get().createConversation(spaceId)
+      if (createdConversation) {
+        autoCreated = true
+        nextCurrentConversationId = createdConversation.id
+        remainingCount = 1
+      }
     }
 
-    try {
-      const response = await api.deleteConversation(spaceId, conversationId)
-
-      if (response.success) {
-        return true
-      }
-
-      rollbackOptimisticDelete()
-      return false
-    } catch (error) {
-      console.error('Failed to delete conversation:', error)
-      rollbackOptimisticDelete()
-      return false
+    return {
+      accepted: true,
+      conversationId,
+      wasCurrent,
+      nextConversationId: nextCurrentConversationId,
+      autoCreated,
+      remainingCount
     }
   },
 

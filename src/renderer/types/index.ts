@@ -282,6 +282,8 @@ export interface CreateSpaceInput {
 // Conversation Types
 // ============================================
 
+export type ConversationStatus = 'active' | 'deleting' | 'delete_failed_hidden';
+
 // Lightweight metadata for conversation list (no messages)
 // Used by listConversations for fast loading
 export interface ConversationMeta {
@@ -289,6 +291,7 @@ export interface ConversationMeta {
   spaceId: string;
   title: string;
   mode?: ChatMode;
+  status?: ConversationStatus;
   createdAt: string;
   updatedAt: string;
   messageCount: number;

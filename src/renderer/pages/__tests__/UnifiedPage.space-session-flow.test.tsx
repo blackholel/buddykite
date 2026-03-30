@@ -32,7 +32,12 @@ const mockState = vi.hoisted(() => ({
   switchTab: vi.fn(async () => {}),
   switchSpaceSession: vi.fn(async () => {}),
   closeSpaceSession: vi.fn(),
-  closeConversationTabs: vi.fn(),
+  closeConversationTabs: vi.fn(() => ({
+    removedTabIds: [],
+    removedActiveTab: false,
+    nextActiveTabId: null,
+    nextActiveChatConversationId: null
+  })),
   navigateToConversationContext: vi.fn(async () => ({ success: true })),
   navigateToSpaceContext: vi.fn(async () => ({ success: true })),
   createConversation: vi.fn(async (_spaceId: string) => ({
@@ -172,7 +177,14 @@ vi.mock('../../stores/chat.store', () => ({
     createConversation: mockState.createConversation,
     selectConversation: mockState.selectConversation,
     renameConversation: vi.fn(async () => {}),
-    deleteConversation: vi.fn(async () => {})
+    deleteConversation: vi.fn(async () => ({
+      accepted: true,
+      conversationId: 'conv-1',
+      wasCurrent: false,
+      nextConversationId: null,
+      autoCreated: false,
+      remainingCount: 1
+    }))
   })
 }))
 

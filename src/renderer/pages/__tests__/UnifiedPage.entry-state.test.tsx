@@ -17,7 +17,14 @@ const setRightPanelModeMock = vi.fn()
 const mockUpdateSpace = vi.fn(async () => null)
 const mockDeleteSpace = vi.fn(async () => true)
 const mockCreateConversation = vi.fn(async () => null)
-const mockDeleteConversation = vi.fn(async () => true)
+const mockDeleteConversation = vi.fn(async () => ({
+  accepted: true,
+  conversationId: 'conv-1',
+  wasCurrent: false,
+  nextConversationId: null,
+  autoCreated: false,
+  remainingCount: 1
+}))
 const mockCanvasState = {
   tabs: [] as Array<Record<string, unknown>>,
   activeTab: null as Record<string, unknown> | null,
@@ -25,7 +32,12 @@ const mockCanvasState = {
   openChat: vi.fn(async () => {}),
   switchSpaceSession: vi.fn(async () => {}),
   closeSpaceSession: vi.fn(),
-  closeConversationTabs: vi.fn(),
+  closeConversationTabs: vi.fn(() => ({
+    removedTabIds: [],
+    removedActiveTab: false,
+    nextActiveTabId: null,
+    nextActiveChatConversationId: null
+  })),
   switchTab: vi.fn(async () => {}),
   setOpen: vi.fn()
 }

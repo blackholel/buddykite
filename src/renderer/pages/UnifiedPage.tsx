@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react'
+import { startTransition, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react'
 import { shallow } from 'zustand/shallow'
 import { ChatView } from '../components/chat/ChatView'
 import { UnifiedSidebar } from '../components/unified/UnifiedSidebar'
@@ -438,10 +438,39 @@ export function UnifiedPage() {
   }, [renameConversation])
 
   const handleDeleteConversation = useCallback(async (spaceId: string, conversationId: string) => {
+    const closeResult = closeConversationTabs(spaceId, conversationId)
     const deleted = await deleteConversation(spaceId, conversationId)
-    if (!deleted) return
-    closeConversationTabs(spaceId, conversationId)
-  }, [closeConversationTabs, deleteConversation])
+    if (!deleted.accepted) return
+    if (spaceId !== currentSpaceId || !deleted.wasCurrent) {
+      return
+    }
+
+    startTransition(() => {
+      setRightPanelMode('artifacts')
+    })
+
+    const targetConversationId = closeResult.nextActiveChatConversationId || deleted.nextConversationId
+    if (!targetConversationId) {
+      return
+    }
+    const targetSpace = spaceById.get(spaceId)
+    const workDir = targetSpace?.path
+    const latestSpaceState = useChatStore.getState().getSpaceState(spaceId)
+    const targetMeta = latestSpaceState.conversations.find((conversation) => conversation.id === targetConversationId)
+    const conversationTitle = targetMeta?.title?.trim() || t('New conversation')
+
+    await selectConversation(targetConversationId)
+    await openChat(spaceId, targetConversationId, conversationTitle, workDir, resolveSpaceTabLabel(spaceId), false)
+  }, [
+    closeConversationTabs,
+    currentSpaceId,
+    deleteConversation,
+    openChat,
+    resolveSpaceTabLabel,
+    selectConversation,
+    spaceById,
+    t
+  ])
 
   const handleOpenResourceLibrary = useCallback((type: ResourceType) => {
     const targetMode = type === 'skill' ? 'skills' : 'agents'
