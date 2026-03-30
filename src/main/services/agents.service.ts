@@ -33,8 +33,7 @@ import {
   getLocalizedFrontmatterStringForLocale
 } from './resource-metadata.service'
 import { resolveResourceDisplayOverride } from './resource-display-i18n.service'
-import type { ResourceListView, ResourceExposure } from '../../shared/resource-access'
-import { filterByResourceExposure, resolveResourceExposure } from './resource-exposure.service'
+import type { ResourceListView } from '../../shared/resource-access'
 
 // ============================================
 // Agent Types
@@ -49,7 +48,6 @@ export interface AgentDefinition {
   description?: string
   pluginRoot?: string
   namespace?: string
-  exposure: ResourceExposure
 }
 
 export interface AgentEnabledIdentity {
@@ -145,7 +143,7 @@ function readAgentMetadata(
   namespace?: string,
   workDir?: string,
   locale?: string
-): { displayName?: string; description?: string; exposure?: unknown } {
+): { displayName?: string; description?: string } {
   try {
     const content = readFileSync(filePath, 'utf-8')
     const metadata = parseResourceMetadata(content)
@@ -157,7 +155,6 @@ function readAgentMetadata(
     const frontmatterBaseDisplayName = getFrontmatterString(metadata.frontmatter, ['name', 'title'])
     const resourceKey = namespace ? `${namespace}:${name}` : name
     const sidecar = resolveResourceDisplayOverride(sourceRoot, 'agent', resourceKey, locale)
-    const exposure = getFrontmatterString(metadata.frontmatter, ['exposure'])
     return {
       displayName: sidecar.titleLocale
         ?? frontmatterLocalizedDisplayName
@@ -167,12 +164,11 @@ function readAgentMetadata(
         ?? frontmatterLocalizedDescription
         ?? sidecar.descriptionDefault
         ?? frontmatterBaseDescription
-        ?? metadata.description,
-      exposure
+        ?? metadata.description
     }
   } catch {
     // Ignore read errors
-    return { exposure: undefined }
+    return {}
   }
 }
 
@@ -201,14 +197,6 @@ function scanAgentDir(
           path: filePath,
           source,
           enabled: true,
-          exposure: resolveResourceExposure({
-            type: 'agent',
-            source,
-            name,
-            namespace,
-            workDir,
-            frontmatterExposure: metadata.exposure
-          }),
           description: metadata.description,
           ...(metadata.displayName && { displayName: metadata.displayName }),
           ...(pluginRoot && { pluginRoot }),
@@ -361,7 +349,7 @@ function listAgentsUnfiltered(workDir?: string, locale?: string): AgentDefinitio
 }
 
 export function listAgents(workDir: string | undefined, view: ResourceListView, locale?: string): AgentDefinition[] {
-  const agents = filterByResourceExposure(listAgentsUnfiltered(workDir, locale), view)
+  const agents = listAgentsUnfiltered(workDir, locale)
   logFound('agents', agents, view, workDir, locale)
   return agents
 }
@@ -470,19 +458,11 @@ export function createAgent(workDir: string, name: string, content: string): Age
   const metadata = parseResourceMetadata(content)
   const description = metadata.description
   const displayName = getFrontmatterString(metadata.frontmatter, ['name', 'title'])
-  const exposure = resolveResourceExposure({
-    type: 'agent',
-    source: 'space',
-    workDir,
-    name,
-    frontmatterExposure: getFrontmatterString(metadata.frontmatter, ['exposure'])
-  })
   return {
     name,
     path: agentPath,
     source: 'space',
     enabled: true,
-    exposure,
     description,
     ...(displayName && { displayName })
   }
@@ -616,12 +596,6 @@ export function createAgentInLibrary(name: string, content: string): AgentDefini
     path: agentPath,
     source: 'app',
     enabled: true,
-    exposure: resolveResourceExposure({
-      type: 'agent',
-      source: 'app',
-      name,
-      frontmatterExposure: getFrontmatterString(metadata.frontmatter, ['exposure'])
-    }),
     description: metadata.description,
     ...(displayName && { displayName })
   }

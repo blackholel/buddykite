@@ -9,7 +9,6 @@ function makeSkill(
     name,
     path: `/tmp/${name}`,
     source: 'app',
-    exposure: 'public',
     ...overrides,
   }
 }

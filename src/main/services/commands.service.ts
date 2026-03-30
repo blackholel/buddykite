@@ -27,8 +27,7 @@ import {
   getLocalizedFrontmatterStringForLocale
 } from './resource-metadata.service'
 import { resolveResourceDisplayOverride } from './resource-display-i18n.service'
-import type { ResourceListView, ResourceExposure } from '../../shared/resource-access'
-import { filterByResourceExposure, resolveResourceExposure } from './resource-exposure.service'
+import type { ResourceListView } from '../../shared/resource-access'
 
 // ============================================
 // Command Types
@@ -42,7 +41,6 @@ export interface CommandDefinition {
   description?: string
   pluginRoot?: string
   namespace?: string
-  exposure: ResourceExposure
   requiresSkills?: string[]
   requiresAgents?: string[]
 }
@@ -133,7 +131,6 @@ function readCommandMetadata(
 ): {
   displayName?: string
   description?: string
-  exposure?: unknown
   requiresSkills?: string[]
   requiresAgents?: string[]
 } {
@@ -148,7 +145,6 @@ function readCommandMetadata(
     const frontmatterBaseDisplayName = getFrontmatterString(metadata.frontmatter, ['name', 'title'])
     const resourceKey = namespace ? `${namespace}:${name}` : name
     const sidecar = resolveResourceDisplayOverride(sourceRoot, 'command', resourceKey, locale)
-    const exposure = getFrontmatterString(metadata.frontmatter, ['exposure'])
     const requiresSkills = getFrontmatterStringArray(metadata.frontmatter, ['requires_skills'])
     const requiresAgents = getFrontmatterStringArray(metadata.frontmatter, ['requires_agents'])
     return {
@@ -161,12 +157,11 @@ function readCommandMetadata(
         ?? sidecar.descriptionDefault
         ?? frontmatterBaseDescription
         ?? metadata.description,
-      exposure,
       requiresSkills,
       requiresAgents
     }
   } catch {
-    return { exposure: undefined, requiresSkills: undefined, requiresAgents: undefined }
+    return { requiresSkills: undefined, requiresAgents: undefined }
   }
 }
 
@@ -194,14 +189,6 @@ function scanCommandDir(
           name,
           path: filePath,
           source,
-          exposure: resolveResourceExposure({
-            type: 'command',
-            source,
-            name,
-            namespace,
-            workDir,
-            frontmatterExposure: metadata.exposure
-          }),
           description: metadata.description,
           ...(metadata.requiresSkills && { requiresSkills: metadata.requiresSkills }),
           ...(metadata.requiresAgents && { requiresAgents: metadata.requiresAgents }),
@@ -323,7 +310,7 @@ function listCommandsUnfiltered(workDir?: string, locale?: string): CommandDefin
 }
 
 export function listCommands(workDir: string | undefined, view: ResourceListView, locale?: string): CommandDefinition[] {
-  const commands = filterByResourceExposure(listCommandsUnfiltered(workDir, locale), view)
+  const commands = listCommandsUnfiltered(workDir, locale)
   logFound(commands, view, workDir, locale)
   return commands
 }
@@ -424,18 +411,10 @@ export function createCommand(workDir: string, name: string, content: string): C
   const displayName = getFrontmatterString(metadata.frontmatter, ['name', 'title'])
   const requiresSkills = getFrontmatterStringArray(metadata.frontmatter, ['requires_skills'])
   const requiresAgents = getFrontmatterStringArray(metadata.frontmatter, ['requires_agents'])
-  const exposure = resolveResourceExposure({
-    type: 'command',
-    source: 'space',
-    workDir,
-    name,
-    frontmatterExposure: getFrontmatterString(metadata.frontmatter, ['exposure'])
-  })
   return {
     name,
     path: commandPath,
     source: 'space',
-    exposure,
     description: metadata.description,
     ...(requiresSkills && { requiresSkills }),
     ...(requiresAgents && { requiresAgents }),

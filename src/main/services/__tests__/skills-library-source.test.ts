@@ -28,11 +28,6 @@ vi.mock('../space.service', () => ({
   getAllSpacePaths: vi.fn(() => [])
 }))
 
-vi.mock('../resource-exposure.service', () => ({
-  filterByResourceExposure: vi.fn((items: unknown[]) => items),
-  resolveResourceExposure: vi.fn(() => 'public')
-}))
-
 import { getKiteSkillsDir } from '../kite-library.service'
 import { clearSkillsCache, listSkills } from '../skills.service'
 

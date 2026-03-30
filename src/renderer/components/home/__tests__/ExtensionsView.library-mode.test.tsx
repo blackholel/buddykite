@@ -24,21 +24,18 @@ const skills = [
     path: '/tmp/skills/zeta',
     source: 'app',
     enabled: false,
-    exposure: 'public'
   },
   {
     name: 'beta',
     path: '/tmp/skills/beta',
     source: 'app',
     enabled: true,
-    exposure: 'public'
   },
   {
     name: 'alpha',
     path: '/tmp/skills/alpha',
     source: 'global',
     enabled: true,
-    exposure: 'public'
   }
 ]
 
@@ -48,14 +45,12 @@ const agents = [
     path: '/tmp/agents/helper.md',
     source: 'plugin',
     enabled: true,
-    exposure: 'public'
   },
   {
     name: 'reviewer',
     path: '/tmp/agents/reviewer.md',
     source: 'app',
     enabled: false,
-    exposure: 'public'
   }
 ]
 

@@ -26,11 +26,6 @@ vi.mock('../../../src/main/services/space.service', () => ({
   getAllSpacePaths: vi.fn(() => [])
 }))
 
-vi.mock('../../../src/main/services/resource-exposure.service', () => ({
-  filterByResourceExposure: vi.fn((items: unknown[]) => items),
-  resolveResourceExposure: vi.fn(() => 'public')
-}))
-
 import { getLockedUserConfigRootDir } from '../../../src/main/services/config-source-mode.service'
 import { listEnabledPlugins } from '../../../src/main/services/plugins.service'
 import { getKiteSkillsDir } from '../../../src/main/services/kite-library.service'

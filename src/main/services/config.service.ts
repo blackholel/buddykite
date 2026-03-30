@@ -3,10 +3,11 @@
  */
 
 import { app } from 'electron'
-import { basename, dirname, join, posix as pathPosix, relative, resolve, sep, win32 as pathWin32 } from 'path'
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'fs'
+import { basename, dirname, isAbsolute, join, posix as pathPosix, relative, resolve, sep, win32 as pathWin32 } from 'path'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'fs'
+import { homedir } from 'os'
 import { getConfigDir } from '../utils/instance'
-import { getKiteSpacesDir } from './kite-library.service'
+import { getKiteAgentsDir, getKiteSkillsDir, getKiteSpacesDir } from './kite-library.service'
 
 // Import analytics config type
 import type { AnalyticsConfig } from './analytics/types'
@@ -224,9 +225,6 @@ interface KiteConfig {
   claudeCode?: ClaudeCodeConfig
   // Configuration source mode (runtime lock consumes this on startup)
   configSourceMode: ConfigSourceMode
-  resourceExposure?: {
-    enabled: boolean
-  }
   commands?: {
     legacyDependencyRegexEnabled: boolean
   }
@@ -388,9 +386,6 @@ const DEFAULT_CONFIG: KiteConfig = {
   mcpServers: DEFAULT_MCP_SERVERS,
   isFirstLaunch: true,
   configSourceMode: 'kite',
-  resourceExposure: {
-    enabled: true
-  },
   commands: {
     legacyDependencyRegexEnabled: true
   },
@@ -415,6 +410,7 @@ const DEFAULT_CONFIG: KiteConfig = {
 const BUILTIN_SEED_ENV_KEY = 'KITE_BUILTIN_SEED_DIR'
 const DISABLE_BUILTIN_SEED_ENV_KEY = 'KITE_DISABLE_BUILTIN_SEED'
 const SEED_STATE_FILE = '.seed-state.json'
+const RESOURCE_EXPOSURE_CLEANUP_MARKER_FILE = 'resource-exposure-cleanup.v2.json'
 const KITE_ROOT_TEMPLATE = '__KITE_ROOT__'
 const BUILTIN_SEED_IGNORED_NAMES = new Set([
   SEED_STATE_FILE,
@@ -848,6 +844,204 @@ function forcePersistKiteConfigSourceMode(configPath: string): void {
   }
 }
 
+function getResourceExposureCleanupMarkerPath(kiteDir: string): string {
+  return join(kiteDir, RESOURCE_EXPOSURE_CLEANUP_MARKER_FILE)
+}
+
+function parseJsonObjectFile(filePath: string): Record<string, unknown> | null {
+  if (!existsSync(filePath)) return null
+  try {
+    const content = readFileSync(filePath, 'utf-8')
+    const parsed = JSON.parse(content) as unknown
+    return isPlainObject(parsed) ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+function toStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+}
+
+function resolvePathFromHome(pathValue: string): string {
+  return isAbsolute(pathValue) ? pathValue : join(homedir(), pathValue)
+}
+
+function collectCleanupResourceDirs(kiteDir: string, configPath: string): string[] {
+  const dirs = new Set<string>([
+    getKiteSkillsDir(kiteDir),
+    getKiteAgentsDir(kiteDir),
+    join(kiteDir, 'commands'),
+    join(kiteDir, 'skills'),
+    join(kiteDir, 'agents'),
+  ])
+
+  const parsedConfig = parseJsonObjectFile(configPath) || {}
+  const claudeCode = isPlainObject(parsedConfig.claudeCode) ? parsedConfig.claudeCode : {}
+  const plugins = isPlainObject(claudeCode.plugins) ? claudeCode.plugins : {}
+  const agents = isPlainObject(claudeCode.agents) ? claudeCode.agents : {}
+
+  for (const globalPath of toStringArray(plugins.globalPaths)) {
+    const resolvedGlobalPath = resolvePathFromHome(globalPath)
+    dirs.add(join(resolvedGlobalPath, 'skills'))
+    dirs.add(join(resolvedGlobalPath, 'commands'))
+  }
+
+  for (const agentsPath of toStringArray(agents.paths)) {
+    dirs.add(resolvePathFromHome(agentsPath))
+  }
+
+  const pluginsRegistryPath = join(kiteDir, 'plugins', 'installed_plugins.json')
+  const registry = parseJsonObjectFile(pluginsRegistryPath)
+  if (registry && isPlainObject(registry.plugins)) {
+    for (const installations of Object.values(registry.plugins)) {
+      if (!Array.isArray(installations)) continue
+      for (const installation of installations) {
+        if (!isPlainObject(installation)) continue
+        if (typeof installation.installPath !== 'string' || installation.installPath.trim().length === 0) continue
+        dirs.add(join(installation.installPath, 'skills'))
+        dirs.add(join(installation.installPath, 'agents'))
+        dirs.add(join(installation.installPath, 'commands'))
+      }
+    }
+  }
+
+  const spacePaths = new Set<string>()
+  for (const rootPath of [getSpacesDir(), getLegacySpacesDir(kiteDir)]) {
+    if (!existsSync(rootPath)) continue
+    try {
+      for (const entry of readdirSync(rootPath, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue
+        spacePaths.add(join(rootPath, entry.name))
+      }
+    } catch {
+      // ignore unreadable roots
+    }
+  }
+
+  const spacesIndexPath = join(kiteDir, 'spaces-index.json')
+  const spacesIndex = parseJsonObjectFile(spacesIndexPath)
+  if (spacesIndex) {
+    for (const customPath of toStringArray(spacesIndex.customPaths)) {
+      spacePaths.add(customPath)
+    }
+  }
+
+  for (const spacePath of spacePaths) {
+    dirs.add(join(spacePath, '.claude', 'skills'))
+    dirs.add(join(spacePath, '.claude', 'agents'))
+    dirs.add(join(spacePath, '.claude', 'commands'))
+  }
+
+  return [...dirs]
+}
+
+function stripExposureFrontmatterLine(content: string): string | null {
+  const lineBreak = content.startsWith('---\r\n') ? '\r\n' : content.startsWith('---\n') ? '\n' : null
+  if (!lineBreak) return null
+
+  const frontmatterStart = 3 + lineBreak.length
+  const frontmatterEndToken = `${lineBreak}---${lineBreak}`
+  const frontmatterEnd = content.indexOf(frontmatterEndToken, frontmatterStart)
+  if (frontmatterEnd < 0) return null
+
+  const frontmatterBody = content.slice(frontmatterStart, frontmatterEnd)
+  const frontmatterLines = frontmatterBody.split(/\r?\n/)
+  const filteredLines = frontmatterLines.filter((line) => !line.trimStart().startsWith('exposure:'))
+  if (filteredLines.length === frontmatterLines.length) return null
+
+  const nextFrontmatter = `---${lineBreak}${filteredLines.join(lineBreak)}${lineBreak}---${lineBreak}`
+  return `${nextFrontmatter}${content.slice(frontmatterEnd + frontmatterEndToken.length)}`
+}
+
+function cleanupExposureInMarkdownDir(dirPath: string): { scannedFiles: number; cleanedFiles: number } {
+  if (!existsSync(dirPath)) {
+    return { scannedFiles: 0, cleanedFiles: 0 }
+  }
+
+  let scannedFiles = 0
+  let cleanedFiles = 0
+  let entries: ReturnType<typeof readdirSync>
+  try {
+    entries = readdirSync(dirPath, { withFileTypes: true })
+  } catch {
+    return { scannedFiles: 0, cleanedFiles: 0 }
+  }
+
+  for (const entry of entries) {
+    const entryPath = join(dirPath, entry.name)
+    if (entry.isDirectory()) {
+      const nested = cleanupExposureInMarkdownDir(entryPath)
+      scannedFiles += nested.scannedFiles
+      cleanedFiles += nested.cleanedFiles
+      continue
+    }
+    if (!entry.isFile() || !entry.name.toLowerCase().endsWith('.md')) continue
+
+    scannedFiles += 1
+    let content: string
+    try {
+      content = readFileSync(entryPath, 'utf-8')
+    } catch {
+      continue
+    }
+
+    const cleanedContent = stripExposureFrontmatterLine(content)
+    if (cleanedContent === null) continue
+    try {
+      writeFileSync(entryPath, cleanedContent, 'utf-8')
+      cleanedFiles += 1
+    } catch (error) {
+      console.warn(`[Config] Failed to cleanup exposure field in file ${entryPath}:`, error)
+    }
+  }
+
+  return { scannedFiles, cleanedFiles }
+}
+
+function cleanupLegacyResourceExposureArtifacts(kiteDir: string, configPath: string): void {
+  const markerPath = getResourceExposureCleanupMarkerPath(kiteDir)
+  if (existsSync(markerPath)) return
+
+  let cleanedFiles = 0
+  let scannedFiles = 0
+
+  for (const dirPath of collectCleanupResourceDirs(kiteDir, configPath)) {
+    const result = cleanupExposureInMarkdownDir(dirPath)
+    scannedFiles += result.scannedFiles
+    cleanedFiles += result.cleanedFiles
+  }
+
+  let removedLegacyExposureConfig = false
+  const legacyExposureConfigPath = join(kiteDir, 'taxonomy', 'resource-exposure.json')
+  if (existsSync(legacyExposureConfigPath)) {
+    rmSync(legacyExposureConfigPath, { force: true })
+    removedLegacyExposureConfig = true
+  }
+
+  let removedConfigField = false
+  const parsedConfig = parseJsonObjectFile(configPath)
+  if (parsedConfig && Object.prototype.hasOwnProperty.call(parsedConfig, 'resourceExposure')) {
+    delete parsedConfig.resourceExposure
+    writeFileSync(configPath, JSON.stringify(parsedConfig, null, 2))
+    removedConfigField = true
+  }
+
+  writeFileSync(
+    markerPath,
+    JSON.stringify({
+      schemaVersion: 2,
+      cleanedAt: new Date().toISOString(),
+      scannedFiles,
+      cleanedFiles,
+      removedLegacyExposureConfig,
+      removedConfigField
+    }, null, 2),
+    'utf-8'
+  )
+}
+
 // Initialize app directories
 export async function initializeApp(): Promise<void> {
   const kiteDir = getKiteDir()
@@ -883,6 +1077,7 @@ export async function initializeApp(): Promise<void> {
   if (!existsSync(configPath)) {
     writeFileSync(configPath, JSON.stringify(DEFAULT_CONFIG, null, 2))
   }
+  cleanupLegacyResourceExposureArtifacts(kiteDir, configPath)
   forcePersistKiteConfigSourceMode(configPath)
 }
 
@@ -957,12 +1152,6 @@ export function getConfig(): KiteConfig {
       // analytics: keep as-is (managed by analytics.service.ts)
       analytics: parsed.analytics,
       configSourceMode: normalizeConfigSourceMode(parsed.configSourceMode),
-      resourceExposure: {
-        enabled:
-          typeof parsed.resourceExposure?.enabled === 'boolean'
-            ? parsed.resourceExposure.enabled
-            : DEFAULT_CONFIG.resourceExposure?.enabled !== false
-      },
       commands: {
         legacyDependencyRegexEnabled:
           typeof parsed.commands?.legacyDependencyRegexEnabled === 'boolean'
@@ -1087,12 +1276,6 @@ export function saveConfig(config: Partial<KiteConfig>): KiteConfig {
     newConfig.onboarding = { ...currentConfig.onboarding, ...config.onboarding }
   }
   newConfig.configSourceMode = 'kite'
-  if (updatesWithoutLegacy.resourceExposure !== undefined) {
-    newConfig.resourceExposure = {
-      ...currentConfig.resourceExposure,
-      ...(updatesWithoutLegacy.resourceExposure as Record<string, unknown>)
-    }
-  }
   if (updatesWithoutLegacy.commands !== undefined) {
     newConfig.commands = {
       ...currentConfig.commands,

@@ -103,12 +103,12 @@ sidecar(locale)
 
 ### 4.2 “某条命令不在外层扩展”
 
-根因是 exposure 为 `internal-only`，在 `extensions` 视图会被过滤。
+`resource-exposure` 已废弃，不再用于展示过滤。  
+当前外层可见性主要受以下因素影响：
 
-例如：
-
-- `everything-claude-code:tdd` 初始为 `internal-only`，需改为 `public` 才会在外层显示。
-- 配置位置：`~/.kite/taxonomy/resource-exposure.json`
+1. 资源是否被扫描到（来源目录是否正确、插件是否启用）
+2. 插件/资源是否被停用
+3. 当前视图筛选条件（资源类型、搜索关键字）
 
 ### 4.3 “展示不想看到 namespace 前缀”
 
@@ -125,19 +125,14 @@ sidecar(locale)
 
 新增资源文件放到对应目录（app/global/plugin/space）。
 
-### Step 1：确认曝光策略（是否需要外层可见）
+### Step 1：确认来源与启停状态
 
-如果你希望在外层扩展可见，确保 exposure 是 `public`：
+外层展示默认全量，不再依赖 exposure。  
+你只需要确认：
 
-- 文件：`~/.kite/taxonomy/resource-exposure.json`
-- 需要同时维护：
-  - `resources` 精确键（推荐）
-  - `skills/agents/commands` 简写键（可选但建议同步）
-
-命令示例键：
-
-- `command:plugin:-:everything-claude-code:tdd`
-- `everything-claude-code:tdd`
+1. 资源文件路径正确且可被扫描
+2. 插件已启用
+3. 资源未被停用
 
 ### Step 2：运行离线 sidecar 脚本
 
@@ -207,13 +202,11 @@ node scripts/build-resource-sidecar.mjs report --locale zh-CN --out /tmp/sidecar
 
 1. 资源是否存在：
    - `~/.kite/plugins/<plugin>/commands/*.md` 或对应 skills/agents 路径
-2. exposure 是否为 `public`：
-   - `~/.kite/taxonomy/resource-exposure.json`
-3. sidecar 是否有该 key：
+2. sidecar 是否有该 key：
    - `resources.<type>.<namespace:name>`
-4. `zh-CN` 是否有值（不是空字符串）
-5. 是否刷新缓存（Refresh / 重启）
-6. 是否处于 `extensions` 视图（不是 runtime-only 视图）
+3. `zh-CN` 是否有值（不是空字符串）
+4. 是否刷新缓存（Refresh / 重启）
+5. 是否处于 `extensions` 视图（不是 runtime-only 视图）
 
 ---
 
@@ -222,7 +215,7 @@ node scripts/build-resource-sidecar.mjs report --locale zh-CN --out /tmp/sidecar
 - 每次新增/改名资源后，执行一次：
   - `scan -> apply -> report`
 - 每周集中校对一次 `/tmp/sidecar-report.json`
-- 对外展示资源默认 `public`，内部编排资源保持 `internal-only`
+- 资源展示由来源扫描 + 启停状态控制，不再维护 exposure 白名单
 - 执行 key 永远不改（只改展示 `title/description`）
 
 ---
@@ -230,5 +223,4 @@ node scripts/build-resource-sidecar.mjs report --locale zh-CN --out /tmp/sidecar
 ## 9. 相关文档
 
 - `docs/resource-sidecar-offline.zh-CN.md`（简版）
-- `docs/resource-exposure-control.zh-CN.md`（曝光控制）
-
+- `docs/resource-exposure-control.zh-CN.md`（历史兼容说明，机制已废弃）

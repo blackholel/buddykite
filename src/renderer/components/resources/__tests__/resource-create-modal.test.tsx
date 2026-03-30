@@ -33,7 +33,6 @@ const skillsStoreMock = vi.hoisted(() => ({
     path: '/tmp/Kite/Skills/code-reviewer',
     source: 'app',
     enabled: true,
-    exposure: 'public'
   }))
 }))
 
@@ -43,7 +42,6 @@ const agentsStoreMock = vi.hoisted(() => ({
     path: '/tmp/Kite/Agents/planner.md',
     source: 'app',
     enabled: true,
-    exposure: 'public'
   }))
 }))
 

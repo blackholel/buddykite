@@ -17,7 +17,7 @@ const apiMock = vi.hoisted(() => ({
 
 const skillsStoreMock = vi.hoisted(() => ({
   skills: [
-    { name: 'existing-skill', path: '/tmp/Kite/Skills/existing-skill', source: 'app', enabled: true, exposure: 'public' }
+    { name: 'existing-skill', path: '/tmp/Kite/Skills/existing-skill', source: 'app', enabled: true }
   ],
   isLoading: false,
   loadSkills: vi.fn(async () => {}),
@@ -29,7 +29,7 @@ const skillsStoreMock = vi.hoisted(() => ({
 
 const agentsStoreMock = vi.hoisted(() => ({
   agents: [
-    { name: 'existing-agent', path: '/tmp/Kite/Agents/existing-agent.md', source: 'app', enabled: true, exposure: 'public' }
+    { name: 'existing-agent', path: '/tmp/Kite/Agents/existing-agent.md', source: 'app', enabled: true }
   ],
   isLoading: false,
   loadAgents: vi.fn(async () => {}),

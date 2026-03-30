@@ -1,20 +1,6 @@
 export type ResourceType = 'skill' | 'agent' | 'command'
 export type ResourceKind = 'skills' | 'agents'
 
-export type ResourceExposure = 'public' | 'internal-only'
-
-export const RESOURCE_EXPOSURES: ResourceExposure[] = ['public', 'internal-only']
-
-export function isResourceExposure(value: unknown): value is ResourceExposure {
-  return typeof value === 'string' && (RESOURCE_EXPOSURES as string[]).includes(value)
-}
-
-export const DEFAULT_RESOURCE_EXPOSURE: Record<ResourceType, ResourceExposure> = {
-  skill: 'internal-only',
-  agent: 'internal-only',
-  command: 'public'
-}
-
 export type ResourceListView =
   | 'extensions'
   | 'composer'
@@ -36,24 +22,6 @@ export function isResourceListView(value: unknown): value is ResourceListView {
   return typeof value === 'string' && (RESOURCE_LIST_VIEWS as string[]).includes(value)
 }
 
-export function viewAllowsInternalResources(
-  view: ResourceListView
-): boolean {
-  if (view === 'taxonomy-admin' || view === 'runtime-command-dependency') {
-    return true
-  }
-
-  return false
-}
-
-export function isResourceVisibleInView(
-  exposure: ResourceExposure,
-  view: ResourceListView
-): boolean {
-  if (exposure === 'public') return true
-  return viewAllowsInternalResources(view)
-}
-
 export type InvocationContext = 'interactive' | 'command-dependency'
 
 export function isInvocationContext(value: unknown): value is InvocationContext {
@@ -65,7 +33,6 @@ export type ResourceRefreshReason =
   | 'plugin-registry-change'
   | 'settings-change'
   | 'resource-library-state-change'
-  | 'resource-exposure-change'
   | 'manual-refresh'
   | 'install-complete'
 

@@ -10,11 +10,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 // Mock the service dependencies
 vi.mock('../../skills.service', () => ({
   getSkillDefinition: vi.fn((name: string) => {
-    const defs: Record<string, { source: string; exposure: 'public' | 'internal-only' }> = {
-      'coding-standards': { source: 'app', exposure: 'public' },
-      'tdd-workflow': { source: 'app', exposure: 'public' },
-      'security-review': { source: 'app', exposure: 'public' },
-      'deploy': { source: 'app', exposure: 'public' }
+    const defs: Record<string, { source: string }> = {
+      'coding-standards': { source: 'app' },
+      'tdd-workflow': { source: 'app' },
+      'security-review': { source: 'app' },
+      'deploy': { source: 'app' }
     }
     return defs[name] || null
   }),
@@ -31,9 +31,9 @@ vi.mock('../../skills.service', () => ({
 
 vi.mock('../../commands.service', () => ({
   getCommand: vi.fn((name: string) => {
-    const commands: Record<string, { source: string; exposure: 'public' | 'internal-only'; requiresSkills?: string[] }> = {
-      review: { source: 'app', exposure: 'public' },
-      deploy: { source: 'app', exposure: 'public', requiresSkills: ['deploy'] }
+    const commands: Record<string, { source: string; requiresSkills?: string[] }> = {
+      review: { source: 'app' },
+      deploy: { source: 'app', requiresSkills: ['deploy'] }
     }
     return commands[name] || null
   }),
@@ -48,9 +48,9 @@ vi.mock('../../commands.service', () => ({
 
 vi.mock('../../agents.service', () => ({
   getAgent: vi.fn((name: string) => {
-    const defs: Record<string, { source: string; exposure: 'public' | 'internal-only' }> = {
-      'code-reviewer': { source: 'app', exposure: 'public' },
-      debugger: { source: 'app', exposure: 'public' }
+    const defs: Record<string, { source: string }> = {
+      'code-reviewer': { source: 'app' },
+      debugger: { source: 'app' }
     }
     return defs[name] || null
   }),

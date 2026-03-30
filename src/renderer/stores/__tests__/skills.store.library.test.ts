@@ -59,14 +59,12 @@ describe('skills.store library contracts', () => {
         path: '/tmp/review',
         source: 'app',
         enabled: false,
-        exposure: 'public'
       },
       {
         name: 'lint',
         path: '/tmp/lint',
         source: 'app',
         enabled: true,
-        exposure: 'public'
       }
     ]
     mockApi.listSkills.mockResolvedValueOnce({ success: true, data: payload })
@@ -86,7 +84,6 @@ describe('skills.store library contracts', () => {
       path: '/tmp/review',
       source: 'app',
       enabled: true,
-      exposure: 'public'
     }
     useSkillsStore.setState({
       skills: [seeded],
@@ -113,7 +110,6 @@ describe('skills.store library contracts', () => {
       path: '/tmp/kite/Skills/planner',
       source: 'app',
       enabled: true,
-      exposure: 'public'
     }
     mockApi.createSkillInLibrary.mockResolvedValueOnce({ success: true, data: created })
 
@@ -131,14 +127,12 @@ describe('skills.store library contracts', () => {
       path: '/tmp/space/.claude/skills/space-only',
       source: 'space',
       enabled: true,
-      exposure: 'public'
     }
     const created: SkillDefinition = {
       name: 'library-only',
       path: '/tmp/kite/Skills/library-only',
       source: 'app',
       enabled: true,
-      exposure: 'public'
     }
     useSkillsStore.setState({
       loadedWorkDir: '/tmp/space',
@@ -161,7 +155,6 @@ describe('skills.store library contracts', () => {
       path: '/tmp/kite/Skills/obsolete',
       source: 'app',
       enabled: true,
-      exposure: 'public'
     }
     useSkillsStore.setState({
       skills: [seeded],

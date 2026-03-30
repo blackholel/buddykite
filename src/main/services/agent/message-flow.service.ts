@@ -47,7 +47,6 @@ import { expandLazyDirectives } from './skill-expander'
 import {
   getExecutionLayerAllowedSources
 } from './space-resource-policy.service'
-import { getResourceExposureRuntimeFlags } from '../resource-exposure.service'
 import { findEnabledPluginByInput } from '../plugins.service'
 import {
   beginChangeSet,
@@ -1548,7 +1547,7 @@ export async function sendMessage(
     `[Agent][${conversationId}] Bound resource index snapshot: hash=${boundResourceIndexHash}, skills=${resourceIndexSnapshot.counts.skills}, agents=${resourceIndexSnapshot.counts.agents}, runtimePolicy=${resourceRuntimePolicy}`
   )
   const { effectiveLazyLoad: skillsLazyLoad } = getEffectiveSkillsLazyLoad(workDir, config)
-  const exposureFlags = getResourceExposureRuntimeFlags()
+  const legacyDependencyRegexEnabled = config.commands?.legacyDependencyRegexEnabled !== false
   const allowedDirectiveSources = getExecutionLayerAllowedSources()
   const slashRuntimeMode = resolveSlashRuntimeMode(
     {
@@ -2180,8 +2179,7 @@ export async function sendMessage(
         allowSources: allowedDirectiveSources,
         invocationContext: runtimeInvocationContext,
         locale: effectiveResponseLanguage,
-        resourceExposureEnabled: false,
-        legacyDependencyRegexEnabled: exposureFlags.legacyDependencyRegexEnabled
+        legacyDependencyRegexEnabled
       })
       : {
         text: messageForSend,

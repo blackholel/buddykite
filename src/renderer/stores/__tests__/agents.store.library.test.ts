@@ -57,14 +57,12 @@ describe('agents.store library contracts', () => {
         path: '/tmp/planner.md',
         source: 'app',
         enabled: false,
-        exposure: 'public'
       },
       {
         name: 'writer',
         path: '/tmp/writer.md',
         source: 'plugin',
         enabled: true,
-        exposure: 'public'
       }
     ]
     mockApi.listAgents.mockResolvedValueOnce({ success: true, data: payload })
@@ -84,7 +82,6 @@ describe('agents.store library contracts', () => {
       path: '/tmp/planner.md',
       source: 'app',
       enabled: true,
-      exposure: 'public'
     }
     useAgentsStore.setState({
       agents: [seeded],
@@ -111,7 +108,6 @@ describe('agents.store library contracts', () => {
       path: '/tmp/kite/Agents/researcher.md',
       source: 'app',
       enabled: true,
-      exposure: 'public'
     }
     mockApi.createAgentInLibrary.mockResolvedValueOnce({ success: true, data: created })
 
@@ -129,14 +125,12 @@ describe('agents.store library contracts', () => {
       path: '/tmp/space/.claude/agents/space-only.md',
       source: 'space',
       enabled: true,
-      exposure: 'public'
     }
     const created: AgentDefinition = {
       name: 'library-only',
       path: '/tmp/kite/Agents/library-only.md',
       source: 'app',
       enabled: true,
-      exposure: 'public'
     }
     useAgentsStore.setState({
       loadedWorkDir: '/tmp/space',
@@ -159,7 +153,6 @@ describe('agents.store library contracts', () => {
       path: '/tmp/kite/Agents/obsolete.md',
       source: 'app',
       enabled: true,
-      exposure: 'public'
     }
     useAgentsStore.setState({
       agents: [seeded],

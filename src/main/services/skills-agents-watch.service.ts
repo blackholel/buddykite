@@ -15,7 +15,6 @@ import { getAllSpacePaths } from './space.service'
 import { normalizePlatformPath } from '../utils/path-validation'
 import { getLockedConfigSourceMode, getLockedUserConfigRootDir } from './config-source-mode.service'
 import { getKiteAgentsDir, getKiteSkillsDir } from './kite-library.service'
-import { clearResourceExposureCache, getResourceExposureConfigPath } from './resource-exposure.service'
 import { getResourceLibraryStatePath } from './resource-library-state.service'
 import { clearResourceIndexSnapshot, rebuildAllResourceIndexes, rebuildResourceIndex } from './resource-index.service'
 import {
@@ -33,8 +32,6 @@ type WatchKind =
   | 'display-i18n-root-dir'
   | 'display-i18n-dir'
   | 'display-i18n-file'
-  | 'resource-exposure'
-  | 'resource-exposure-dir'
   | 'plugins-registry-file'
   | 'plugins-registry-dir'
   | 'settings-file'
@@ -183,23 +180,6 @@ function schedulePluginConfigNotify(reason: 'plugin-registry-change' | 'settings
   }, 200))
 }
 
-function scheduleExposureNotify(): void {
-  const key = 'resource-exposure:global'
-  const timer = debounceTimers.get(key)
-  if (timer) clearTimeout(timer)
-
-  debounceTimers.set(key, setTimeout(() => {
-    debounceTimers.delete(key)
-    clearResourceExposureCache()
-    clearResourceDisplayI18nCache()
-    clearResourceIndexSnapshot()
-    clearSkillsCache()
-    clearAgentsCache()
-    rebuildAllResourceIndexes('resource-exposure-change')
-    emitAllResourceChanged('resource-exposure-change')
-  }, 200))
-}
-
 function scheduleResourceLibraryStateNotify(): void {
   const key = 'resource-library-state:global'
   const timer = debounceTimers.get(key)
@@ -255,11 +235,6 @@ function createWatcher(kind: WatchKind, path: string, workDir?: string, opts?: {
 
       if (kind === 'display-i18n-file') {
         scheduleDisplayI18nNotify(workDir)
-        return
-      }
-
-      if (kind === 'resource-exposure' || kind === 'resource-exposure-dir') {
-        scheduleExposureNotify()
         return
       }
 
@@ -522,14 +497,6 @@ function initPluginConfigWatchers(): void {
 export function initSkillAgentWatchers(window: BrowserWindow): void {
   mainWindow = window
   createWatcher('spaces-root', getSpacesDir())
-
-  const exposurePath = getResourceExposureConfigPath()
-  const exposureDir = dirname(exposurePath)
-  if (!existsSync(exposureDir)) {
-    mkdirSync(exposureDir, { recursive: true })
-  }
-  createWatcher('resource-exposure', exposurePath)
-  createWatcher('resource-exposure-dir', exposureDir)
 
   const resourceLibraryStatePath = getResourceLibraryStatePath()
   const resourceLibraryStateDir = dirname(resourceLibraryStatePath)

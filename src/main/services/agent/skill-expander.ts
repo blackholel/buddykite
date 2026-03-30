@@ -11,7 +11,7 @@
 import { createHash } from 'crypto'
 import { getSkillContent, getSkillDefinition } from '../skills.service'
 import { getAgent, getAgentContent } from '../agents.service'
-import type { InvocationContext, ResourceExposure } from '../../../shared/resource-access'
+import type { InvocationContext } from '../../../shared/resource-access'
 import type { DirectiveRef } from './types'
 
 const SLASH_LINE_RE = /^\/([\p{L}\p{N}._:-]+)(?:\s+(.+))?$/u
@@ -54,7 +54,6 @@ interface ExpandLazyDirectiveOptions {
   allowSources?: string[]
   invocationContext?: InvocationContext
   locale?: string
-  resourceExposureEnabled?: boolean
   legacyDependencyRegexEnabled?: boolean
 }
 
@@ -87,21 +86,6 @@ function createEmptyExpansionState(): ExpansionState {
       agents: new Set<string>()
     }
   }
-}
-
-function emitResourceExposureBlockEvent(
-  type: 'skill' | 'agent' | 'command',
-  token: ParsedDirectiveToken,
-  context: InvocationContext,
-  exposure: ResourceExposure | undefined
-): void {
-  console.warn('[telemetry] resource_exposure_block', {
-    type,
-    token: token.raw,
-    exposure: exposure || 'public',
-    context,
-    callerChannel: context
-  })
 }
 
 /**
@@ -219,17 +203,6 @@ function shouldSkipToken(token: ParsedDirectiveToken, options?: ExpandLazyDirect
   return options.skip.has(token.raw) || options.skip.has(token.name)
 }
 
-function canUseExposure(
-  exposure: ResourceExposure | undefined,
-  context: InvocationContext,
-  options?: ExpandLazyDirectiveOptions
-): boolean {
-  if (options?.resourceExposureEnabled === false) return true
-  if (exposure !== 'internal-only') return true
-  if (context === 'command-dependency') return true
-  return false
-}
-
 function buildSkillInjectionBlock(
   tokenRaw: string,
   content: string,
@@ -288,11 +261,6 @@ function expandRequiredSkillDependency(
     return null
   }
 
-  if (!canUseExposure(skillDefinition.exposure, 'command-dependency', options)) {
-    pushMissing(state, 'skills', token.raw)
-    return null
-  }
-
   const skill = getSkillContent(token.raw, workDir, { locale: options?.locale })
   if (!skill) {
     pushMissing(state, 'skills', token.raw)
@@ -311,11 +279,6 @@ function expandRequiredAgentDependency(
 ): string | null {
   const agentDefinition = getAgent(token.raw, workDir)
   if (!agentDefinition || !isAllowedSource(options?.allowSources, agentDefinition.source)) {
-    pushMissing(state, 'agents', token.raw)
-    return null
-  }
-
-  if (!canUseExposure(agentDefinition.exposure, 'command-dependency', options)) {
     pushMissing(state, 'agents', token.raw)
     return null
   }
@@ -344,12 +307,6 @@ function expandSkillDirective(
 
   const skillDefinition = getSkillDefinition(token.raw, workDir, { locale: options?.locale })
   if (!skillDefinition || !isAllowedSource(options?.allowSources, skillDefinition.source)) {
-    pushMissing(state, 'skills', token.raw)
-    return null
-  }
-  const invocationContext = options?.invocationContext || 'interactive'
-  if (!canUseExposure(skillDefinition.exposure, invocationContext, options)) {
-    emitResourceExposureBlockEvent('skill', token, invocationContext, skillDefinition.exposure)
     pushMissing(state, 'skills', token.raw)
     return null
   }
@@ -396,12 +353,6 @@ function expandAgentDirective(
 
   const agentDefinition = getAgent(token.raw, workDir)
   if (!agentDefinition || !isAllowedSource(options?.allowSources, agentDefinition.source)) {
-    pushMissing(state, 'agents', token.raw)
-    return null
-  }
-  const invocationContext = options?.invocationContext || 'interactive'
-  if (!canUseExposure(agentDefinition.exposure, invocationContext, options)) {
-    emitResourceExposureBlockEvent('agent', token, invocationContext, agentDefinition.exposure)
     pushMissing(state, 'agents', token.raw)
     return null
   }

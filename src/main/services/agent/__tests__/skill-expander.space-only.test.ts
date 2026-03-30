@@ -2,16 +2,16 @@ import { describe, expect, it, vi } from 'vitest'
 import { getExecutionLayerAllowedSources } from '../space-resource-policy.service'
 
 const skillDefinitions = {
-  'space-skill': { source: 'space', exposure: 'public' as const },
-  'app-skill': { source: 'app', exposure: 'public' as const },
-  '创建技能': { source: 'space', exposure: 'public' as const },
-  '创建命令': { source: 'space', exposure: 'public' as const }
+  'space-skill': { source: 'space' as const },
+  'app-skill': { source: 'app' as const },
+  '创建技能': { source: 'space' as const },
+  '创建命令': { source: 'space' as const }
 }
 
 const agentDefinitions = {
-  'space-agent': { source: 'space', exposure: 'public' as const },
-  'app-agent': { source: 'app', exposure: 'public' as const },
-  '创建代理': { source: 'space', exposure: 'public' as const }
+  'space-agent': { source: 'space' as const },
+  'app-agent': { source: 'app' as const },
+  '创建代理': { source: 'space' as const }
 }
 
 vi.mock('../../skills.service', () => ({

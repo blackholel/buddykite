@@ -139,6 +139,15 @@ export function registerAgentsHandlers(): void {
 
   ipcMain.handle('agents:delete-library', async (_event, agentPath: string) => {
     try {
+      const targetAgent = listAgents(undefined, 'taxonomy-admin').find((item) => item.path === agentPath)
+      if (targetAgent && targetAgent.source === 'plugin') {
+        return {
+          success: false,
+          error: 'Plugin resources cannot be deleted from library',
+          errorCode: 'PLUGIN_RESOURCE_DELETE_FORBIDDEN'
+        }
+      }
+
       const result = deleteAgentFromLibrary(agentPath)
       if (!result) {
         return { success: false, error: 'Failed to delete library agent' }

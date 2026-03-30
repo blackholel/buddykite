@@ -48,7 +48,6 @@ describe('resource detail modal i18n title', () => {
           namespace: 'ops',
           path: '/tmp/.claude/skills/review/SKILL.md',
           source: 'space',
-          exposure: 'runtime-direct'
         },
         workDir: '/tmp',
         onClose: () => undefined
@@ -67,7 +66,6 @@ describe('resource detail modal i18n title', () => {
           namespace: 'ops',
           path: '/tmp/.claude/agents/planner.md',
           source: 'space',
-          exposure: 'runtime-direct'
         },
         workDir: '/tmp',
         onClose: () => undefined

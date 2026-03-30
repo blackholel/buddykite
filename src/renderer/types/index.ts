@@ -227,9 +227,6 @@ export interface KiteConfig {
   mcpServers: McpServersConfig;  // MCP servers configuration
   isFirstLaunch: boolean;
   configSourceMode: ConfigSourceMode;
-  resourceExposure?: {
-    enabled: boolean;
-  };
   commands?: {
     legacyDependencyRegexEnabled: boolean;
   };

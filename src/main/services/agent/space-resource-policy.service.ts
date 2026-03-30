@@ -79,7 +79,7 @@ export function getAllowedSources(policy: SpaceResourcePolicy): ResourceSource[]
 /**
  * Runtime directive expansion should always be able to resolve global resources
  * from ~/.kite as well as current space resources.
- * Direct invocation safety is still controlled by exposure rules.
+ * Direct invocation safety is controlled by runtime source policy and plugin/space state.
  */
 export function getExecutionLayerAllowedSources(): ResourceSource[] {
   return [...EXECUTION_LAYER_ALLOWED_SOURCES]

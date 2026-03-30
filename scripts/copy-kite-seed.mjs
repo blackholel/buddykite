@@ -294,34 +294,6 @@ function sanitizeGenericJsonFile(sourcePath, targetPath) {
   return true
 }
 
-function containsExcludedPluginToken(value) {
-  if (typeof value !== 'string') return false
-  for (const pluginName of excludedPluginNames) {
-    if (value.includes(pluginName)) return true
-  }
-  return false
-}
-
-function sanitizeResourceExposureFile(sourcePath, targetPath) {
-  const parsed = readJson(sourcePath)
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return false
-
-  const sanitized = sanitizeSecrets(JSON.parse(JSON.stringify(parsed)))
-  const mapKeys = ['resources', 'commands', 'skills', 'agents']
-  for (const key of mapKeys) {
-    const section = sanitized[key]
-    if (!section || typeof section !== 'object' || Array.isArray(section)) continue
-    for (const entryKey of Object.keys(section)) {
-      if (containsExcludedPluginToken(entryKey)) {
-        delete section[entryKey]
-      }
-    }
-  }
-
-  writeJson(targetPath, sanitized)
-  return true
-}
-
 function copySeedFile(sourcePath, targetPath, relativePath) {
   mkdirSync(dirname(targetPath), { recursive: true })
 
@@ -355,11 +327,6 @@ function copySeedFile(sourcePath, targetPath, relativePath) {
     }
     copyFileSync(sourcePath, targetPath)
     return
-  }
-
-  if (relativePath === 'taxonomy/resource-exposure.json') {
-    const handled = sanitizeResourceExposureFile(sourcePath, targetPath)
-    if (handled) return
   }
 
   if (relativePath.endsWith('.json')) {

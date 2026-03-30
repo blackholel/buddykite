@@ -165,6 +165,15 @@ export function registerSkillsHandlers(): void {
 
   ipcMain.handle('skills:delete-library', async (_event, skillPath: string) => {
     try {
+      const targetSkill = listSkills(undefined, 'taxonomy-admin').find((item) => item.path === skillPath)
+      if (targetSkill && (targetSkill.source === 'plugin' || targetSkill.source === 'installed')) {
+        return {
+          success: false,
+          error: 'Plugin resources cannot be deleted from library',
+          errorCode: 'PLUGIN_RESOURCE_DELETE_FORBIDDEN'
+        }
+      }
+
       const result = deleteSkillFromLibrary(skillPath)
       if (!result) {
         return { success: false, error: 'Failed to delete library skill' }

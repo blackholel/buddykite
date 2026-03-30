@@ -26,6 +26,7 @@ import {
 import { getTestDir } from '../setup'
 
 const LEGACY_TAXONOMY_KEY = 'extension' + 'Taxonomy'
+const RESOURCE_EXPOSURE_CLEANUP_MARKER = 'resource-exposure-cleanup.v2.json'
 
 describe('Config Service', () => {
   const thisFileDir = path.dirname(fileURLToPath(import.meta.url))
@@ -134,6 +135,87 @@ describe('Config Service', () => {
       const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'))
       expect(config.api).toBeDefined()
       expect(config.permissions).toBeDefined()
+    })
+
+    it('should cleanup legacy resource exposure artifacts once', async () => {
+      const kiteDir = getKiteDir()
+      const configPath = getConfigPath()
+      const commandDir = path.join(kiteDir, 'commands')
+      const commandPath = path.join(commandDir, 'legacy-cleanup.md')
+      const exposureConfigPath = path.join(kiteDir, 'taxonomy', 'resource-exposure.json')
+
+      fs.mkdirSync(commandDir, { recursive: true })
+      fs.mkdirSync(path.dirname(exposureConfigPath), { recursive: true })
+      fs.writeFileSync(commandPath, [
+        '---',
+        'name: legacy-cleanup',
+        'exposure: internal-only',
+        'description: test',
+        '---',
+        '',
+        '# legacy-cleanup',
+        '',
+      ].join('\n'))
+      fs.writeFileSync(exposureConfigPath, JSON.stringify({ version: 1 }, null, 2))
+      fs.writeFileSync(configPath, JSON.stringify({
+        resourceExposure: { enabled: true },
+        claudeCode: { plugins: { globalPaths: [] }, agents: { paths: [] } }
+      }, null, 2))
+
+      await initializeApp()
+
+      const cleanedContent = fs.readFileSync(commandPath, 'utf-8')
+      const cleanedConfig = JSON.parse(fs.readFileSync(configPath, 'utf-8')) as Record<string, unknown>
+      expect(cleanedContent).not.toContain('exposure:')
+      expect(Object.prototype.hasOwnProperty.call(cleanedConfig, 'resourceExposure')).toBe(false)
+      expect(fs.existsSync(exposureConfigPath)).toBe(false)
+      expect(fs.existsSync(path.join(kiteDir, RESOURCE_EXPOSURE_CLEANUP_MARKER))).toBe(true)
+    })
+
+    it('should continue initialize when legacy cleanup cannot write one markdown file', async () => {
+      if (process.platform === 'win32') {
+        return
+      }
+
+      const kiteDir = getKiteDir()
+      const configPath = getConfigPath()
+      const commandDir = path.join(kiteDir, 'commands')
+      const commandPath = path.join(commandDir, 'legacy-cleanup-write-fail.md')
+      const exposureConfigPath = path.join(kiteDir, 'taxonomy', 'resource-exposure.json')
+      const markerPath = path.join(kiteDir, RESOURCE_EXPOSURE_CLEANUP_MARKER)
+
+      fs.mkdirSync(commandDir, { recursive: true })
+      fs.mkdirSync(path.dirname(exposureConfigPath), { recursive: true })
+      fs.rmSync(markerPath, { force: true })
+      fs.writeFileSync(commandPath, [
+        '---',
+        'name: legacy-cleanup-write-fail',
+        'exposure: internal-only',
+        'description: test',
+        '---',
+        '',
+        '# legacy-cleanup-write-fail',
+        '',
+      ].join('\n'))
+      fs.writeFileSync(exposureConfigPath, JSON.stringify({ version: 1 }, null, 2))
+      fs.writeFileSync(configPath, JSON.stringify({
+        resourceExposure: { enabled: true },
+        claudeCode: { plugins: { globalPaths: [] }, agents: { paths: [] } }
+      }, null, 2))
+      fs.chmodSync(commandPath, 0o444)
+
+      try {
+        await expect(initializeApp()).resolves.toBeUndefined()
+
+        const cleanedConfig = JSON.parse(fs.readFileSync(configPath, 'utf-8')) as Record<string, unknown>
+        const commandContent = fs.readFileSync(commandPath, 'utf-8')
+        expect(commandContent).toContain('exposure: internal-only')
+        expect(Object.prototype.hasOwnProperty.call(cleanedConfig, 'resourceExposure')).toBe(false)
+        expect(fs.existsSync(exposureConfigPath)).toBe(false)
+        expect(fs.existsSync(markerPath)).toBe(true)
+      } finally {
+        fs.chmodSync(commandPath, 0o644)
+      }
     })
   })
 

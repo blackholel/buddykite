@@ -70,7 +70,6 @@ describe('resource library detail actions', () => {
           path: '/tmp/Kite/Skills/planner',
           source: 'app',
           enabled: true,
-          exposure: 'public'
         }}
         type="skill"
         index={0}
@@ -99,7 +98,6 @@ describe('resource library detail actions', () => {
           path: '/tmp/plugins/reviewer.md',
           source: 'plugin',
           enabled: true,
-          exposure: 'public'
         }}
         type="agent"
         index={0}

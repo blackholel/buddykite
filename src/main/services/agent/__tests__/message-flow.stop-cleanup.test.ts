@@ -160,10 +160,6 @@ vi.mock('../slash-runtime-mode.service', () => ({
   SLASH_RUNTIME_MODE_ENV_KEY: 'HELLO_HALO_SLASH_RUNTIME_MODE'
 }))
 
-vi.mock('../../resource-exposure.service', () => ({
-  getResourceExposureRuntimeFlags: vi.fn(() => ({}))
-}))
-
 vi.mock('../../plugins.service', () => ({
   findEnabledPluginByInput: vi.fn(() => null)
 }))

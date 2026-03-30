@@ -85,8 +85,8 @@
 2. 所属插件是否启用
 3. MCP server 是否启用
 4. 当前 space 是否禁用该资源
-5. exposure 是否允许
-6. legacy/internal 是否显式放行
+5. 来源策略是否允许（app/global/space/installed/plugin）
+6. legacy/internal 兼容开关是否放行
 
 ### 3.2 真值表口径
 
@@ -95,8 +95,8 @@
 | 资源不存在 | 直接阻断 | 不进入后续判定 |
 | 插件禁用 | 阻断 | 插件子资源与 plugin MCP 同步失效 |
 | MCP 禁用 | 阻断 | 仅对对应 MCP server 生效 |
-| Space 禁用 | 阻断 | 即使资源存在且 exposure 为 public 也不可执行 |
-| exposure 阻断 | 阻断 | 影响展示与直接调用 |
+| Space 禁用 | 阻断 | 即使资源存在且来源允许也不可执行 |
+| 来源策略阻断 | 阻断 | 由运行时来源白名单控制 |
 | legacy/internal 放行 | 可执行 | 仅允许显式兼容场景 |
 
 ### 3.3 reason code 对照表
@@ -107,7 +107,7 @@
 2. `PLUGIN_DISABLED`
 3. `MCP_DISABLED`
 4. `SPACE_DISABLED`
-5. `EXPOSURE_BLOCKED`
+5. `SOURCE_POLICY_BLOCKED`
 6. `LEGACY_POLICY_BLOCKED`
 
 要求：
@@ -170,7 +170,7 @@
    - plugin enabled
    - MCP enabled
    - Space disabled
-   - exposure
+   - source policy
 
 ### 5.2 `kill switch`
 

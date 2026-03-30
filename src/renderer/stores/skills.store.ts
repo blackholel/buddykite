@@ -12,7 +12,7 @@ import { create } from 'zustand'
 import { api } from '../api'
 import i18n from '../i18n'
 import { getCacheKey, getAllCacheKeys, GLOBAL_CACHE_KEY } from './cache-keys'
-import type { ResourceChangedPayload, ResourceExposure } from '../../shared/resource-access'
+import type { ResourceChangedPayload } from '../../shared/resource-access'
 
 // ============================================
 // Types
@@ -29,7 +29,6 @@ export interface SkillDefinition {
   category?: string
   pluginRoot?: string
   namespace?: string
-  exposure: ResourceExposure
 }
 
 export interface SkillContent {

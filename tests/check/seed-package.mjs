@@ -145,20 +145,6 @@ function collectExcludedPluginViolations(seedDir) {
     }
   }
 
-  const taxonomyPath = path.join(seedDir, 'taxonomy', 'resource-exposure.json')
-  if (fs.existsSync(taxonomyPath)) {
-    const taxonomy = JSON.parse(fs.readFileSync(taxonomyPath, 'utf-8'))
-    const sections = [taxonomy?.resources, taxonomy?.commands, taxonomy?.skills, taxonomy?.agents]
-    for (const section of sections) {
-      if (!section || typeof section !== 'object') continue
-      for (const key of Object.keys(section)) {
-        if (typeof key === 'string' && key.includes(EXCLUDED_PLUGIN_NAME)) {
-          violations.push(`Excluded plugin should not appear in taxonomy resource exposure: ${key}`)
-        }
-      }
-    }
-  }
-
   return violations
 }
 

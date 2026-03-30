@@ -48,11 +48,6 @@ vi.mock('../../../src/main/services/config-source-mode.service', () => ({
   getLockedUserConfigRootDir: vi.fn(() => '/home/test/.kite')
 }))
 
-vi.mock('../../../src/main/services/resource-exposure.service', () => ({
-  clearResourceExposureCache: vi.fn(),
-  getResourceExposureConfigPath: vi.fn(() => '/home/test/.kite/resource-exposure.json')
-}))
-
 vi.mock('../../../src/main/services/resource-display-i18n.service', () => ({
   clearResourceDisplayI18nCache: vi.fn(),
   getResourceDisplayI18nRoots: vi.fn(() => []),

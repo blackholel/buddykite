@@ -35,8 +35,7 @@ import {
   getLocalizedFrontmatterStringForLocale
 } from './resource-metadata.service'
 import { resolveResourceDisplayOverride } from './resource-display-i18n.service'
-import type { ResourceListView, ResourceExposure } from '../../shared/resource-access'
-import { filterByResourceExposure, resolveResourceExposure } from './resource-exposure.service'
+import type { ResourceListView } from '../../shared/resource-access'
 
 // ============================================
 // Skill Types
@@ -53,7 +52,6 @@ export interface SkillDefinition {
   category?: string
   pluginRoot?: string
   namespace?: string
-  exposure: ResourceExposure
 }
 
 export interface SkillContent {
@@ -312,14 +310,6 @@ function normalizeFrontmatterString(value: string | undefined): string {
   return trimmed
 }
 
-function resolveSopExposure(frontmatter: Record<string, unknown> | null | undefined): ResourceExposure {
-  const rawValue = frontmatter?.exposure
-  if (rawValue === 'public' || rawValue === 'internal-only') {
-    return rawValue
-  }
-  return 'public'
-}
-
 function extractSopRevision(frontmatter: Record<string, unknown> | null | undefined): number {
   if (!frontmatter) return 0
   const rawValue = frontmatter.sop_revision
@@ -332,15 +322,13 @@ function buildSopSkillContent(
   skillName: string,
   description: string | undefined,
   normalizedSpec: SopSpec,
-  revision: number,
-  exposure: ResourceExposure
+  revision: number
 ): string {
   const block = buildSopSpecJsonBlock(normalizedSpec)
   const frontmatterLines = [
     '---',
     `name: ${toYamlScalar(skillName)}`,
     `description: ${toYamlScalar(description || `Recorded browser SOP for ${skillName}`)}`,
-    `exposure: ${toYamlScalar(exposure)}`,
     'sop_mode: manual_browser',
     `sop_revision: ${revision}`,
     '---',
@@ -549,7 +537,6 @@ function scanSkillDir(
         let displayName: string | undefined
         let triggers: string[] | undefined
         let category: string | undefined
-        let frontmatterExposure: unknown
         let frontmatterDescription: string | undefined
         let localizedFrontmatterDescription: string | undefined
         let frontmatterDisplayName: string | undefined
@@ -564,7 +551,6 @@ function scanSkillDir(
             localizedFrontmatterDisplayName = getLocalizedFrontmatterStringForLocale(frontmatter, ['name', 'title'], locale)
             triggers = getFrontmatterStringArray(frontmatter, ['triggers'])
             category = getFrontmatterString(frontmatter, ['category'])
-            frontmatterExposure = frontmatter.exposure
           }
         } catch {
           // Ignore read errors for metadata
@@ -586,14 +572,6 @@ function scanSkillDir(
           path: skillPath,
           source,
           enabled: true,
-          exposure: resolveResourceExposure({
-            type: 'skill',
-            source,
-            name: entry,
-            namespace,
-            workDir,
-            frontmatterExposure
-          }),
           description,
           triggers,
           category,
@@ -733,7 +711,7 @@ function listSkillsUnfiltered(workDir?: string, locale?: string): SkillDefinitio
 }
 
 export function listSkills(workDir: string | undefined, view: ResourceListView, locale?: string): SkillDefinition[] {
-  const skills = filterByResourceExposure(listSkillsUnfiltered(workDir, locale), view)
+  const skills = listSkillsUnfiltered(workDir, locale)
   logFound(skills, view, workDir, locale)
   return skills
 }
@@ -855,19 +833,11 @@ export function createSkill(workDir: string, name: string, content: string): Ski
   const displayName = getFrontmatterString(frontmatter, ['name', 'title'])
   const triggers = getFrontmatterStringArray(frontmatter, ['triggers'])
   const category = getFrontmatterString(frontmatter, ['category'])
-  const exposure = resolveResourceExposure({
-    type: 'skill',
-    source: 'space',
-    workDir,
-    name,
-    frontmatterExposure: frontmatter?.exposure
-  })
   return {
     name,
     path: skillDir,
     source: 'space',
     enabled: true,
-    exposure,
     description,
     triggers,
     category,
@@ -890,7 +860,6 @@ export function saveSopSkill(input: SaveSopSkillInput): SaveSopSkillResult {
   let existingFrontmatter: Record<string, unknown> | null = null
   let description = input.description?.trim() || ''
   let nextRevision = 1
-  let exposure: ResourceExposure = 'public'
 
   if (exists) {
     existingContent = readFileSync(skillMdPath, 'utf-8')
@@ -898,7 +867,6 @@ export function saveSopSkill(input: SaveSopSkillInput): SaveSopSkillResult {
     if (!description) {
       description = normalizeFrontmatterString(getFrontmatterString(existingFrontmatter, ['description']) || '')
     }
-    exposure = resolveSopExposure(existingFrontmatter)
     nextRevision = extractSopRevision(existingFrontmatter) + 1
   }
 
@@ -916,7 +884,6 @@ export function saveSopSkill(input: SaveSopSkillInput): SaveSopSkillResult {
         'description',
         description || `Recorded browser SOP for ${skillName}`
       )
-      nextContent = upsertFrontmatterField(nextContent, 'exposure', exposure)
       nextContent = upsertFrontmatterField(nextContent, 'sop_mode', 'manual_browser')
       nextContent = upsertFrontmatterField(nextContent, 'sop_revision', nextRevision)
     }
@@ -925,7 +892,7 @@ export function saveSopSkill(input: SaveSopSkillInput): SaveSopSkillResult {
   if (!nextContent) {
     const revision = exists ? nextRevision : 1
     const rebuiltSpec = normalizeSopSpec(sopSpec, skillName, revision)
-    nextContent = buildSopSkillContent(skillName, description, rebuiltSpec, revision, exposure)
+    nextContent = buildSopSkillContent(skillName, description, rebuiltSpec, revision)
     nextRevision = revision
   }
 
@@ -1089,25 +1056,18 @@ function isLibrarySkillPath(skillPathOrDir: string): boolean {
   return isPathWithinBasePaths(skillMdPath, [libraryBase])
 }
 
-function parseSkillContentMetadata(content: string, skillName: string): {
+function parseSkillContentMetadata(content: string): {
   description?: string
   displayName?: string
   triggers?: string[]
   category?: string
-  exposure: ResourceExposure
 } {
   const frontmatter = parseFrontmatter(content)
   return {
     description: getFrontmatterString(frontmatter, ['description']),
     displayName: getFrontmatterString(frontmatter, ['name', 'title']),
     triggers: getFrontmatterStringArray(frontmatter, ['triggers']),
-    category: getFrontmatterString(frontmatter, ['category']),
-    exposure: resolveResourceExposure({
-      type: 'skill',
-      source: 'app',
-      name: skillName,
-      frontmatterExposure: frontmatter?.exposure
-    })
+    category: getFrontmatterString(frontmatter, ['category'])
   }
 }
 
@@ -1122,13 +1082,12 @@ export function createSkillInLibrary(name: string, content: string): SkillDefini
   setResourceEnabledState(buildResourceLibraryStateKey('skill', 'app', name), true, getLockedUserConfigRootDir())
   clearSkillsCache()
 
-  const metadata = parseSkillContentMetadata(content, name)
+  const metadata = parseSkillContentMetadata(content)
   return {
     name,
     path: skillDir,
     source: 'app',
     enabled: true,
-    exposure: metadata.exposure,
     description: metadata.description,
     triggers: metadata.triggers,
     category: metadata.category,
