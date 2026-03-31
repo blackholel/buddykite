@@ -223,6 +223,11 @@ interface KiteConfig {
   }
   // Claude Code configuration (plugins, hooks, agents)
   claudeCode?: ClaudeCodeConfig
+  resourceCreation?: {
+    skill?: {
+      strictIntentKeywords?: string[]
+    }
+  }
   // Configuration source mode (runtime lock consumes this on startup)
   configSourceMode: ConfigSourceMode
   commands?: {

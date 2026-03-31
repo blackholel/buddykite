@@ -38,6 +38,8 @@ export default defineConfig({
       '../src/main/services/__tests__/resource-copy-by-ref.test.ts',
       '../src/main/services/__tests__/resource-delete-guard.test.ts',
       '../src/main/services/__tests__/resource-metadata.service.test.ts',
+      '../src/main/services/__tests__/runtime-python.service.test.ts',
+      '../src/main/services/__tests__/skill-strict-creation.service.test.ts',
       '../src/main/services/__tests__/space-config.merge.test.ts',
       '../src/renderer/api/__tests__/transport.process.test.ts',
       '../src/renderer/api/__tests__/api.process.test.ts',

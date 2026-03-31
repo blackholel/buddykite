@@ -24,7 +24,104 @@ const apiMock = vi.hoisted(() => ({
       description: 'plan tasks',
       content: '# planner'
     }
-  }))
+  })),
+  getPythonRuntimeStatus: vi.fn(async () => ({
+    success: true,
+    data: {
+      found: true,
+      pythonCommand: 'python3',
+      pythonVersion: 'Python 3.12.1',
+      pipReady: true,
+      missingModules: [],
+      installSupported: true,
+      installStrategy: 'windows-system-silent'
+    }
+  })),
+  installPythonRuntime: vi.fn(async () => ({
+    success: true,
+    data: {
+      found: true,
+      pythonCommand: 'python',
+      pythonVersion: 'Python 3.12.1',
+      pipReady: true,
+      missingModules: [],
+      installSupported: true,
+      installStrategy: 'windows-system-silent'
+    }
+  })),
+  runStrictSkillFlow: vi.fn(async (payload: any) => {
+    if (payload.action === 'start') {
+      return {
+        success: true,
+        data: {
+          runId: 'strict-run-1',
+          stage: 'review-ready',
+          progress: 80,
+          iteration: 1,
+          reviewHtmlPath: '/tmp/review.html',
+          benchmarkPath: '/tmp/benchmark.json',
+          feedbackPath: '/tmp/feedback.json',
+          runIds: ['eval-1-with_skill-run-1'],
+          lastError: null
+        }
+      }
+    }
+    if (payload.action === 'submit-feedback') {
+      return {
+        success: true,
+        data: {
+          runId: 'strict-run-1',
+          stage: 'feedback-collected',
+          progress: 90,
+          iteration: 1,
+          reviewHtmlPath: '/tmp/review.html',
+          benchmarkPath: '/tmp/benchmark.json',
+          feedbackPath: '/tmp/feedback.json',
+          runIds: ['eval-1-with_skill-run-1'],
+          lastError: null
+        }
+      }
+    }
+    if (payload.action === 'continue') {
+      return {
+        success: true,
+        data: {
+          runId: 'strict-run-1',
+          stage: 'review-ready',
+          progress: 80,
+          iteration: 2,
+          reviewHtmlPath: '/tmp/review-2.html',
+          benchmarkPath: '/tmp/benchmark-2.json',
+          feedbackPath: '/tmp/feedback-2.json',
+          runIds: ['eval-1-with_skill-run-1'],
+          lastError: null
+        }
+      }
+    }
+    return {
+      success: true,
+      data: {
+        state: {
+          runId: 'strict-run-1',
+          stage: 'finalized',
+          progress: 100,
+          iteration: 2,
+          reviewHtmlPath: '/tmp/review-2.html',
+          benchmarkPath: '/tmp/benchmark-2.json',
+          feedbackPath: '/tmp/feedback-2.json',
+          runIds: ['eval-1-with_skill-run-1'],
+          lastError: null
+        },
+        createdSkill: {
+          name: 'code-reviewer',
+          path: '/tmp/Kite/Skills/code-reviewer',
+          source: 'app',
+          enabled: true,
+        }
+      }
+    }
+  }),
+  openExternal: vi.fn(async () => undefined)
 }))
 
 const skillsStoreMock = vi.hoisted(() => ({
@@ -151,7 +248,11 @@ describe('ResourceCreateModal', () => {
     await clickElement(renderer.container.querySelector('[data-testid="resource-create-submit"]'))
     await flushAsyncWork()
 
-    expect(apiMock.generateSkillDraft).toHaveBeenCalledWith('Need a skill for code review quality gate')
+    expect(apiMock.generateSkillDraft).toHaveBeenCalledWith({
+      description: 'Need a skill for code review quality gate',
+      mode: 'quick',
+      strictIntentHints: ['review']
+    })
     expect(skillsStoreMock.createSkillInLibrary).toHaveBeenCalledWith('code-reviewer', '# code-reviewer')
     expect(onCreated).toHaveBeenCalledTimes(1)
     expect(onClose).toHaveBeenCalledTimes(1)
@@ -183,6 +284,48 @@ describe('ResourceCreateModal', () => {
 
     expect(renderer.container.textContent).toContain('generation failed')
     expect(agentsStoreMock.createAgentInLibrary).not.toHaveBeenCalled()
+    await renderer.unmount()
+  })
+
+  it('严格模式可走完整流程并在关键词命中时显示推荐', async () => {
+    const onCreated = vi.fn()
+    const onClose = vi.fn()
+    const renderer = createRenderer()
+    await renderer.render(
+      <ResourceCreateModal
+        resourceType="skill"
+        onClose={onClose}
+        onCreated={onCreated}
+      />
+    )
+
+    await inputText(
+      renderer.container.querySelector('[data-testid="resource-create-description"]'),
+      'Need benchmark eval assertions for review quality'
+    )
+    await flushAsyncWork()
+
+    expect(renderer.container.querySelector('[data-testid="resource-create-strict-recommendation"]')).not.toBeNull()
+
+    await clickElement(renderer.container.querySelector('[data-testid="resource-create-mode-strict"]'))
+    await flushAsyncWork()
+    await clickElement(renderer.container.querySelector('[data-testid="resource-create-generate"]'))
+    await flushAsyncWork()
+
+    expect(apiMock.runStrictSkillFlow).toHaveBeenCalledWith({
+      action: 'start',
+      description: 'Need benchmark eval assertions for review quality',
+      strictIntentHints: ['review', 'eval', 'benchmark', 'assertion']
+    })
+    expect(renderer.container.querySelector('[data-testid="resource-create-strict-panel"]')).not.toBeNull()
+
+    await clickElement(renderer.container.querySelector('[data-testid="resource-create-submit"]'))
+    await flushAsyncWork()
+
+    expect(skillsStoreMock.createSkillInLibrary).not.toHaveBeenCalled()
+    expect(onCreated).toHaveBeenCalledTimes(1)
+    expect(onClose).toHaveBeenCalledTimes(1)
+
     await renderer.unmount()
   })
 })

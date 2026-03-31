@@ -23,6 +23,49 @@ interface GuideMessageRequest {
 }
 
 type ChatMode = 'code' | 'plan'
+type CreationMode = 'quick' | 'strict'
+type StrictSkillStage =
+  | 'goal-confirmed'
+  | 'eval-set-confirmed'
+  | 'running'
+  | 'review-ready'
+  | 'feedback-collected'
+  | 'finalized'
+  | 'failed'
+
+interface StrictSkillRunState {
+  runId: string
+  stage: StrictSkillStage
+  progress: number
+  skillName: string
+  description: string
+  strictIntentHints: string[]
+  iteration: number
+  workspaceDir: string
+  iterationDir: string
+  benchmarkPath: string | null
+  reviewHtmlPath: string | null
+  feedbackPath: string
+  runIds: string[]
+  lastError: string | null
+  createdAt: string
+  updatedAt: string
+  draft: {
+    name: string
+    description: string
+    content: string
+  }
+}
+
+interface PythonRuntimeStatus {
+  found: boolean
+  pythonCommand: string | null
+  pythonVersion: string | null
+  pipReady: boolean
+  missingModules: string[]
+  installSupported: boolean
+  installStrategy: 'windows-system-silent' | 'manual-guidance'
+}
 
 // Type definitions for exposed API
 export interface KiteAPI {
@@ -210,7 +253,19 @@ export interface KiteAPI {
   getSkillContent: (name: string, workDir?: string) => Promise<IpcResponse>
   createSkill: (workDir: string, name: string, content: string) => Promise<IpcResponse>
   createSkillInLibrary: (name: string, content: string) => Promise<IpcResponse>
-  generateSkillDraft: (description: string) => Promise<IpcResponse>
+  generateSkillDraft: (payload: {
+    description: string
+    mode?: CreationMode
+    strictIntentHints?: string[]
+  }) => Promise<IpcResponse>
+  runStrictSkillFlow: (
+    payload:
+    | { action: 'start'; description: string; strictIntentHints?: string[] }
+    | { action: 'continue'; runId: string }
+    | { action: 'submit-feedback'; runId: string; feedback: string }
+    | { action: 'finalize'; runId: string; name?: string; content?: string }
+  ) => Promise<IpcResponse<StrictSkillRunState | { state: StrictSkillRunState; createdSkill: Record<string, unknown> }>>
+  getStrictSkillFlowStatus: (runId: string) => Promise<IpcResponse<StrictSkillRunState>>
   saveSopSkill: (payload: {
     workDir: string
     skillName: string
@@ -378,6 +433,8 @@ export interface KiteAPI {
     message: string
     error?: string
   }) => void) => Promise<{ success: boolean; path?: string; error?: string }>
+  getPythonRuntimeStatus: () => Promise<IpcResponse<PythonRuntimeStatus>>
+  installPythonRuntime: () => Promise<IpcResponse<PythonRuntimeStatus>>
   openExternal: (url: string) => Promise<void>
 }
 
@@ -533,7 +590,9 @@ const api: KiteAPI = {
   getSkillContent: (name, workDir) => ipcRenderer.invoke('skills:get-content', name, workDir),
   createSkill: (workDir, name, content) => ipcRenderer.invoke('skills:create', workDir, name, content),
   createSkillInLibrary: (name, content) => ipcRenderer.invoke('skills:create-library', name, content),
-  generateSkillDraft: (description) => ipcRenderer.invoke('skills:generate-draft', description),
+  generateSkillDraft: (payload) => ipcRenderer.invoke('skills:generate-draft', payload),
+  runStrictSkillFlow: (payload) => ipcRenderer.invoke('skills:strict-run', payload),
+  getStrictSkillFlowStatus: (runId) => ipcRenderer.invoke('skills:strict-status', runId),
   saveSopSkill: (payload) => ipcRenderer.invoke('skills:save-sop-recording', payload),
   updateSkill: (skillPath, content) => ipcRenderer.invoke('skills:update', skillPath, content),
   updateSkillInLibrary: (skillPath, content) => ipcRenderer.invoke('skills:update-library', skillPath, content),
@@ -629,6 +688,8 @@ const api: KiteAPI = {
       { success: boolean; path?: string; error?: string },
       Parameters<typeof onProgress>[0]
     >('git-bash:install', {}, onProgress, 'git-bash:install-progress'),
+  getPythonRuntimeStatus: () => ipcRenderer.invoke('runtime:python-status'),
+  installPythonRuntime: () => ipcRenderer.invoke('runtime:python-install'),
   openExternal: (url) => ipcRenderer.invoke('shell:open-external', url),
 }
 

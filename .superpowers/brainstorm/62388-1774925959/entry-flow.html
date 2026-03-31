@@ -1,0 +1,64 @@
+<h2>创建技能入口，主路径要定哪一条？</h2>
+<p class="subtitle">你现在不满意的不是弹框样式，而是用户被带离了当前工作区语境。先把默认入口定死，后面状态流才不会反复返工。</p>
+
+<div class="section">
+  <div class="split">
+    <div class="mockup">
+      <div class="mockup-header">现状: 资源库页 → Create → 弹框生成 → 直接落库</div>
+      <div class="mockup-body">
+        <div class="mock-nav">技能资源库</div>
+        <div style="padding: 14px; display:flex; flex-direction:column; gap:12px;">
+          <button class="mock-button" style="width: 120px;">Create</button>
+          <div class="placeholder" style="min-height: 160px; display:flex; align-items:center; justify-content:center;">
+            ResourceCreateModal
+          </div>
+          <div style="font-size:12px; color:#666;">问题: 脱离当前工作区和会话上下文，创建像“填表单”，不像“在工作里完成任务”。</div>
+        </div>
+      </div>
+    </div>
+    <div class="mockup">
+      <div class="mockup-header">目标: 入口触发 → 回到当前工作区 → 输入框预填 /创建技能</div>
+      <div class="mockup-body">
+        <div class="mock-nav">当前工作区会话</div>
+        <div style="padding: 14px; display:flex; flex-direction:column; gap:12px;">
+          <div class="placeholder" style="min-height: 116px;">已有上下文、附件、历史消息仍然可见</div>
+          <div style="border:1px solid #d9d9d9; border-radius:20px; padding:14px 18px; display:flex; align-items:center; justify-content:space-between;">
+            <div>
+              <div style="display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:999px; background:#f2ecff; color:#7c4dff; font-size:12px; margin-bottom:8px;">Skill Creator</div>
+              <div style="font-size:13px; color:#444;">/创建技能</div>
+            </div>
+            <div style="width:36px; height:36px; border-radius:999px; background:#111;"></div>
+          </div>
+          <div style="font-size:12px; color:#666;">优势: 不丢上下文，后续追问、补充、确认、复盘都在同一条线程完成。</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>我建议优先选 B</h3>
+  <div class="options">
+    <div class="option" data-choice="a" onclick="toggleSelect(this)">
+      <div class="letter">A</div>
+      <div class="content">
+        <h3>保留资源库页 Create，但仍在本页处理</h3>
+        <p>只是把弹框改成页内面板或抽屉。改动小，但没有解决“离开工作语境”这个根问题。</p>
+      </div>
+    </div>
+    <div class="option" data-choice="b" onclick="toggleSelect(this)">
+      <div class="letter">B</div>
+      <div class="content">
+        <h3>保留入口，但点击后跳回当前工作区并预填 /创建技能</h3>
+        <p>这是最稳的主路径。入口还在，心智切到对话里，用户仍能从资源库页发起创建。</p>
+      </div>
+    </div>
+    <div class="option" data-choice="c" onclick="toggleSelect(this)">
+      <div class="letter">C</div>
+      <div class="content">
+        <h3>彻底移除资源库页 Create，只允许在工作区内创建</h3>
+        <p>最纯，但会让资源库页少一个显式入口。对新用户不一定友好，容易让人以为这里只能管理不能创建。</p>
+      </div>
+    </div>
+  </div>
+</div>

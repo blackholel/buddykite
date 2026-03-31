@@ -1,0 +1,99 @@
+<h2>技能创建工作标签页，内部状态怎么走？</h2>
+<p class="subtitle">目标不是再造一个弹框，而是把“创建前说明、创建中对话、创建后结果”收进同一个工作标签页里。</p>
+
+<div class="section">
+  <div class="mockup">
+    <div class="mockup-header">推荐状态流</div>
+    <div class="mockup-body" style="padding:18px;">
+      <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:18px;">
+        <div style="padding:8px 12px; border-radius:12px; background:#f5f5f5; border:1px solid #e5e5e5;">起始态</div>
+        <div style="color:#999;">→</div>
+        <div style="padding:8px 12px; border-radius:12px; background:#eef6ff; border:1px solid #bfdbfe;">需求澄清</div>
+        <div style="color:#999;">→</div>
+        <div style="padding:8px 12px; border-radius:12px; background:#f6f3ff; border:1px solid #d8b4fe;">生成 / 严格评审</div>
+        <div style="color:#999;">→</div>
+        <div style="padding:8px 12px; border-radius:12px; background:#ecfdf5; border:1px solid #86efac;">创建成功</div>
+      </div>
+
+      <div class="split">
+        <div class="mockup">
+          <div class="mockup-header">上半区: 固定流程头</div>
+          <div class="mockup-body" style="padding:14px;">
+            <div style="display:flex; justify-content:space-between; align-items:start; margin-bottom:10px;">
+              <div>
+                <div style="font-size:12px; color:#7c4dff; margin-bottom:4px;">Skill Creator</div>
+                <div style="font-size:18px; font-weight:600;">创建技能</div>
+              </div>
+              <div style="font-size:12px; color:#666;">当前工作区: hello-halo</div>
+            </div>
+            <div style="font-size:13px; color:#555; margin-bottom:12px;">这里不是普通会话，用户知道自己正在走“技能创建流程”。</div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+              <div style="padding:6px 10px; border-radius:999px; background:#f5f5f5;">未开始</div>
+              <div style="padding:6px 10px; border-radius:999px; background:#f5f5f5;">草稿中</div>
+              <div style="padding:6px 10px; border-radius:999px; background:#f5f5f5;">评审中</div>
+              <div style="padding:6px 10px; border-radius:999px; background:#f5f5f5;">已创建</div>
+            </div>
+          </div>
+        </div>
+        <div class="mockup">
+          <div class="mockup-header">下半区: 会话区</div>
+          <div class="mockup-body" style="padding:14px;">
+            <div class="placeholder" style="min-height:120px; margin-bottom:12px;">AI 追问、用户补充、严格模式迭代都仍然发生在消息流里</div>
+            <div style="border:1px solid #ddd; border-radius:16px; padding:12px;">输入框空白，但已挂载 Skill Create</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>创建成功后的页面组织</h3>
+  <div class="cards">
+    <div class="card" data-choice="recommended" onclick="toggleSelect(this)">
+      <div class="card-image" style="padding:14px;">
+        <div style="padding:12px; border:1px solid #86efac; background:#ecfdf5; border-radius:14px; margin-bottom:10px;">
+          <div style="font-weight:600; margin-bottom:6px;">创建成功</div>
+          <div style="font-size:12px; color:#555;">技能名、落盘路径、来源工作区、创建时间</div>
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button class="mock-button">查看技能详情</button>
+          <button class="mock-button" style="background:#f5f5f5; color:#222;">继续迭代</button>
+        </div>
+      </div>
+      <div class="card-body">
+        <h3>推荐: 成功卡片置顶</h3>
+        <p>保留完整创建记录，同时在顶部出现成功摘要卡片。这样既能回看流程，也能快速跳详情。</p>
+      </div>
+    </div>
+    <div class="card" data-choice="alt" onclick="toggleSelect(this)">
+      <div class="card-image" style="padding:14px;">
+        <div class="placeholder" style="min-height:96px;">聊天记录到底，底部才出现成功提示</div>
+      </div>
+      <div class="card-body">
+        <h3>备选: 像普通消息一样沉到底部</h3>
+        <p>实现简单，但成功结果容易被长对话淹没，不适合作为一个工作流完成态。</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>我建议先定这一条</h3>
+  <div class="options">
+    <div class="option" data-choice="a" onclick="toggleSelect(this)">
+      <div class="letter">A</div>
+      <div class="content">
+        <h3>固定流程头始终可见</h3>
+        <p>用户随时知道现在是哪个阶段，适合严格模式和长流程。我推荐这个。</p>
+      </div>
+    </div>
+    <div class="option" data-choice="b" onclick="toggleSelect(this)">
+      <div class="letter">B</div>
+      <div class="content">
+        <h3>流程头只在空态和成功态显示</h3>
+        <p>更轻，但中间阶段会退化成普通聊天，专用标签页的辨识度会下降。</p>
+      </div>
+    </div>
+  </div>
+</div>

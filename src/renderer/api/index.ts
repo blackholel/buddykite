@@ -43,6 +43,50 @@ interface GuideMessageRequest {
   clientMessageId?: string
 }
 
+type CreationMode = 'quick' | 'strict'
+type StrictSkillStage =
+  | 'goal-confirmed'
+  | 'eval-set-confirmed'
+  | 'running'
+  | 'review-ready'
+  | 'feedback-collected'
+  | 'finalized'
+  | 'failed'
+
+interface StrictSkillRunState {
+  runId: string
+  stage: StrictSkillStage
+  progress: number
+  skillName: string
+  description: string
+  strictIntentHints: string[]
+  iteration: number
+  workspaceDir: string
+  iterationDir: string
+  benchmarkPath: string | null
+  reviewHtmlPath: string | null
+  feedbackPath: string
+  runIds: string[]
+  lastError: string | null
+  createdAt: string
+  updatedAt: string
+  draft: {
+    name: string
+    description: string
+    content: string
+  }
+}
+
+interface PythonRuntimeStatus {
+  found: boolean
+  pythonCommand: string | null
+  pythonVersion: string | null
+  pipReady: boolean
+  missingModules: string[]
+  installSupported: boolean
+  installStrategy: 'windows-system-silent' | 'manual-guidance'
+}
+
 function createOpId(prefix: string): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return `${prefix}-${crypto.randomUUID()}`
@@ -822,9 +866,33 @@ export const api = {
     return { success: false, error: 'Only available in desktop app' }
   },
 
-  generateSkillDraft: async (description: string): Promise<ApiResponse> => {
+  generateSkillDraft: async (payload: {
+    description: string
+    mode?: CreationMode
+    strictIntentHints?: string[]
+  }): Promise<ApiResponse> => {
     if (isElectron()) {
-      return window.kite.generateSkillDraft(description)
+      return window.kite.generateSkillDraft(payload)
+    }
+    return { success: false, error: 'Only available in desktop app' }
+  },
+
+  runStrictSkillFlow: async (
+    payload:
+    | { action: 'start'; description: string; strictIntentHints?: string[] }
+    | { action: 'continue'; runId: string }
+    | { action: 'submit-feedback'; runId: string; feedback: string }
+    | { action: 'finalize'; runId: string; name?: string; content?: string }
+  ): Promise<ApiResponse<StrictSkillRunState | { state: StrictSkillRunState; createdSkill: Record<string, unknown> }>> => {
+    if (isElectron()) {
+      return window.kite.runStrictSkillFlow(payload)
+    }
+    return { success: false, error: 'Only available in desktop app' }
+  },
+
+  getStrictSkillFlowStatus: async (runId: string): Promise<ApiResponse<StrictSkillRunState>> => {
+    if (isElectron()) {
+      return window.kite.getStrictSkillFlowStatus(runId)
     }
     return { success: false, error: 'Only available in desktop app' }
   },
@@ -1471,6 +1539,20 @@ export const api = {
       return { success: false, error: 'Only available in desktop app' }
     }
     return window.kite.installGitBash(onProgress)
+  },
+
+  getPythonRuntimeStatus: async (): Promise<ApiResponse<PythonRuntimeStatus>> => {
+    if (!isElectron()) {
+      return { success: false, error: 'Only available in desktop app' }
+    }
+    return window.kite.getPythonRuntimeStatus()
+  },
+
+  installPythonRuntime: async (): Promise<ApiResponse<PythonRuntimeStatus>> => {
+    if (!isElectron()) {
+      return { success: false, error: 'Only available in desktop app' }
+    }
+    return window.kite.installPythonRuntime()
   },
 
   openExternal: async (url: string): Promise<void> => {
