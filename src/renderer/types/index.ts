@@ -226,11 +226,6 @@ export interface KiteConfig {
   };
   mcpServers: McpServersConfig;  // MCP servers configuration
   isFirstLaunch: boolean;
-  resourceCreation?: {
-    skill?: {
-      strictIntentKeywords?: string[];
-    };
-  };
   configSourceMode: ConfigSourceMode;
   commands?: {
     legacyDependencyRegexEnabled: boolean;

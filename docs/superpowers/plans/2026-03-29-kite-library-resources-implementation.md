@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **2026-03-31 补充说明：** 技能资源库主路径的“Create”已切换为 workflow chat tab（`创建技能`），不再走 `ResourceCreateModal` 弹框。
+
 **Goal:** 将技能与智能体从隐藏配置目录中的内部资源，重构为基于 `Kite/Skills` 与 `Kite/Agents` 的用户可见全局资产库，并提供顶层入口、启用/停用、导入和自然语言创建闭环。
 
 **Architecture:** 保持插件资源加载规则不变，把用户资产真源迁移到用户可见的 `Kite` 目录，把启用状态从资源文件中剥离到 `~/.kite/resource-library-state.json`，再以此为基础改造 IPC、store 和顶层页面。UI 只暴露“全集资源 + 详情页控制 + 创建/导入动作”，不暴露 `.claude` 或其他执行层概念。

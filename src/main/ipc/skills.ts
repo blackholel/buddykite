@@ -25,13 +25,6 @@ import { clearAgentsCache, invalidateAgentsCache } from '../services/agents.serv
 import { clearPluginsCache } from '../services/plugins.service'
 import { importSkillDirectory } from '../services/resource-library-import.service'
 import { generateSkillDraft } from '../services/resource-draft-generator.service'
-import {
-  startStrictSkillRun,
-  continueStrictSkillRun,
-  submitStrictSkillFeedback,
-  finalizeStrictSkillRun,
-  getStrictSkillRunStatus
-} from '../services/skill-strict-creation.service'
 import type { ResourceRef } from '../services/resource-ref.service'
 import { isResourceListView } from '../../shared/resource-access'
 import {
@@ -51,12 +44,6 @@ function resolveDescriptionFromPayload(payload: unknown): string {
   if (typeof candidate.description === 'string') return candidate.description
   if (typeof candidate.text === 'string') return candidate.text
   throw new Error('Description must be a string')
-}
-
-function resolveStrictIntentHints(value: unknown): string[] | undefined {
-  if (!Array.isArray(value)) return undefined
-  const hints = value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
-  return hints.length > 0 ? hints : undefined
 }
 
 export function registerSkillsHandlers(): void {
@@ -109,11 +96,7 @@ export function registerSkillsHandlers(): void {
     }
   })
 
-  ipcMain.handle('skills:generate-draft', async (_event, payload: string | {
-    description: string
-    mode?: 'quick' | 'strict'
-    strictIntentHints?: string[]
-  }) => {
+  ipcMain.handle('skills:generate-draft', async (_event, payload: string | { description: string }) => {
     try {
       const description = resolveDescriptionFromPayload(payload)
       const draft = generateSkillDraft(description)
@@ -289,49 +272,6 @@ export function registerSkillsHandlers(): void {
       }
     }
   )
-
-  ipcMain.handle(
-    'skills:strict-run',
-    async (
-      _event,
-      payload:
-      | { action: 'start'; description: string; strictIntentHints?: string[] }
-      | { action: 'continue'; runId: string }
-      | { action: 'submit-feedback'; runId: string; feedback: string }
-      | { action: 'finalize'; runId: string; name?: string; content?: string }
-    ) => {
-      try {
-        if (payload.action === 'start') {
-          const description = resolveDescriptionFromPayload(payload)
-          const strictIntentHints = resolveStrictIntentHints(payload.strictIntentHints)
-          return { success: true, data: startStrictSkillRun({ description, strictIntentHints }) }
-        }
-        if (payload.action === 'continue') {
-          return { success: true, data: continueStrictSkillRun(payload.runId) }
-        }
-        if (payload.action === 'submit-feedback') {
-          return { success: true, data: submitStrictSkillFeedback(payload) }
-        }
-        return { success: true, data: finalizeStrictSkillRun(payload) }
-      } catch (error: unknown) {
-        const err = error as Error
-        return { success: false, error: err.message }
-      }
-    }
-  )
-
-  ipcMain.handle('skills:strict-status', async (_event, runId: string) => {
-    try {
-      const status = getStrictSkillRunStatus(runId)
-      if (!status) {
-        return { success: false, error: `Strict run not found: ${runId}` }
-      }
-      return { success: true, data: status }
-    } catch (error: unknown) {
-      const err = error as Error
-      return { success: false, error: err.message }
-    }
-  })
 
   // Clear skills cache (useful after external modifications)
   ipcMain.handle('skills:clear-cache', async () => {

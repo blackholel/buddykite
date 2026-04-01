@@ -23,39 +23,6 @@ interface GuideMessageRequest {
 }
 
 type ChatMode = 'code' | 'plan'
-type CreationMode = 'quick' | 'strict'
-type StrictSkillStage =
-  | 'goal-confirmed'
-  | 'eval-set-confirmed'
-  | 'running'
-  | 'review-ready'
-  | 'feedback-collected'
-  | 'finalized'
-  | 'failed'
-
-interface StrictSkillRunState {
-  runId: string
-  stage: StrictSkillStage
-  progress: number
-  skillName: string
-  description: string
-  strictIntentHints: string[]
-  iteration: number
-  workspaceDir: string
-  iterationDir: string
-  benchmarkPath: string | null
-  reviewHtmlPath: string | null
-  feedbackPath: string
-  runIds: string[]
-  lastError: string | null
-  createdAt: string
-  updatedAt: string
-  draft: {
-    name: string
-    description: string
-    content: string
-  }
-}
 
 interface PythonRuntimeStatus {
   found: boolean
@@ -255,17 +222,7 @@ export interface KiteAPI {
   createSkillInLibrary: (name: string, content: string) => Promise<IpcResponse>
   generateSkillDraft: (payload: {
     description: string
-    mode?: CreationMode
-    strictIntentHints?: string[]
   }) => Promise<IpcResponse>
-  runStrictSkillFlow: (
-    payload:
-    | { action: 'start'; description: string; strictIntentHints?: string[] }
-    | { action: 'continue'; runId: string }
-    | { action: 'submit-feedback'; runId: string; feedback: string }
-    | { action: 'finalize'; runId: string; name?: string; content?: string }
-  ) => Promise<IpcResponse<StrictSkillRunState | { state: StrictSkillRunState; createdSkill: Record<string, unknown> }>>
-  getStrictSkillFlowStatus: (runId: string) => Promise<IpcResponse<StrictSkillRunState>>
   saveSopSkill: (payload: {
     workDir: string
     skillName: string
@@ -591,8 +548,6 @@ const api: KiteAPI = {
   createSkill: (workDir, name, content) => ipcRenderer.invoke('skills:create', workDir, name, content),
   createSkillInLibrary: (name, content) => ipcRenderer.invoke('skills:create-library', name, content),
   generateSkillDraft: (payload) => ipcRenderer.invoke('skills:generate-draft', payload),
-  runStrictSkillFlow: (payload) => ipcRenderer.invoke('skills:strict-run', payload),
-  getStrictSkillFlowStatus: (runId) => ipcRenderer.invoke('skills:strict-status', runId),
   saveSopSkill: (payload) => ipcRenderer.invoke('skills:save-sop-recording', payload),
   updateSkill: (skillPath, content) => ipcRenderer.invoke('skills:update', skillPath, content),
   updateSkillInLibrary: (skillPath, content) => ipcRenderer.invoke('skills:update-library', skillPath, content),
