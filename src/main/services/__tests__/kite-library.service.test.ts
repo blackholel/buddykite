@@ -1,13 +1,14 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
-import { join, resolve } from 'path'
+import { dirname, join, resolve } from 'path'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   getKiteLibraryDir,
   getKiteSkillsDir,
   getKiteAgentsDir,
   getKiteSpacesDir,
-  migrateLegacyResourceDirs
+  migrateLegacyResourceDirs,
+  ensureLegacyResourceCompatLinks
 } from '../kite-library.service'
 
 describe('kite-library.service', () => {
@@ -61,5 +62,36 @@ describe('kite-library.service', () => {
     migrateLegacyResourceDirs(configDir)
     expect(existsSync(join(getKiteSkillsDir(configDir), 'review', 'SKILL.md'))).toBe(true)
     expect(existsSync(join(getKiteAgentsDir(configDir), 'reviewer.md'))).toBe(true)
+  })
+
+  it('creates legacy compat links for sdk native runtime', () => {
+    const { configDir } = setupConfigRoot()
+
+    ensureLegacyResourceCompatLinks(configDir)
+
+    const legacySkillsPath = join(configDir, 'skills')
+    const legacyAgentsPath = join(configDir, 'agents')
+    expect(existsSync(legacySkillsPath)).toBe(true)
+    expect(existsSync(legacyAgentsPath)).toBe(true)
+    expect(lstatSync(legacySkillsPath).isSymbolicLink()).toBe(true)
+    expect(lstatSync(legacyAgentsPath).isSymbolicLink()).toBe(true)
+
+    const skillsTarget = resolve(dirname(legacySkillsPath), readlinkSync(legacySkillsPath))
+    const agentsTarget = resolve(dirname(legacyAgentsPath), readlinkSync(legacyAgentsPath))
+    expect(skillsTarget).toBe(getKiteSkillsDir(configDir))
+    expect(agentsTarget).toBe(getKiteAgentsDir(configDir))
+  })
+
+  it('keeps existing legacy directory untouched when it is a real directory', () => {
+    const { configDir } = setupConfigRoot()
+    const legacySkillsDir = join(configDir, 'skills')
+    const legacyMarker = join(legacySkillsDir, 'legacy-only.txt')
+    mkdirSync(legacySkillsDir, { recursive: true })
+    writeFileSync(legacyMarker, 'legacy', 'utf-8')
+
+    ensureLegacyResourceCompatLinks(configDir)
+
+    expect(existsSync(legacyMarker)).toBe(true)
+    expect(lstatSync(legacySkillsDir).isSymbolicLink()).toBe(false)
   })
 })

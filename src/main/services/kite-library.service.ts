@@ -1,4 +1,17 @@
-import { existsSync, mkdirSync, readdirSync, renameSync, copyFileSync, rmSync, statSync, writeFileSync } from 'fs'
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readdirSync,
+  readlinkSync,
+  renameSync,
+  copyFileSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  unlinkSync,
+  writeFileSync
+} from 'fs'
 import { basename, dirname, join, posix as pathPosix, relative, resolve, sep, win32 as pathWin32 } from 'path'
 import { getConfigDir } from '../utils/instance'
 
@@ -168,6 +181,49 @@ export function migrateLegacyResourceDirs(configDir: string = getConfigDir()): v
     migratedAgents
   }
   writeFileSync(markerPath, JSON.stringify(markerPayload, null, 2), 'utf-8')
+}
+
+function ensureLegacyDirLink(linkPath: string, targetPath: string): void {
+  const resolvedTarget = resolve(targetPath)
+
+  try {
+    const existing = lstatSync(linkPath)
+    if (existing.isDirectory() && !existing.isSymbolicLink()) {
+      return
+    }
+
+    if (existing.isSymbolicLink()) {
+      try {
+        const linkedTarget = resolve(dirname(linkPath), readlinkSync(linkPath))
+        if (linkedTarget === resolvedTarget) {
+          return
+        }
+      } catch {
+        // Link target invalid, remove and recreate.
+      }
+    }
+
+    if (existing.isSymbolicLink()) {
+      unlinkSync(linkPath)
+    } else {
+      rmSync(linkPath, { recursive: true, force: true })
+    }
+  } catch {
+    // Missing path is expected.
+  }
+
+  const linkType: 'junction' | 'dir' = process.platform === 'win32' ? 'junction' : 'dir'
+  symlinkSync(resolvedTarget, linkPath, linkType)
+}
+
+/**
+ * Ensure legacy Claude Code-compatible resource directories are reachable from config root.
+ * Native slash runtime resolves resources from CLAUDE_CONFIG_DIR/{skills,agents}.
+ */
+export function ensureLegacyResourceCompatLinks(configDir: string = getConfigDir()): void {
+  ensureKiteLibraryDirs(configDir)
+  ensureLegacyDirLink(join(configDir, 'skills'), getKiteSkillsDir(configDir))
+  ensureLegacyDirLink(join(configDir, 'agents'), getKiteAgentsDir(configDir))
 }
 
 export function isPathInsideKiteLibrary(pathValue: string, configDir: string = getConfigDir()): boolean {

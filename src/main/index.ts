@@ -84,7 +84,11 @@ import {
   cleanupExtendedServices
 } from './bootstrap'
 import { initializeApp, getConfig, getMinimizeToTray } from './services/config.service'
-import { ensureKiteLibraryDirs, migrateLegacyResourceDirs } from './services/kite-library.service'
+import {
+  ensureKiteLibraryDirs,
+  migrateLegacyResourceDirs,
+  ensureLegacyResourceCompatLinks
+} from './services/kite-library.service'
 import { initConfigSourceModeLock } from './services/config-source-mode.service'
 import { disableRemoteAccess, enableRemoteAccess } from './services/remote.service'
 import { stopOpenAICompatRouter } from './openai-compat-router'
@@ -339,6 +343,7 @@ app.whenReady().then(async () => {
   await initializeApp()
   ensureKiteLibraryDirs()
   migrateLegacyResourceDirs()
+  ensureLegacyResourceCompatLinks()
   logMainStartupPerf('initializeApp-finished')
 
   if (is.dev) {

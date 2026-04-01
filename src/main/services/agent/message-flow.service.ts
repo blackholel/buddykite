@@ -290,7 +290,6 @@ const FILE_CONTEXT_BINARY_EXTENSIONS = new Set([
   'exe', 'dll', 'so', 'dylib', 'bin', 'dmg', 'iso'
 ])
 const LINE_SKILL_DIRECTIVE_RE = /^\/([\p{L}\p{N}._:-]+)(?:\s+.+)?$/gmu
-const INLINE_SKILL_DIRECTIVE_RE = /(^|[\s([{])\/([\p{L}\p{N}._:-]+)(?=$|[\s)\]}.,!?;:])/gu
 
 type SkillSource = 'app' | 'global' | 'space' | 'installed'
 type ToolSnapshotPhase = 'initializing' | 'ready'
@@ -315,6 +314,16 @@ interface ExplicitSkillDirectiveResolution {
     candidates: string[]
   }>
   sourceCandidates: string[]
+}
+
+type ResolveExplicitSkillDirectiveDeps = {
+  listSkillsFn: typeof listSkills
+  resolveSkillDefinitionFn: typeof resolveSkillDefinition
+}
+
+const DEFAULT_EXPLICIT_SKILL_DIRECTIVE_DEPS: ResolveExplicitSkillDirectiveDeps = {
+  listSkillsFn: listSkills,
+  resolveSkillDefinitionFn: resolveSkillDefinition
 }
 
 type BootstrapMessageLike = {
@@ -371,17 +380,17 @@ function extractSkillDirectiveTokens(message: string): string[] {
   for (const match of message.matchAll(LINE_SKILL_DIRECTIVE_RE)) {
     const token = match[1]?.trim()
     if (token?.toLowerCase() === 'mcp') continue
-    if (token) found.add(token)
-  }
-
-  for (const match of message.matchAll(INLINE_SKILL_DIRECTIVE_RE)) {
-    const token = match[2]?.trim()
     if (!token) continue
-    if (token.toLowerCase() === 'mcp') continue
+    // Avoid treating punctuation-only fragments like "/_" as explicit skill directives.
+    if (!/[\p{L}\p{N}]/u.test(token)) continue
     found.add(token)
   }
 
   return [...found]
+}
+
+export function _testExtractSkillDirectiveTokens(message: string): string[] {
+  return extractSkillDirectiveTokens(message)
 }
 
 function buildCanonicalSkillName(skill: { name: string; namespace?: string }): string {
@@ -447,11 +456,8 @@ function resolveExplicitSkillDirectives(params: {
   workDir: string
   locale?: string
   allowedSources: string[]
-}): ExplicitSkillDirectiveResolution {
+}, deps: ResolveExplicitSkillDirectiveDeps = DEFAULT_EXPLICIT_SKILL_DIRECTIVE_DEPS): ExplicitSkillDirectiveResolution {
   const tokens = extractSkillDirectiveTokens(params.message)
-  const allowedSkillSources = new Set(params.allowedSources as SkillSource[])
-  const availableSkills = listSkills(params.workDir, 'runtime-command-dependency', params.locale)
-    .filter((skill) => allowedSkillSources.has(skill.source as SkillSource))
   const result: ExplicitSkillDirectiveResolution = {
     explicitDirectives: tokens,
     resolved: [],
@@ -459,9 +465,16 @@ function resolveExplicitSkillDirectives(params: {
     ambiguities: [],
     sourceCandidates: [...params.allowedSources],
   }
+  if (tokens.length === 0) {
+    return result
+  }
+
+  const allowedSkillSources = new Set(params.allowedSources as SkillSource[])
+  const availableSkills = deps.listSkillsFn(params.workDir, 'runtime-command-dependency', params.locale)
+    .filter((skill) => allowedSkillSources.has(skill.source as SkillSource))
 
   for (const token of tokens) {
-    const resolved = resolveSkillDefinition(token, params.workDir, {
+    const resolved = deps.resolveSkillDefinitionFn(token, params.workDir, {
       allowedSources: params.allowedSources as SkillSource[],
       locale: params.locale,
       disallowAmbiguousAlias: true,
@@ -496,19 +509,43 @@ function resolveExplicitSkillDirectives(params: {
   return result
 }
 
+export function _testResolveExplicitSkillDirectives(
+  params: {
+    message: string
+    workDir: string
+    locale?: string
+    allowedSources: string[]
+  },
+  deps?: ResolveExplicitSkillDirectiveDeps
+): ExplicitSkillDirectiveResolution {
+  return resolveExplicitSkillDirectives(params, deps)
+}
+
 function buildDirectiveLockPrefix(resolution: ExplicitSkillDirectiveResolution): string {
   if (resolution.resolved.length === 0) return ''
-  const lines = resolution.resolved.map((item) => `- /${item.token} -> ${item.canonical} (${item.source})`)
+  const lines = resolution.resolved.map((item) => `- /${item.token}`)
   return [
     '<directive-lock>',
     'User provided explicit slash skill directives in this turn.',
     'These directives have already been resolved by the runtime and should be treated as authoritative.',
+    'Only use the resolved skills below. Do NOT invoke any other skills in this turn.',
+    'When invoking Skill tool, use the exact slash token form below (without leading slash in tool input).',
     'Do NOT run filesystem probing or skill-existence checks for these directives again.',
-    'Resolved directives:',
+    'Resolved slash tokens:',
     ...lines,
     '</directive-lock>',
     '',
   ].join('\n')
+}
+
+function buildDirectiveLockedSkillList(resolution: ExplicitSkillDirectiveResolution): string[] {
+  if (resolution.resolved.length === 0) return []
+  const locked = new Set<string>()
+  for (const item of resolution.resolved) {
+    const token = normalizeLoadedSkillName(item.token)
+    if (token) locked.add(token.toLowerCase())
+  }
+  return [...locked]
 }
 
 function buildDirectiveResolutionFailureResponse(
@@ -1569,20 +1606,13 @@ export async function sendMessage(
     : { text: message, enabled: [], missing: [] }
   const messageForSend = mcpDirectiveResult.text
   const explicitSkillDirectiveResolution: ExplicitSkillDirectiveResolution =
-    slashRuntimeMode === 'legacy-inject'
-      ? resolveExplicitSkillDirectives({
-        message: messageForSend,
-        workDir,
-        locale: effectiveResponseLanguage,
-        allowedSources: allowedDirectiveSources
-      })
-      : {
-        explicitDirectives: [],
-        resolved: [],
-        missing: [],
-        ambiguities: [],
-        sourceCandidates: allowedDirectiveSources
-      }
+    resolveExplicitSkillDirectives({
+      message: messageForSend,
+      workDir,
+      locale: effectiveResponseLanguage,
+      allowedSources: allowedDirectiveSources
+    })
+  const directiveLockedSkills = buildDirectiveLockedSkillList(explicitSkillDirectiveResolution)
 
   if (slashRuntimeMode === 'legacy-inject') {
     sendToRenderer('agent:directive-resolution', spaceId, conversationId, {
@@ -1674,6 +1704,8 @@ export async function sendMessage(
     askUserQuestionUsedInRun: false,
     textClarificationFallbackUsedInConversation,
     textClarificationDetectedInRun: false,
+    directiveLockedSkills,
+    directiveLockedSkillSet: new Set(directiveLockedSkills),
     slashRuntimeMode,
     thoughts: [], // Initialize thoughts array for this session
     processTrace: []
@@ -1822,7 +1854,7 @@ export async function sendMessage(
   let sessionAcquireResult: SessionAcquireResult | null = null
   let bootstrapTokenEstimate = 0
   let resourceRuntimeMismatchLogged = false
-  const directiveResolutionHasError = slashRuntimeMode === 'legacy-inject' && (
+  const directiveResolutionHasError = explicitSkillDirectiveResolution.explicitDirectives.length > 0 && (
     explicitSkillDirectiveResolution.missing.length > 0 ||
     explicitSkillDirectiveResolution.ambiguities.length > 0
   )
@@ -2247,9 +2279,7 @@ export async function sendMessage(
         })
       }
     }
-    const directiveLockPrefix = slashRuntimeMode === 'legacy-inject'
-      ? buildDirectiveLockPrefix(explicitSkillDirectiveResolution)
-      : ''
+    const directiveLockPrefix = buildDirectiveLockPrefix(explicitSkillDirectiveResolution)
     if (directiveLockPrefix) {
       console.log(
         `[Agent][${conversationId}] Directive lock enabled for explicit slash skills: ${explicitSkillDirectiveResolution.resolved.map((item) => item.canonical).join(', ')}`

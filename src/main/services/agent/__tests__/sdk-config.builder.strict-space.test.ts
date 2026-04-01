@@ -318,6 +318,9 @@ describe('sdk-config.builder strict space-only', () => {
     expect(append).toContain('plain-text clarification is allowed only once per conversation')
     expect(append).toContain('Language policy')
     expect(append).toContain('zh-CN')
+    expect(append).toContain('Skill creation guardrail policy')
+    expect(append).toContain('scripts/init_skill.py <skill-name> --path')
+    expect(append).toContain('Do not execute skill initialization for non-skill-creation requests.')
     expect(append).not.toContain('Do NOT use resources outside this list.')
   })
 

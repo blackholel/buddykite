@@ -140,6 +140,38 @@ function getBashCommandPathCandidates(command: string): string[] {
   return Array.from(candidates)
 }
 
+function normalizeSkillToolName(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null
+  const normalized = raw.trim()
+  if (!normalized) return null
+  return normalized.startsWith('/') ? normalized.slice(1).toLowerCase() : normalized.toLowerCase()
+}
+
+function extractSkillToolName(input: Record<string, unknown>): string | null {
+  const directCandidates: unknown[] = [
+    input.skill,
+    input.skillName,
+    input.command,
+    input.name,
+    input.id
+  ]
+  for (const candidate of directCandidates) {
+    const normalized = normalizeSkillToolName(candidate)
+    if (normalized) return normalized
+  }
+
+  if (input.skill && typeof input.skill === 'object') {
+    const nested = input.skill as Record<string, unknown>
+    const nestedCandidates: unknown[] = [nested.name, nested.id, nested.command]
+    for (const candidate of nestedCandidates) {
+      const normalized = normalizeSkillToolName(candidate)
+      if (normalized) return normalized
+    }
+  }
+
+  return null
+}
+
 function isExternalBrowserLaunchCommand(command: string): boolean {
   const normalized = command.toLowerCase()
   const hasLauncher = /\b(open|xdg-open|start)\b/.test(normalized)
@@ -903,7 +935,8 @@ export function createCanUseTool(
       if (!options?.onToolUse) return
       options.onToolUse(toolName, input)
     }
-    const runtimeMode = getActiveSession(spaceId, conversationId)?.mode
+    const activeSession = getActiveSession(spaceId, conversationId)
+    const runtimeMode = activeSession?.mode
     const effectiveMode = runtimeMode || options?.mode
     if (effectiveMode === 'plan') {
       if (!PLAN_MODE_ALLOWED_TOOLS.has(toolName)) {
@@ -935,6 +968,46 @@ export function createCanUseTool(
         `runtime=${resourceRuntimePolicy}:skill_tool_disabled:${skillMissingPolicy}`,
         'SKILL_TOOL_DISABLED'
       )
+    }
+
+    if (toolName === 'Skill') {
+      const directiveLockedSkillSetFromSession = activeSession?.directiveLockedSkillSet instanceof Set
+        ? activeSession.directiveLockedSkillSet
+        : null
+      const directiveLockedSkills = Array.isArray(activeSession?.directiveLockedSkills)
+        ? activeSession.directiveLockedSkills.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+        : []
+      if (!directiveLockedSkillSetFromSession && activeSession && directiveLockedSkills.length > 0) {
+        activeSession.directiveLockedSkillSet = new Set(directiveLockedSkills.map((item) => item.toLowerCase()))
+      }
+      const effectiveDirectiveLockedSkillSet = activeSession?.directiveLockedSkillSet
+      if (effectiveDirectiveLockedSkillSet && effectiveDirectiveLockedSkillSet.size > 0) {
+        const allowedSkillsForMessage = directiveLockedSkills.length > 0
+          ? directiveLockedSkills
+          : Array.from(effectiveDirectiveLockedSkillSet.values())
+        const requestedSkill = extractSkillToolName(input)
+        if (!requestedSkill) {
+          return deny(
+            'ModePolicy',
+            'Skill tool is directive-locked for this turn. Skill name is required and must match the explicit slash directive.',
+            'skill.directive_lock.missing_skill_name',
+            'SKILL_DIRECTIVE_LOCK_MISSING_SKILL'
+          )
+        }
+        if (!effectiveDirectiveLockedSkillSet.has(requestedSkill)) {
+          return deny(
+            'ModePolicy',
+            `Skill tool is directive-locked for this turn. Allowed skills: ${allowedSkillsForMessage.join(', ')}. Requested: ${requestedSkill}.`,
+            'skill.directive_lock.blocked',
+            'SKILL_DIRECTIVE_LOCK_VIOLATION'
+          )
+        }
+        trace.push({
+          layer: 'ModePolicy',
+          outcome: 'allow',
+          rule: `skill.directive_lock.allow:${requestedSkill}`
+        })
+      }
     }
 
     console.log(

@@ -295,6 +295,8 @@ export interface SessionState {
   askUserQuestionUsedInRun: boolean
   textClarificationFallbackUsedInConversation: boolean
   textClarificationDetectedInRun: boolean
+  directiveLockedSkills?: string[]
+  directiveLockedSkillSet?: Set<string>
   slashRuntimeMode?: import('../../../shared/types/claude-code').ClaudeCodeSlashRuntimeMode
   observabilityContext?: {
     traceId: string

@@ -37,6 +37,10 @@ import type { ClaudeCodeSlashRuntimeMode } from '../../../shared/types/claude-co
 // Re-export types for convenience
 export type { PluginConfig, SettingSource }
 
+const SKILL_CREATION_OUTPUT_DIR_CURRENT_PLATFORM = join(homedir(), 'kite', 'Skills')
+const SKILL_CREATION_OUTPUT_DIR_MAC = '/Users/<username>/kite/Skills'
+const SKILL_CREATION_OUTPUT_DIR_WINDOWS = 'C:\\Users\\<username>\\kite\\Skills'
+
 function createWorkDirResolutionError(errorCode: string, message: string): Error & { errorCode: string } {
   const error = new Error(message) as Error & { errorCode: string }
   error.errorCode = errorCode
@@ -507,6 +511,7 @@ function buildMcpServersConfig(
 export function buildSystemPromptAppend(workDir: string, responseLanguage: LocaleCode = 'en'): string {
   const normalizedLanguage = normalizeLocale(responseLanguage)
   const languageName = SUPPORTED_LOCALES[normalizedLanguage] || normalizedLanguage
+  const skillCreationOutputDir = SKILL_CREATION_OUTPUT_DIR_CURRENT_PLATFORM
   const base = `
 You are Kite, an AI assistant that helps users accomplish real work.
 All created files will be saved in the user's workspace. Current workspace: ${workDir}.
@@ -532,6 +537,17 @@ Avoid duplicate question texts and duplicate option labels.
 Never include an explicit "Other" option in AskUserQuestion options; the UI adds it automatically.
 If follow-up questions are predictable, include them in the same AskUserQuestion call.
 If AskUserQuestion is unavailable, plain-text clarification is allowed only once per conversation.
+
+## Skill creation guardrail policy
+When handling skill creation with skill-creator, lock output path to the platform default and do not improvise.
+Default skill output path (current platform): ${skillCreationOutputDir}
+macOS reference path format: ${SKILL_CREATION_OUTPUT_DIR_MAC}
+Windows reference path format: ${SKILL_CREATION_OUTPUT_DIR_WINDOWS}
+Required command format: scripts/init_skill.py <skill-name> --path "${skillCreationOutputDir}"
+Do not execute skill initialization for non-skill-creation requests.
+If user intent is not explicitly "create a new skill", refuse skill initialization and continue with the original task.
+Before creating any skill, verify required inputs: skill_name (hyphen-case), skill purpose, and trigger description.
+If any required input is missing or ambiguous, ask user to confirm first (prefer AskUserQuestion), then proceed.
 `
   return base
 }

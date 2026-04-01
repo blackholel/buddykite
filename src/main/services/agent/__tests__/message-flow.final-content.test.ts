@@ -1,5 +1,7 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
+  _testExtractSkillDirectiveTokens,
+  _testResolveExplicitSkillDirectives,
   buildLoadedSkillMessage,
   buildConversationHistoryBootstrap,
   buildForcedAssumptionResponse,
@@ -132,5 +134,72 @@ describe('shouldEmitSlashSkillLoadedEvent', () => {
   it('legacy-inject 模式仅允许 legacy source 发 slash_skill_loaded', () => {
     expect(shouldEmitSlashSkillLoadedEvent('legacy-inject', 'legacy')).toBe(true)
     expect(shouldEmitSlashSkillLoadedEvent('legacy-inject', 'native')).toBe(false)
+  })
+})
+
+describe('_testExtractSkillDirectiveTokens', () => {
+  it('只解析行首 slash 指令，不解析行内 /token', () => {
+    const input = [
+      '请用 /skill-creator 帮我创建技能',
+      '/skill-creator 创建一个技能'
+    ].join('\n')
+    expect(_testExtractSkillDirectiveTokens(input)).toEqual(['skill-creator'])
+  })
+
+  it('忽略 /_ 这类无字母数字的误触发片段', () => {
+    expect(_testExtractSkillDirectiveTokens('/_')).toEqual([])
+  })
+})
+
+describe('_testResolveExplicitSkillDirectives', () => {
+  it('无 slash 指令时快速返回，不触发 skills 扫描与解析', () => {
+    const deps = {
+      listSkillsFn: vi.fn(() => []),
+      resolveSkillDefinitionFn: vi.fn()
+    }
+
+    const result = _testResolveExplicitSkillDirectives(
+      {
+        message: '请帮我总结一下这段代码',
+        workDir: '/workspace/project',
+        locale: 'zh-CN',
+        allowedSources: ['app', 'global', 'space']
+      },
+      deps as any
+    )
+
+    expect(result).toEqual({
+      explicitDirectives: [],
+      resolved: [],
+      missing: [],
+      ambiguities: [],
+      sourceCandidates: ['app', 'global', 'space']
+    })
+    expect(deps.listSkillsFn).not.toHaveBeenCalled()
+    expect(deps.resolveSkillDefinitionFn).not.toHaveBeenCalled()
+  })
+
+  it('有显式 slash 指令且未命中时仍返回 missing（保持 fast-fail 语义）', () => {
+    const deps = {
+      listSkillsFn: vi.fn(() => []),
+      resolveSkillDefinitionFn: vi.fn(() => ({ skill: null, ambiguous: [], matchedBy: null }))
+    }
+
+    const result = _testResolveExplicitSkillDirectives(
+      {
+        message: '/skill-creator 帮我创建技能',
+        workDir: '/workspace/project',
+        locale: 'zh-CN',
+        allowedSources: ['app', 'global', 'space']
+      },
+      deps as any
+    )
+
+    expect(result.explicitDirectives).toEqual(['skill-creator'])
+    expect(result.missing).toHaveLength(1)
+    expect(result.missing[0]?.token).toBe('skill-creator')
+    expect(result.ambiguities).toEqual([])
+    expect(deps.listSkillsFn).toHaveBeenCalledTimes(1)
+    expect(deps.resolveSkillDefinitionFn).toHaveBeenCalledTimes(1)
   })
 })

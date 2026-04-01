@@ -93,6 +93,15 @@ function createHandlerWithToolObserver(onToolUse: (toolName: string, input: Reco
   )
 }
 
+function createHandlerWithActiveSession(session: Record<string, unknown>) {
+  return createCanUseTool(
+    '/workspace/project',
+    'space-1',
+    'conversation-1',
+    () => session as any
+  )
+}
+
 describe('renderer-comm resource-dir guard', () => {
   it('allows Write on protected skill directory', async () => {
     const canUseTool = createHandler()
@@ -319,6 +328,70 @@ describe('renderer-comm resource-dir guard', () => {
 
     expect(appSingleSourceResult.behavior).toBe('allow')
     expect(legacyRuntimePolicyResult.behavior).toBe('allow')
+  })
+
+  it('显式 slash 指令锁定时仅允许被锁定的 Skill', async () => {
+    const canUseTool = createHandlerWithActiveSession({
+      mode: 'code',
+      directiveLockedSkills: ['skill-creator'],
+      directiveLockedSkillSet: new Set(['skill-creator'])
+    })
+
+    const allowedResult = await canUseTool(
+      'Skill',
+      { skill: '/skill-creator' },
+      { signal: new AbortController().signal }
+    )
+    const blockedResult = await canUseTool(
+      'Skill',
+      { skill: 'lecture-handout-html' },
+      { signal: new AbortController().signal }
+    )
+
+    expect(allowedResult.behavior).toBe('allow')
+    expect(blockedResult.behavior).toBe('deny')
+    expect(blockedResult.message).toContain('directive-locked')
+    expect((blockedResult as { errorCode?: string }).errorCode).toBe('SKILL_DIRECTIVE_LOCK_VIOLATION')
+  })
+
+  it('显式 slash 指令锁定时拒绝 canonical 目录名调用，避免 Unknown skill', async () => {
+    const canUseTool = createHandlerWithActiveSession({
+      mode: 'code',
+      directiveLockedSkills: ['skill-creator'],
+      directiveLockedSkillSet: new Set(['skill-creator'])
+    })
+
+    const result = await canUseTool(
+      'Skill',
+      { skill: 'skill-creator-0.1.0' },
+      { signal: new AbortController().signal }
+    )
+
+    expect(result.behavior).toBe('deny')
+    expect((result as { errorCode?: string }).errorCode).toBe('SKILL_DIRECTIVE_LOCK_VIOLATION')
+  })
+
+  it('显式 slash 指令锁定时支持 skillName/name/id/nested.name 字段', async () => {
+    const canUseTool = createHandlerWithActiveSession({
+      mode: 'code',
+      directiveLockedSkillSet: new Set(['skill-creator'])
+    })
+
+    const inputs = [
+      { skillName: 'skill-creator' },
+      { name: '/skill-creator' },
+      { id: 'skill-creator' },
+      { skill: { name: '/skill-creator' } }
+    ]
+
+    for (const input of inputs) {
+      const result = await canUseTool(
+        'Skill',
+        input,
+        { signal: new AbortController().signal }
+      )
+      expect(result.behavior).toBe('allow')
+    }
   })
 
   it('legacy-inject 模式下 Skill 工具禁用', async () => {
