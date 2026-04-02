@@ -202,4 +202,32 @@ describe('_testResolveExplicitSkillDirectives', () => {
     expect(deps.listSkillsFn).toHaveBeenCalledTimes(1)
     expect(deps.resolveSkillDefinitionFn).toHaveBeenCalledTimes(1)
   })
+
+  it('missing 候选建议不应使用 localized displayName', () => {
+    const deps = {
+      listSkillsFn: vi.fn(() => [
+        {
+          name: 'brainstorming',
+          source: 'app',
+          displayNameBase: 'Brainstorming',
+          displayNameLocalized: '头脑风暴'
+        }
+      ]),
+      resolveSkillDefinitionFn: vi.fn(() => ({ skill: null, ambiguous: [], matchedBy: null }))
+    }
+
+    const result = _testResolveExplicitSkillDirectives(
+      {
+        message: '/头脑风暴 帮我做方案',
+        workDir: '/workspace/project',
+        locale: 'zh-CN',
+        allowedSources: ['app', 'global', 'space']
+      },
+      deps as any
+    )
+
+    expect(result.missing).toHaveLength(1)
+    expect(result.missing[0]?.token).toBe('头脑风暴')
+    expect(result.missing[0]?.candidates).toEqual([])
+  })
 })

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Bot, ChevronDown, MoreHorizontal, Plus, Search, SquarePen, Trash2 } from 'lucide-react'
 import { useTranslation } from '../../i18n'
 import { useAgentsStore, type AgentDefinition } from '../../stores/agents.store'
+import { getResourceDisplayName, getResourceUiDescription } from '../../utils/resource-display-name'
 
 interface AgentsPanelProps {
   workDir?: string
@@ -10,11 +11,6 @@ interface AgentsPanelProps {
   onCreateAgent?: () => void
   onInsertCreateAgent?: () => void
   preferInsertOnClick?: boolean
-}
-
-function getAgentDisplayName(agent: AgentDefinition): string {
-  const base = agent.displayName || agent.name
-  return agent.namespace ? `${agent.namespace}:${base}` : base
 }
 
 export function AgentsPanel({
@@ -46,8 +42,9 @@ export function AgentsPanel({
 
     return spaceAgents.filter(agent => (
       agent.name.toLowerCase().includes(q) ||
-      agent.displayName?.toLowerCase().includes(q) ||
-      agent.description?.toLowerCase().includes(q)
+      agent.displayNameLocalized?.toLowerCase().includes(q) ||
+      agent.displayNameBase?.toLowerCase().includes(q) ||
+      getResourceUiDescription(agent)?.toLowerCase().includes(q)
     ))
   }, [agents, query])
 
@@ -104,8 +101,8 @@ export function AgentsPanel({
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <div className="text-xs font-medium truncate">@{getAgentDisplayName(agent)}</div>
-                      {agent.description && <div className="text-[11px] text-muted-foreground truncate">{agent.description}</div>}
+                      <div className="text-xs font-medium truncate">@{getResourceDisplayName(agent)}</div>
+                      {getResourceUiDescription(agent) && <div className="text-[11px] text-muted-foreground truncate">{getResourceUiDescription(agent)}</div>}
                     </div>
                     <button
                       className="p-1 rounded hover:bg-secondary opacity-0 group-hover:opacity-100"

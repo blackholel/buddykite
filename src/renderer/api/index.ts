@@ -919,10 +919,11 @@ export const api = {
 
   importSkillToLibrary: async (
     sourcePath: string,
-    options?: { overwrite?: boolean }
+    options?: { overwrite?: boolean },
+    locale?: string
   ): Promise<ApiResponse> => {
     if (isElectron()) {
-      return window.kite.importSkillToLibrary(sourcePath, options)
+      return window.kite.importSkillToLibrary(sourcePath, options, locale)
     }
     return { success: false, error: 'Only available in desktop app' }
   },
@@ -1055,10 +1056,11 @@ export const api = {
 
   importAgentToLibrary: async (
     sourcePath: string,
-    options?: { overwrite?: boolean }
+    options?: { overwrite?: boolean },
+    locale?: string
   ): Promise<ApiResponse> => {
     if (isElectron()) {
-      return window.kite.importAgentToLibrary(sourcePath, options)
+      return window.kite.importAgentToLibrary(sourcePath, options, locale)
     }
     return { success: false, error: 'Only available in desktop app' }
   },

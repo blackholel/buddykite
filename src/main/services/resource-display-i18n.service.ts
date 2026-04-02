@@ -1,6 +1,6 @@
-import { existsSync, readFileSync, statSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'fs'
 import { homedir } from 'os'
-import { join } from 'path'
+import { dirname, join } from 'path'
 import { getConfig } from './config.service'
 import { getLockedConfigSourceMode, getLockedUserConfigRootDir } from './config-source-mode.service'
 import { listEnabledPlugins } from './plugins.service'
@@ -16,6 +16,17 @@ interface LocaleTextMap {
 interface ResourceDisplayEntry {
   title?: LocaleTextMap
   description?: LocaleTextMap
+  auto?: ResourceDisplayAutoMeta
+}
+
+interface ResourceDisplayFieldMeta {
+  sourceTextHash?: string
+  updatedAt?: string
+}
+
+interface ResourceDisplayAutoMeta {
+  title?: Record<string, ResourceDisplayFieldMeta>
+  description?: Record<string, ResourceDisplayFieldMeta>
 }
 
 interface ResourceDisplayResources {
@@ -40,6 +51,25 @@ export interface ResourceDisplayOverride {
   titleDefault?: string
   descriptionLocale?: string
   descriptionDefault?: string
+}
+
+export interface ResourceDisplayTranslationCacheInfo {
+  titleLocale?: string
+  descriptionLocale?: string
+  titleSourceTextHash?: string
+  descriptionSourceTextHash?: string
+}
+
+export interface UpsertResourceDisplayTranslationInput {
+  rootPath: string
+  type: ResourceType
+  resourceKey: string
+  locale: string
+  sourceTextHash: string
+  title?: string
+  description?: string
+  allowOverwriteTitleWithoutHash?: boolean
+  allowOverwriteDescriptionWithoutHash?: boolean
 }
 
 export interface ResourceDisplayI18nRoot {
@@ -112,13 +142,54 @@ function normalizeLocaleMap(input: unknown): LocaleTextMap | undefined {
   return Object.keys(output).length > 0 ? output : undefined
 }
 
+function normalizeFieldMeta(input: unknown): ResourceDisplayFieldMeta | undefined {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return undefined
+  const record = input as Record<string, unknown>
+  const sourceTextHash = trimString(record.sourceTextHash)
+  const updatedAt = trimString(record.updatedAt)
+  if (!sourceTextHash && !updatedAt) return undefined
+  return {
+    ...(sourceTextHash ? { sourceTextHash } : {}),
+    ...(updatedAt ? { updatedAt } : {})
+  }
+}
+
+function normalizeFieldMetaMap(input: unknown): Record<string, ResourceDisplayFieldMeta> | undefined {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return undefined
+  const output: Record<string, ResourceDisplayFieldMeta> = {}
+  for (const [key, value] of Object.entries(input)) {
+    const locale = trimString(key)
+    const meta = normalizeFieldMeta(value)
+    if (!locale || !meta) continue
+    output[locale] = meta
+  }
+  return Object.keys(output).length > 0 ? output : undefined
+}
+
+function normalizeAutoMeta(input: unknown): ResourceDisplayAutoMeta | undefined {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return undefined
+  const record = input as Record<string, unknown>
+  const title = normalizeFieldMetaMap(record.title)
+  const description = normalizeFieldMetaMap(record.description)
+  if (!title && !description) return undefined
+  return {
+    ...(title ? { title } : {}),
+    ...(description ? { description } : {})
+  }
+}
+
 function normalizeEntry(input: unknown): ResourceDisplayEntry | undefined {
   if (!input || typeof input !== 'object' || Array.isArray(input)) return undefined
   const record = input as Record<string, unknown>
   const title = normalizeLocaleMap(record.title)
   const description = normalizeLocaleMap(record.description)
-  if (!title && !description) return undefined
-  return { ...(title ? { title } : {}), ...(description ? { description } : {}) }
+  const auto = normalizeAutoMeta(record.auto)
+  if (!title && !description && !auto) return undefined
+  return {
+    ...(title ? { title } : {}),
+    ...(description ? { description } : {}),
+    ...(auto ? { auto } : {})
+  }
 }
 
 function normalizeResourceMap(input: unknown): Record<string, ResourceDisplayEntry> | undefined {
@@ -216,6 +287,19 @@ function pickDefault(map: LocaleTextMap | undefined, defaultLocale?: string): st
   return pickLocalized(map, locale)
 }
 
+function pickFieldSourceTextHash(
+  map: Record<string, ResourceDisplayFieldMeta> | undefined,
+  locale?: string
+): string | undefined {
+  if (!map) return undefined
+  const candidates = normalizeLocaleCandidates(locale)
+  for (const candidate of candidates) {
+    const value = trimString(map[candidate]?.sourceTextHash)
+    if (value) return value
+  }
+  return undefined
+}
+
 function toIdentity(rootPath: string, workDir?: string): string {
   return `${rootPath}::${workDir || '__global__'}`
 }
@@ -303,6 +387,136 @@ export function resolveResourceDisplayOverride(
     descriptionLocale: pickLocalized(entry.description, locale),
     descriptionDefault: pickDefault(entry.description, sidecar.defaultLocale)
   }
+}
+
+export function getResourceDisplayTranslationCacheInfo(params: {
+  rootPath: string | undefined
+  type: ResourceType
+  resourceKey: string
+  locale?: string
+}): ResourceDisplayTranslationCacheInfo {
+  if (!params.rootPath) return {}
+  const sidecar = readSidecar(params.rootPath)
+  if (!sidecar) return {}
+  const entry = getResourceMap(sidecar, params.type)?.[params.resourceKey]
+  if (!entry) return {}
+  return {
+    titleLocale: pickLocalized(entry.title, params.locale),
+    descriptionLocale: pickLocalized(entry.description, params.locale),
+    titleSourceTextHash: pickFieldSourceTextHash(entry.auto?.title, params.locale),
+    descriptionSourceTextHash: pickFieldSourceTextHash(entry.auto?.description, params.locale)
+  }
+}
+
+function readWritableSidecar(sidecarPath: string): Record<string, unknown> {
+  if (!existsSync(sidecarPath)) {
+    return {
+      version: 1,
+      defaultLocale: 'en',
+      resources: {}
+    }
+  }
+
+  try {
+    const raw = JSON.parse(readFileSync(sidecarPath, 'utf-8'))
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+      return {
+        version: 1,
+        defaultLocale: 'en',
+        resources: {}
+      }
+    }
+    return raw as Record<string, unknown>
+  } catch {
+    return {
+      version: 1,
+      defaultLocale: 'en',
+      resources: {}
+    }
+  }
+}
+
+function ensureRecord(target: Record<string, unknown>, key: string): Record<string, unknown> {
+  const current = target[key]
+  if (current && typeof current === 'object' && !Array.isArray(current)) {
+    return current as Record<string, unknown>
+  }
+  const next: Record<string, unknown> = {}
+  target[key] = next
+  return next
+}
+
+function shouldWriteField(
+  existingValue: string | undefined,
+  existingSourceTextHash: string | undefined,
+  nextSourceTextHash: string,
+  allowOverwriteWithoutHash = false
+): boolean {
+  if (!existingValue) return true
+  if (!existingSourceTextHash) return allowOverwriteWithoutHash
+  return existingSourceTextHash !== nextSourceTextHash
+}
+
+export function upsertResourceDisplayTranslation(input: UpsertResourceDisplayTranslationInput): boolean {
+  const locale = trimString(input.locale)
+  const sourceTextHash = trimString(input.sourceTextHash)
+  const title = trimString(input.title)
+  const description = trimString(input.description)
+  const allowOverwriteTitleWithoutHash = input.allowOverwriteTitleWithoutHash === true
+  const allowOverwriteDescriptionWithoutHash = input.allowOverwriteDescriptionWithoutHash === true
+  if (!locale || !sourceTextHash) return false
+  if (!title && !description) return false
+
+  const sidecarPath = getSidecarPath(input.rootPath)
+  const sidecar = readWritableSidecar(sidecarPath)
+  if (typeof sidecar.version !== 'number') {
+    sidecar.version = 1
+  }
+  if (!trimString(sidecar.defaultLocale)) {
+    sidecar.defaultLocale = 'en'
+  }
+
+  const resources = ensureRecord(sidecar, 'resources')
+  const mapKey = input.type === 'skill' ? 'skills' : input.type === 'agent' ? 'agents' : 'commands'
+  const resourceMap = ensureRecord(resources, mapKey)
+  const entry = ensureRecord(resourceMap, input.resourceKey)
+  const titleMap = ensureRecord(entry, 'title')
+  const descriptionMap = ensureRecord(entry, 'description')
+  const auto = ensureRecord(entry, 'auto')
+  const autoTitleMap = ensureRecord(auto, 'title')
+  const autoDescriptionMap = ensureRecord(auto, 'description')
+
+  const existingTitle = trimString(titleMap[locale])
+  const existingDescription = trimString(descriptionMap[locale])
+  const existingTitleHash = trimString((autoTitleMap[locale] as Record<string, unknown> | undefined)?.sourceTextHash)
+  const existingDescriptionHash = trimString((autoDescriptionMap[locale] as Record<string, unknown> | undefined)?.sourceTextHash)
+
+  let wrote = false
+  const now = new Date().toISOString()
+
+  if (title && shouldWriteField(existingTitle, existingTitleHash, sourceTextHash, allowOverwriteTitleWithoutHash)) {
+    titleMap[locale] = title
+    autoTitleMap[locale] = { sourceTextHash, updatedAt: now }
+    wrote = true
+  }
+
+  if (description && shouldWriteField(
+    existingDescription,
+    existingDescriptionHash,
+    sourceTextHash,
+    allowOverwriteDescriptionWithoutHash
+  )) {
+    descriptionMap[locale] = description
+    autoDescriptionMap[locale] = { sourceTextHash, updatedAt: now }
+    wrote = true
+  }
+
+  if (!wrote) return false
+
+  mkdirSync(dirname(sidecarPath), { recursive: true })
+  writeFileSync(sidecarPath, `${JSON.stringify(sidecar, null, 2)}\n`, 'utf-8')
+  sidecarCache.delete(sidecarPath)
+  return true
 }
 
 export function clearResourceDisplayI18nCache(rootPaths?: string[]): void {

@@ -8,16 +8,12 @@ import { Zap, Star, ChevronDown } from 'lucide-react'
 import { useTranslation } from '../../i18n'
 import { useSkillsStore, type SkillDefinition } from '../../stores/skills.store'
 import { useSpaceStore } from '../../stores/space.store'
+import { getResourceDisplayName } from '../../utils/resource-display-name'
 
 interface SkillsDropdownProps {
   workDir?: string
   onInsertSkill: (skillName: string) => void
   onOpenPanel?: () => void
-}
-
-function getSkillDisplayName(skill: SkillDefinition): string {
-  const base = skill.displayName || skill.name
-  return skill.namespace ? `${skill.namespace}:${base}` : base
 }
 
 export function SkillsDropdown({ workDir, onInsertSkill, onOpenPanel }: SkillsDropdownProps) {
@@ -147,7 +143,7 @@ export function SkillsDropdown({ workDir, onInsertSkill, onOpenPanel }: SkillsDr
                         text-foreground hover:bg-muted/50 transition-colors"
                     >
                       <Zap size={14} className="text-primary flex-shrink-0" />
-                      <span className="truncate font-mono">/{getSkillDisplayName(skill)}</span>
+                      <span className="truncate font-mono">/{getResourceDisplayName(skill)}</span>
                     </button>
                   ))}
                 </div>
@@ -167,7 +163,7 @@ export function SkillsDropdown({ workDir, onInsertSkill, onOpenPanel }: SkillsDr
                         text-foreground hover:bg-muted/50 transition-colors"
                     >
                       <Zap size={14} className="text-muted-foreground flex-shrink-0" />
-                      <span className="truncate font-mono">/{getSkillDisplayName(skill)}</span>
+                      <span className="truncate font-mono">/{getResourceDisplayName(skill)}</span>
                     </button>
                   ))}
                 </div>

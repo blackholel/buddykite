@@ -4,6 +4,7 @@ const { mockApi } = vi.hoisted(() => ({
   mockApi: {
     listSkills: vi.fn(),
     getSkillContent: vi.fn(),
+    createSkill: vi.fn(),
     createSkillInLibrary: vi.fn(),
     setSkillEnabled: vi.fn(),
     deleteSkillFromLibrary: vi.fn(),
@@ -22,12 +23,15 @@ vi.mock('../../i18n', () => ({
 }))
 
 import { useSkillsStore, type SkillDefinition } from '../skills.store'
-import { GLOBAL_CACHE_KEY } from '../cache-keys'
+import { GLOBAL_CACHE_KEY, getCacheKey } from '../cache-keys'
+
+const LOCALE_GLOBAL_CACHE_KEY = getCacheKey(undefined, 'zh-CN')
 
 function resetStore(): void {
   useSkillsStore.setState({
     skills: [],
     loadedWorkDir: null,
+    loadedLocale: null,
     selectedSkill: null,
     skillContent: null,
     skillsByWorkDir: {},
@@ -46,6 +50,7 @@ describe('skills.store library contracts', () => {
     resetStore()
     Object.values(mockApi).forEach((fn) => fn.mockReset())
     mockApi.listSkills.mockResolvedValue({ success: true, data: [] })
+    mockApi.createSkill.mockResolvedValue({ success: true, data: null })
     mockApi.createSkillInLibrary.mockResolvedValue({ success: true, data: null })
     mockApi.setSkillEnabled.mockResolvedValue({ success: true, data: true })
     mockApi.deleteSkillFromLibrary.mockResolvedValue({ success: true, data: true })
@@ -117,8 +122,25 @@ describe('skills.store library contracts', () => {
 
     expect(result?.name).toBe('planner')
     expect(mockApi.createSkillInLibrary).toHaveBeenCalledWith('planner', '# planner')
+    expect(mockApi.listSkills).toHaveBeenCalledWith(undefined, 'zh-CN', 'extensions')
     expect(useSkillsStore.getState().loadedWorkDir).toBeNull()
     expect(useSkillsStore.getState().skills.some((item) => item.name === 'planner')).toBe(true)
+  })
+
+  it('createSkill 成功后会触发后台扫描以启动翻译队列', async () => {
+    const created: SkillDefinition = {
+      name: 'space-review',
+      path: '/tmp/space/.claude/skills/space-review',
+      source: 'space',
+      enabled: true,
+    }
+    mockApi.createSkill.mockResolvedValueOnce({ success: true, data: created })
+
+    const result = await useSkillsStore.getState().createSkill('/tmp/space', 'space-review', '# space-review')
+
+    expect(result?.name).toBe('space-review')
+    expect(mockApi.createSkill).toHaveBeenCalledWith('/tmp/space', 'space-review', '# space-review')
+    expect(mockApi.listSkills).toHaveBeenCalledWith('/tmp/space', 'zh-CN', 'extensions')
   })
 
   it('createSkillInLibrary 在缺少全局缓存时不复用 space 列表', async () => {
@@ -146,7 +168,7 @@ describe('skills.store library contracts', () => {
     const state = useSkillsStore.getState()
     expect(state.loadedWorkDir).toBeNull()
     expect(state.skills).toEqual([created])
-    expect(state.skillsByWorkDir[GLOBAL_CACHE_KEY]).toEqual([created])
+    expect(state.skillsByWorkDir[LOCALE_GLOBAL_CACHE_KEY]).toEqual([created])
   })
 
   it('deleteSkillFromLibrary 会更新当前列表缓存', async () => {

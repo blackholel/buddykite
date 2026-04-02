@@ -27,6 +27,7 @@ import {
   getLocalizedFrontmatterStringForLocale
 } from './resource-metadata.service'
 import { resolveResourceDisplayOverride } from './resource-display-i18n.service'
+import { queueResourceDisplayTranslation } from './resource-display-translation.service'
 import type { ResourceListView } from '../../shared/resource-access'
 
 // ============================================
@@ -35,10 +36,12 @@ import type { ResourceListView } from '../../shared/resource-access'
 
 export interface CommandDefinition {
   name: string
-  displayName?: string
+  displayNameBase?: string
+  displayNameLocalized?: string
   path: string
   source: 'app' | 'space' | 'plugin'
-  description?: string
+  descriptionBase?: string
+  descriptionLocalized?: string
   pluginRoot?: string
   namespace?: string
   requiresSkills?: string[]
@@ -68,6 +71,12 @@ function toLocaleCacheKey(locale?: string): string {
   const trimmed = locale?.trim()
   if (!trimmed) return DEFAULT_LOCALE_CACHE_KEY
   return trimmed.replace(/_/g, '-').toLowerCase()
+}
+
+function shouldAttemptDisplayTranslation(locale?: string): boolean {
+  const normalized = locale?.trim().toLowerCase()
+  if (!normalized) return false
+  return normalized !== 'en' && !normalized.startsWith('en-') && !normalized.startsWith('en_')
 }
 
 function getNormalizedWorkDirKey(workDir: string): string {
@@ -129,8 +138,12 @@ function readCommandMetadata(
   workDir?: string,
   locale?: string
 ): {
-  displayName?: string
-  description?: string
+  displayNameBase?: string
+  displayNameLocalized?: string
+  descriptionBase?: string
+  descriptionLocalized?: string
+  hasLocalizedFrontmatterDisplayName?: boolean
+  hasLocalizedFrontmatterDescription?: boolean
   requiresSkills?: string[]
   requiresAgents?: string[]
 } {
@@ -148,15 +161,17 @@ function readCommandMetadata(
     const requiresSkills = getFrontmatterStringArray(metadata.frontmatter, ['requires_skills'])
     const requiresAgents = getFrontmatterStringArray(metadata.frontmatter, ['requires_agents'])
     return {
-      displayName: sidecar.titleLocale
-        ?? frontmatterLocalizedDisplayName
-        ?? sidecar.titleDefault
-        ?? frontmatterBaseDisplayName,
-      description: sidecar.descriptionLocale
-        ?? frontmatterLocalizedDescription
+      displayNameBase: frontmatterBaseDisplayName
+        ?? sidecar.titleDefault,
+      displayNameLocalized: sidecar.titleLocale
+        ?? frontmatterLocalizedDisplayName,
+      descriptionBase: frontmatterBaseDescription
         ?? sidecar.descriptionDefault
-        ?? frontmatterBaseDescription
         ?? metadata.description,
+      descriptionLocalized: sidecar.descriptionLocale
+        ?? frontmatterLocalizedDescription,
+      hasLocalizedFrontmatterDisplayName: Boolean(frontmatterLocalizedDisplayName),
+      hasLocalizedFrontmatterDescription: Boolean(frontmatterLocalizedDescription),
       requiresSkills,
       requiresAgents
     }
@@ -185,14 +200,37 @@ function scanCommandDir(
         if (!statSync(filePath).isFile()) continue
         const name = file.slice(0, -3)
         const metadata = readCommandMetadata(filePath, name, source, sourceRoot, namespace, workDir, locale)
+        const resourceKey = namespace ? `${namespace}:${name}` : name
+
+        if (sourceRoot && shouldAttemptDisplayTranslation(locale)) {
+          const displayNameBaseForTranslation = metadata.hasLocalizedFrontmatterDisplayName
+            ? undefined
+            : metadata.displayNameBase
+          const descriptionBaseForTranslation = metadata.hasLocalizedFrontmatterDescription
+            ? undefined
+            : metadata.descriptionBase
+          if (displayNameBaseForTranslation || descriptionBaseForTranslation) {
+            queueResourceDisplayTranslation({
+              rootPath: sourceRoot,
+              resourceType: 'command',
+              resourceKey,
+              locale,
+              displayNameBase: displayNameBaseForTranslation,
+              descriptionBase: descriptionBaseForTranslation
+            })
+          }
+        }
+
         commands.push({
           name,
           path: filePath,
           source,
-          description: metadata.description,
+          ...(metadata.descriptionBase && { descriptionBase: metadata.descriptionBase }),
+          ...(metadata.descriptionLocalized && { descriptionLocalized: metadata.descriptionLocalized }),
           ...(metadata.requiresSkills && { requiresSkills: metadata.requiresSkills }),
           ...(metadata.requiresAgents && { requiresAgents: metadata.requiresAgents }),
-          ...(metadata.displayName && { displayName: metadata.displayName }),
+          ...(metadata.displayNameBase && { displayNameBase: metadata.displayNameBase }),
+          ...(metadata.displayNameLocalized && { displayNameLocalized: metadata.displayNameLocalized }),
           ...(pluginRoot && { pluginRoot }),
           ...(namespace && { namespace })
         })
@@ -408,17 +446,20 @@ export function createCommand(workDir: string, name: string, content: string): C
   writeFileSync(commandPath, content, 'utf-8')
   invalidateCommandsCache(workDir)
   const metadata = parseResourceMetadata(content)
-  const displayName = getFrontmatterString(metadata.frontmatter, ['name', 'title'])
+  const displayNameBase = getFrontmatterString(metadata.frontmatter, ['name', 'title'])
+  const descriptionBase =
+    getFrontmatterString(metadata.frontmatter, ['description'])
+    ?? metadata.description
   const requiresSkills = getFrontmatterStringArray(metadata.frontmatter, ['requires_skills'])
   const requiresAgents = getFrontmatterStringArray(metadata.frontmatter, ['requires_agents'])
   return {
     name,
     path: commandPath,
     source: 'space',
-    description: metadata.description,
+    ...(descriptionBase && { descriptionBase }),
     ...(requiresSkills && { requiresSkills }),
     ...(requiresAgents && { requiresAgents }),
-    ...(displayName && { displayName })
+    ...(displayNameBase && { displayNameBase })
   }
 }
 

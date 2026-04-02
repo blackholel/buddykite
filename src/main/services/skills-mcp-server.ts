@@ -319,13 +319,14 @@ function buildSkillsTools(workDir?: string) {
         ? skills
         : skills.filter((s) => {
             const name = s.name.toLowerCase()
-            const desc = (s.description || '').toLowerCase()
+            const desc = (s.descriptionBase || '').toLowerCase()
             return name.includes(query) || desc.includes(query)
           })
 
       const sliced = filtered.slice(0, limit)
       const lines = sliced.map((s) => {
-        const desc = s.description ? ` - ${s.description}` : ''
+        const shortDescription = s.descriptionBase
+        const desc = shortDescription ? ` - ${shortDescription}` : ''
         return `/${s.name}${desc}`
       })
 

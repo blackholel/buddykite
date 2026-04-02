@@ -16,6 +16,7 @@ import {
 import { useTranslation } from '../../i18n'
 import { useSkillsStore } from '../../stores/skills.store'
 import { toResourceKey } from '../../utils/resource-key'
+import { getResourceDisplayName } from '../../utils/resource-display-name'
 import {
   truncateText,
   stripErrorTags,
@@ -48,8 +49,7 @@ export const SkillCard = memo(function SkillCard({
   const localizedSkillName = useMemo(() => {
     const direct = skills.find((skill) => toResourceKey(skill) === skillName || skill.name === skillName)
     if (!direct) return skillName
-    const base = direct.displayName || direct.name
-    return direct.namespace ? `${direct.namespace}:${base}` : base
+    return getResourceDisplayName(direct)
   }, [skillName, skills])
 
   // Use extracted pure functions for status colors

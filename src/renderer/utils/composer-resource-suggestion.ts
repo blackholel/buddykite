@@ -5,24 +5,33 @@ import type {
   ComposerSuggestionType
 } from './composer-suggestion-types'
 import { toResourceKey } from './resource-key'
+import { getResourceDisplayName, getResourceUiDescription } from './resource-display-name'
 
 export interface ComposerSuggestionResourceInput {
   name: string
-  displayName?: string
-  description?: string
+  displayNameBase?: string
+  displayNameLocalized?: string
+  descriptionBase?: string
+  descriptionLocalized?: string
   namespace?: string
   source?: string
   path: string
   pluginRoot?: string
 }
 
+export interface SdkSlashSuggestionBuildInput {
+  commands: string[]
+  skills: ComposerSuggestionResourceInput[]
+  fallbackDescription: string
+}
+
 export function getLocalizedSuggestionName(item: {
   name: string
-  displayName?: string
+  displayNameBase?: string
+  displayNameLocalized?: string
   namespace?: string
 }): string {
-  const base = item.displayName || item.name
-  return item.namespace ? `${item.namespace}:${base}` : base
+  return getResourceDisplayName(item)
 }
 
 export function normalizeComposerSuggestionSource(source: string | undefined): ComposerSuggestionSource {
@@ -46,6 +55,8 @@ export function buildComposerResourceSuggestion(
 ): ComposerResourceSuggestionItem {
   const source = normalizeComposerSuggestionSource(item.source)
   const key = toResourceKey(item)
+  const displayName = getLocalizedSuggestionName(item)
+  const description = getResourceUiDescription(item)
 
   return {
     kind: 'resource',
@@ -60,9 +71,69 @@ export function buildComposerResourceSuggestion(
     type,
     source,
     scope: toSuggestionScope(source),
-    displayName: getLocalizedSuggestionName(item),
+    displayName,
     insertText: buildInsertText(type, key),
-    description: item.description,
-    keywords: [key, item.name, item.displayName, item.description].filter((entry): entry is string => Boolean(entry))
+    description,
+    keywords: [
+      key,
+      item.name,
+      item.displayNameBase,
+      item.displayNameLocalized,
+      item.descriptionBase,
+      item.descriptionLocalized
+    ].filter((entry): entry is string => Boolean(entry))
   }
+}
+
+export function buildSdkSlashSnapshotSuggestions(input: SdkSlashSuggestionBuildInput): ComposerResourceSuggestionItem[] {
+  const dedup = new Set<string>()
+  const localSkillByKey = new Map<string, ComposerSuggestionResourceInput>()
+  const suggestions: ComposerResourceSuggestionItem[] = []
+
+  for (const skill of input.skills) {
+    const key = toResourceKey(skill).toLowerCase()
+    if (!localSkillByKey.has(key)) {
+      localSkillByKey.set(key, skill)
+    }
+  }
+
+  for (const entry of input.commands) {
+    if (typeof entry !== 'string') continue
+    const trimmed = entry.trim()
+    if (!trimmed) continue
+    const command = trimmed.startsWith('/') ? trimmed : `/${trimmed}`
+    const commandKey = command.slice(1).toLowerCase()
+    if (dedup.has(commandKey)) continue
+    dedup.add(commandKey)
+
+    const matchedSkill = localSkillByKey.get(commandKey)
+    const source = normalizeComposerSuggestionSource(matchedSkill?.source)
+    const displayName = matchedSkill ? getLocalizedSuggestionName(matchedSkill) : command.slice(1)
+    const description = matchedSkill
+      ? getResourceUiDescription(matchedSkill)
+      : input.fallbackDescription
+
+    suggestions.push({
+      kind: 'resource',
+      id: `sdk-slash:${commandKey}`,
+      stableId: `sdk-slash|${commandKey}`,
+      type: 'skill',
+      source,
+      scope: toSuggestionScope(source),
+      displayName,
+      insertText: command,
+      description,
+      keywords: [
+        displayName,
+        command,
+        command.slice(1),
+        commandKey,
+        matchedSkill?.name,
+        matchedSkill?.displayNameBase,
+        matchedSkill?.displayNameLocalized
+      ].filter((token): token is string => Boolean(token))
+    })
+  }
+
+  return suggestions
 }

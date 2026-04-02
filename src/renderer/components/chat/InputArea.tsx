@@ -54,7 +54,10 @@ import {
   shouldResetGlobalExpandState,
   splitSuggestionsByScope
 } from '../../utils/composer-suggestion-ranking'
-import { buildComposerResourceSuggestion } from '../../utils/composer-resource-suggestion'
+import {
+  buildComposerResourceSuggestion,
+  buildSdkSlashSnapshotSuggestions
+} from '../../utils/composer-resource-suggestion'
 import type {
   ComposerResourceSuggestionItem,
   ComposerSuggestionItem,
@@ -382,35 +385,12 @@ export function InputArea({
   const effectiveMode = mode
   const sdkSlashCommandCandidates = useMemo<ComposerResourceSuggestionItem[]>(() => {
     const raw = Array.isArray(slashCommandsSnapshot.commands) ? slashCommandsSnapshot.commands : []
-    const dedup = new Set<string>()
-    const suggestions: ComposerResourceSuggestionItem[] = []
-
-    for (const entry of raw) {
-      if (typeof entry !== 'string') continue
-      const trimmed = entry.trim()
-      if (!trimmed) continue
-      const command = trimmed.startsWith('/') ? trimmed : `/${trimmed}`
-      const key = command.toLowerCase()
-      if (dedup.has(key)) continue
-      dedup.add(key)
-
-      const displayName = command.replace(/^\//, '')
-      suggestions.push({
-        kind: 'resource',
-        id: `sdk-slash:${displayName}`,
-        type: 'skill',
-        source: 'global',
-        scope: 'space',
-        stableId: `sdk-slash|${displayName}`,
-        displayName,
-        insertText: command,
-        description: t('Native slash command from SDK'),
-        keywords: [displayName, command, displayName.toLowerCase(), command.toLowerCase()]
-      })
-    }
-
-    return suggestions
-  }, [slashCommandsSnapshot.commands, t])
+    return buildSdkSlashSnapshotSuggestions({
+      commands: raw,
+      skills,
+      fallbackDescription: t('Native slash command from SDK')
+    })
+  }, [slashCommandsSnapshot.commands, skills, t])
   const slashSuggestionSource = resolveSlashSuggestionSource({
     slashRuntimeMode,
     triggerType: triggerContext?.type,

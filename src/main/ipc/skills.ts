@@ -234,11 +234,21 @@ export function registerSkillsHandlers(): void {
 
   ipcMain.handle(
     'skills:import-from-path',
-    async (_event, sourcePath: string, options?: { overwrite?: boolean }) => {
+    async (_event, sourcePath: string, options?: { overwrite?: boolean }, locale?: string) => {
       try {
         const result = importSkillDirectory(sourcePath, options)
         if (result.status === 'imported') {
           clearSkillsCache()
+          const normalizedLocale = typeof locale === 'string' ? locale.trim() : ''
+          if (normalizedLocale.length > 0) {
+            setTimeout(() => {
+              try {
+                listSkills(undefined, 'extensions', normalizedLocale)
+              } catch (error) {
+                console.warn('[SkillsIPC] Background translation trigger after import failed:', error)
+              }
+            }, 0)
+          }
         }
         return { success: true, data: result }
       } catch (error: unknown) {

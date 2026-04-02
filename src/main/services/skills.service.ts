@@ -32,9 +32,11 @@ import {
   parseFrontmatter,
   getFrontmatterString,
   getFrontmatterStringArray,
-  getLocalizedFrontmatterStringForLocale
+  getLocalizedFrontmatterStringForLocale,
+  extractDescriptionFromContent
 } from './resource-metadata.service'
 import { resolveResourceDisplayOverride } from './resource-display-i18n.service'
+import { queueResourceDisplayTranslation } from './resource-display-translation.service'
 import type { ResourceListView } from '../../shared/resource-access'
 
 // ============================================
@@ -43,11 +45,13 @@ import type { ResourceListView } from '../../shared/resource-access'
 
 export interface SkillDefinition {
   name: string
-  displayName?: string
+  displayNameBase?: string
+  displayNameLocalized?: string
   path: string
   source: 'app' | 'global' | 'space' | 'installed'
   enabled?: boolean
-  description?: string
+  descriptionBase?: string
+  descriptionLocalized?: string
   triggers?: string[]
   category?: string
   pluginRoot?: string
@@ -154,6 +158,12 @@ function toLocaleCacheKey(locale?: string): string {
   const trimmed = locale?.trim()
   if (!trimmed) return DEFAULT_LOCALE_CACHE_KEY
   return trimmed.replace(/_/g, '-').toLowerCase()
+}
+
+function shouldAttemptDisplayTranslation(locale?: string): boolean {
+  const normalized = locale?.trim().toLowerCase()
+  if (!normalized) return false
+  return normalized !== 'en' && !normalized.startsWith('en-') && !normalized.startsWith('en_')
 }
 
 function getNormalizedWorkDirKey(workDir: string): string {
@@ -447,10 +457,10 @@ function findSkillByAlias(
     if (namespace && skill.namespace !== namespace) return false
 
     const candidates: string[] = []
-    if (skill.displayName) candidates.push(skill.displayName)
+    if (skill.displayNameBase) candidates.push(skill.displayNameBase)
     if (Array.isArray(skill.triggers)) candidates.push(...skill.triggers)
     if (namespace && skill.namespace) {
-      if (skill.displayName) candidates.push(`${skill.namespace}:${skill.displayName}`)
+      if (skill.displayNameBase) candidates.push(`${skill.namespace}:${skill.displayNameBase}`)
       if (Array.isArray(skill.triggers)) {
         for (const trigger of skill.triggers) {
           candidates.push(`${skill.namespace}:${trigger}`)
@@ -533,16 +543,20 @@ function scanSkillDir(
         const skillMdPath = join(skillPath, 'SKILL.md')
         if (!existsSync(skillMdPath)) continue
 
-        let description: string | undefined
-        let displayName: string | undefined
+        let descriptionBase: string | undefined
+        let descriptionLocalized: string | undefined
+        let displayNameBase: string | undefined
+        let displayNameLocalized: string | undefined
         let triggers: string[] | undefined
         let category: string | undefined
+        let contentDescriptionFallback: string | undefined
         let frontmatterDescription: string | undefined
         let localizedFrontmatterDescription: string | undefined
         let frontmatterDisplayName: string | undefined
         let localizedFrontmatterDisplayName: string | undefined
         try {
           const content = readFileSync(skillMdPath, 'utf-8')
+          contentDescriptionFallback = extractDescriptionFromContent(content)
           const frontmatter = parseFrontmatter(content)
           if (frontmatter) {
             frontmatterDescription = getFrontmatterString(frontmatter, ['description'])
@@ -558,24 +572,46 @@ function scanSkillDir(
 
         const resourceKey = namespace ? `${namespace}:${entry}` : entry
         const sidecar = resolveResourceDisplayOverride(sourceRoot, 'skill', resourceKey, locale)
-        description = sidecar.descriptionLocale
-          ?? localizedFrontmatterDescription
+        descriptionBase = frontmatterDescription
           ?? sidecar.descriptionDefault
-          ?? frontmatterDescription
-        displayName = sidecar.titleLocale
-          ?? localizedFrontmatterDisplayName
+          ?? contentDescriptionFallback
+        descriptionLocalized = sidecar.descriptionLocale
+          ?? localizedFrontmatterDescription
+        displayNameBase = frontmatterDisplayName
           ?? sidecar.titleDefault
-          ?? frontmatterDisplayName
+        displayNameLocalized = sidecar.titleLocale
+          ?? localizedFrontmatterDisplayName
+
+        if (sourceRoot && shouldAttemptDisplayTranslation(locale)) {
+          const displayNameBaseForTranslation = frontmatterLocalizedDisplayName
+            ? undefined
+            : displayNameBase
+          const descriptionBaseForTranslation = frontmatterLocalizedDescription
+            ? undefined
+            : descriptionBase
+          if (displayNameBaseForTranslation || descriptionBaseForTranslation) {
+            queueResourceDisplayTranslation({
+              rootPath: sourceRoot,
+              resourceType: 'skill',
+              resourceKey,
+              locale,
+              displayNameBase: displayNameBaseForTranslation,
+              descriptionBase: descriptionBaseForTranslation
+            })
+          }
+        }
 
         skills.push({
           name: entry,
           path: skillPath,
           source,
           enabled: true,
-          description,
+          ...(descriptionBase && { descriptionBase }),
+          ...(descriptionLocalized && { descriptionLocalized }),
+          ...(displayNameBase && { displayNameBase }),
+          ...(displayNameLocalized && { displayNameLocalized }),
           triggers,
           category,
-          ...(displayName && { displayName }),
           ...(pluginRoot && { pluginRoot }),
           ...(namespace && { namespace })
         })
@@ -829,8 +865,8 @@ export function createSkill(workDir: string, name: string, content: string): Ski
   invalidateSkillsCache(workDir)
 
   const frontmatter = parseFrontmatter(content)
-  const description = getFrontmatterString(frontmatter, ['description'])
-  const displayName = getFrontmatterString(frontmatter, ['name', 'title'])
+  const descriptionBase = getFrontmatterString(frontmatter, ['description']) ?? extractDescriptionFromContent(content)
+  const displayNameBase = getFrontmatterString(frontmatter, ['name', 'title'])
   const triggers = getFrontmatterStringArray(frontmatter, ['triggers'])
   const category = getFrontmatterString(frontmatter, ['category'])
   return {
@@ -838,10 +874,10 @@ export function createSkill(workDir: string, name: string, content: string): Ski
     path: skillDir,
     source: 'space',
     enabled: true,
-    description,
+    ...(descriptionBase && { descriptionBase }),
     triggers,
     category,
-    ...(displayName && { displayName })
+    ...(displayNameBase && { displayNameBase })
   }
 }
 
@@ -1057,15 +1093,15 @@ function isLibrarySkillPath(skillPathOrDir: string): boolean {
 }
 
 function parseSkillContentMetadata(content: string): {
-  description?: string
-  displayName?: string
+  descriptionBase?: string
+  displayNameBase?: string
   triggers?: string[]
   category?: string
 } {
   const frontmatter = parseFrontmatter(content)
   return {
-    description: getFrontmatterString(frontmatter, ['description']),
-    displayName: getFrontmatterString(frontmatter, ['name', 'title']),
+    descriptionBase: getFrontmatterString(frontmatter, ['description']) ?? extractDescriptionFromContent(content),
+    displayNameBase: getFrontmatterString(frontmatter, ['name', 'title']),
     triggers: getFrontmatterStringArray(frontmatter, ['triggers']),
     category: getFrontmatterString(frontmatter, ['category'])
   }
@@ -1088,10 +1124,10 @@ export function createSkillInLibrary(name: string, content: string): SkillDefini
     path: skillDir,
     source: 'app',
     enabled: true,
-    description: metadata.description,
+    ...(metadata.descriptionBase && { descriptionBase: metadata.descriptionBase }),
     triggers: metadata.triggers,
     category: metadata.category,
-    ...(metadata.displayName && { displayName: metadata.displayName })
+    ...(metadata.displayNameBase && { displayNameBase: metadata.displayNameBase })
   }
 }
 

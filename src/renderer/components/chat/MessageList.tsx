@@ -28,6 +28,7 @@ import { useAgentsStore } from '../../stores/agents.store'
 import type { ComposerResourceDisplayLookups } from '../../utils/composer-resource-chip'
 import { normalizeChipDisplayName } from '../../utils/composer-resource-chip'
 import { toResourceKey } from '../../utils/resource-key'
+import { getResourceUiDisplayName } from '../../utils/resource-display-name'
 import type {
   Message,
   Thought,
@@ -662,13 +663,13 @@ export function MessageList({
     for (const skill of skills) {
       skillMap.set(
         toResourceKey({ name: skill.name, namespace: skill.namespace }),
-        normalizeChipDisplayName(skill.displayName || skill.name)
+        normalizeChipDisplayName(getResourceUiDisplayName(skill))
       )
     }
     for (const agent of agents) {
       agentMap.set(
         toResourceKey({ name: agent.name, namespace: agent.namespace }),
-        normalizeChipDisplayName(agent.displayName || agent.name)
+        normalizeChipDisplayName(getResourceUiDisplayName(agent))
       )
     }
 

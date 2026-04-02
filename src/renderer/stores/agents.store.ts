@@ -13,6 +13,7 @@ import { api } from '../api'
 import i18n from '../i18n'
 import { getCacheKey, getAllCacheKeys, GLOBAL_CACHE_KEY } from './cache-keys'
 import type { ResourceChangedPayload } from '../../shared/resource-access'
+import { normalizeLocale } from '../../shared/i18n/locale'
 
 // ============================================
 // Types
@@ -20,11 +21,13 @@ import type { ResourceChangedPayload } from '../../shared/resource-access'
 
 export interface AgentDefinition {
   name: string
-  displayName?: string
+  displayNameBase?: string
+  displayNameLocalized?: string
   path: string
   source: 'app' | 'global' | 'space' | 'plugin'
   enabled?: boolean
-  description?: string
+  descriptionBase?: string
+  descriptionLocalized?: string
   namespace?: string
 }
 
@@ -37,6 +40,7 @@ interface AgentsState {
   // Data
   agents: AgentDefinition[]
   loadedWorkDir: string | null
+  loadedLocale: string | null
   selectedAgent: AgentDefinition | null
   agentContent: AgentContent | null
   agentsByWorkDir: Record<string | symbol, AgentDefinition[]>
@@ -85,6 +89,7 @@ export const useAgentsStore = create<AgentsState>((set, get) => ({
   // Initial state
   agents: [],
   loadedWorkDir: null,
+  loadedLocale: null,
   selectedAgent: null,
   agentContent: null,
   agentsByWorkDir: {},
@@ -96,13 +101,15 @@ export const useAgentsStore = create<AgentsState>((set, get) => ({
 
   // Load agents from all sources
   loadAgents: async (workDir?: string) => {
-    const cacheKey = getCacheKey(workDir)
+    const locale = normalizeLocale(i18n.language)
+    const cacheKey = getCacheKey(workDir, locale)
     const { agentsByWorkDir, dirtyWorkDirs } = get()
     const cached = agentsByWorkDir[cacheKey]
     if (cached && !dirtyWorkDirs.has(cacheKey)) {
       set({
         agents: cached,
         loadedWorkDir: workDir ?? null,
+        loadedLocale: locale,
         error: null,
         isLoading: false
       })
@@ -112,7 +119,7 @@ export const useAgentsStore = create<AgentsState>((set, get) => ({
     try {
       set({ isLoading: true, error: null })
 
-      const response = await api.listAgents(workDir, i18n.language, 'extensions')
+      const response = await api.listAgents(workDir, locale, 'extensions')
 
       if (response.success && response.data) {
         const nextByWorkDir = {
@@ -124,6 +131,7 @@ export const useAgentsStore = create<AgentsState>((set, get) => ({
         set({
           agents: response.data as AgentDefinition[],
           loadedWorkDir: workDir ?? null,
+          loadedLocale: locale,
           agentsByWorkDir: nextByWorkDir,
           dirtyWorkDirs: nextDirty
         })
@@ -180,7 +188,8 @@ export const useAgentsStore = create<AgentsState>((set, get) => ({
 
       if (response.success && response.data) {
         const newAgent = response.data as AgentDefinition
-        const cacheKey = getCacheKey(workDir)
+        const locale = normalizeLocale(i18n.language)
+        const cacheKey = getCacheKey(workDir, locale)
         set((state) => ({
           agents: [...state.agents, newAgent],
           agentsByWorkDir: {
@@ -188,6 +197,11 @@ export const useAgentsStore = create<AgentsState>((set, get) => ({
             [cacheKey]: [...(state.agentsByWorkDir[cacheKey] || []), newAgent]
           }
         }))
+
+        // Trigger background scan immediately so translation queue starts without waiting for watcher refresh.
+        void api.listAgents(workDir, locale, 'extensions').catch((error) => {
+          console.warn('[AgentsStore] Background agents scan after create failed:', error)
+        })
 
         return newAgent
       }
@@ -207,19 +221,28 @@ export const useAgentsStore = create<AgentsState>((set, get) => ({
 
       if (response.success && response.data) {
         const newAgent = response.data as AgentDefinition
+        const locale = normalizeLocale(i18n.language)
         set((state) => {
-          const cacheKey = getCacheKey(undefined)
+          const stateLocale = state.loadedLocale || locale
+          const cacheKey = getCacheKey(undefined, stateLocale)
           const current = state.agentsByWorkDir[cacheKey]
             ?? (state.loadedWorkDir === null ? state.agents : [])
           return {
             agents: [...current, newAgent],
             loadedWorkDir: null,
+            loadedLocale: stateLocale,
             agentsByWorkDir: {
               ...state.agentsByWorkDir,
               [cacheKey]: [...current, newAgent]
             }
           }
         })
+
+        // Trigger background scan immediately so translation queue starts without waiting for watcher refresh.
+        void api.listAgents(undefined, locale, 'extensions').catch((error) => {
+          console.warn('[AgentsStore] Background agents scan after library create failed:', error)
+        })
+
         return newAgent
       }
 
@@ -259,7 +282,10 @@ export const useAgentsStore = create<AgentsState>((set, get) => ({
       const response = await api.deleteAgent(agentPath)
       if (response.success) {
         set((state) => {
-          const cacheKey = getCacheKey(state.loadedWorkDir)
+          const cacheKey = getCacheKey(
+            state.loadedWorkDir,
+            state.loadedLocale || normalizeLocale(i18n.language)
+          )
           return {
             agents: state.agents.filter(a => a.path !== agentPath),
             agentsByWorkDir: {
@@ -415,7 +441,7 @@ export const useAgentsStore = create<AgentsState>((set, get) => ({
           return copyResult
         }
         const copiedAgent = copyResult.data
-        const cacheKey = getCacheKey(workDir)
+        const cacheKey = getCacheKey(workDir, normalizeLocale(i18n.language))
         set((state) => ({
           agents: state.agents.map(a => a.path === agent.path ? copiedAgent : a),
           agentsByWorkDir: {
@@ -452,7 +478,7 @@ export const useAgentsStore = create<AgentsState>((set, get) => ({
   },
 
   markDirty: (workDir) => {
-    const cacheKey = getCacheKey(workDir)
+    const cacheKey = getCacheKey(workDir, normalizeLocale(i18n.language))
     set((state) => {
       const nextDirty = new Set(state.dirtyWorkDirs)
       nextDirty.add(cacheKey)
@@ -477,8 +503,10 @@ export const useAgentsStore = create<AgentsState>((set, get) => ({
     const query = searchQuery.toLowerCase()
     return agents.filter(agent =>
       agent.name.toLowerCase().includes(query) ||
-      agent.displayName?.toLowerCase().includes(query) ||
-      agent.description?.toLowerCase().includes(query)
+      agent.displayNameLocalized?.toLowerCase().includes(query) ||
+      agent.displayNameBase?.toLowerCase().includes(query) ||
+      agent.descriptionLocalized?.toLowerCase().includes(query) ||
+      agent.descriptionBase?.toLowerCase().includes(query)
     )
   },
 

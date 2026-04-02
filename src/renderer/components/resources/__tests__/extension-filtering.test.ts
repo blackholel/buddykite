@@ -23,14 +23,14 @@ describe('extension-filtering', () => {
       skills: [
         {
           name: 'review',
-          displayName: '代码审查',
-          description: '技能描述',
+          displayNameLocalized: '代码审查',
+          descriptionLocalized: '技能描述',
           path: '/tmp/review',
           source: 'app'
         }
       ],
       agents: [
-        { name: 'agent-a', path: '/tmp/agent-a', source: 'global', description: 'helper' }
+        { name: 'agent-a', path: '/tmp/agent-a', source: 'global', descriptionBase: 'helper' }
       ]
     })
 

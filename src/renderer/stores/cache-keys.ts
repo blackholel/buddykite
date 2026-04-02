@@ -16,6 +16,8 @@ const GLOBAL_CACHE_KEY = Symbol('global')
  * This ensures that even if workDir is '__global__', it won't conflict.
  */
 const WORKDIR_PREFIX = 'workdir:'
+const LOCALE_PREFIX = 'locale:'
+const GLOBAL_PREFIX = 'global'
 
 /**
  * Generate a safe cache key for the given workDir.
@@ -23,11 +25,23 @@ const WORKDIR_PREFIX = 'workdir:'
  * @param workDir - The workspace directory path, or null/undefined for global
  * @returns A unique cache key (Symbol for global, prefixed string for workDir)
  */
-export function getCacheKey(workDir: string | null | undefined): symbol | string {
-  if (workDir == null) {
+export function getCacheKey(workDir: string | null | undefined, locale?: string | null): symbol | string {
+  const normalizedLocale = typeof locale === 'string' ? locale.trim() : ''
+  const hasLocale = normalizedLocale.length > 0
+
+  if (workDir == null && !hasLocale) {
     return GLOBAL_CACHE_KEY
   }
-  return `${WORKDIR_PREFIX}${workDir}`
+
+  if (workDir == null) {
+    return `${GLOBAL_PREFIX}:${LOCALE_PREFIX}${normalizedLocale}`
+  }
+
+  if (!hasLocale) {
+    return `${WORKDIR_PREFIX}${workDir}`
+  }
+
+  return `${WORKDIR_PREFIX}${workDir}:${LOCALE_PREFIX}${normalizedLocale}`
 }
 
 /**

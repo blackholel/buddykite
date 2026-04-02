@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
 
 vi.mock('../../../i18n', () => ({
+  getCurrentLanguage: () => 'zh-CN',
   useTranslation: () => ({
     t: (key: string) => key
   })

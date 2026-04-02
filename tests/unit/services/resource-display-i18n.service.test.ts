@@ -10,6 +10,11 @@ vi.mock('fs', () => ({
     if (content == null) throw new Error(`ENOENT: ${filePath}`)
     return content
   }),
+  mkdirSync: vi.fn(),
+  writeFileSync: vi.fn((filePath: string, content: string) => {
+    fileContents.set(filePath, content)
+    fileStats.set(filePath, { mtimeMs: Date.now(), size: content.length })
+  }),
   statSync: vi.fn((filePath: string) => {
     const stat = fileStats.get(filePath)
     if (!stat) throw new Error(`ENOENT: ${filePath}`)
@@ -51,7 +56,9 @@ import {
   getResourceDisplayI18nIndexEntries,
   getResourceDisplayI18nRoots,
   getResourceDisplayI18nSidecarPaths,
-  resolveResourceDisplayOverride
+  getResourceDisplayTranslationCacheInfo,
+  resolveResourceDisplayOverride,
+  upsertResourceDisplayTranslation
 } from '../../../src/main/services/resource-display-i18n.service'
 
 function putSidecar(path: string, data: unknown, mtimeMs = 1_700_000_000_000): void {
@@ -120,5 +127,101 @@ describe('resource-display-i18n.service', () => {
 
     const entries = getResourceDisplayI18nIndexEntries()
     expect(entries.some(entry => entry.includes('display-i18n:/home/test/.kite/i18n/resource-display.i18n.json:1700000000123'))).toBe(true)
+  })
+
+  it('upsert: 缺失 locale 时写入翻译并记录 sourceTextHash', () => {
+    const wrote = upsertResourceDisplayTranslation({
+      rootPath: '/home/test/.kite',
+      type: 'skill',
+      resourceKey: 'demo-skill',
+      locale: 'zh-CN',
+      sourceTextHash: 'hash-v1',
+      title: '演示技能',
+      description: '执行检查'
+    })
+
+    expect(wrote).toBe(true)
+    const info = getResourceDisplayTranslationCacheInfo({
+      rootPath: '/home/test/.kite',
+      type: 'skill',
+      resourceKey: 'demo-skill',
+      locale: 'zh-CN'
+    })
+    expect(info.titleLocale).toBe('演示技能')
+    expect(info.descriptionLocale).toBe('执行检查')
+    expect(info.titleSourceTextHash).toBe('hash-v1')
+    expect(info.descriptionSourceTextHash).toBe('hash-v1')
+  })
+
+  it('upsert: 手工翻译（无 auto hash）不会被覆盖', () => {
+    putSidecar('/home/test/.kite/i18n/resource-display.i18n.json', {
+      version: 1,
+      resources: {
+        skills: {
+          'demo-skill': {
+            title: { 'zh-CN': '手工标题' },
+            description: { 'zh-CN': '手工描述' }
+          }
+        }
+      }
+    })
+
+    const wrote = upsertResourceDisplayTranslation({
+      rootPath: '/home/test/.kite',
+      type: 'skill',
+      resourceKey: 'demo-skill',
+      locale: 'zh-CN',
+      sourceTextHash: 'hash-v2',
+      title: '自动标题',
+      description: '自动描述'
+    })
+
+    expect(wrote).toBe(false)
+    const info = getResourceDisplayTranslationCacheInfo({
+      rootPath: '/home/test/.kite',
+      type: 'skill',
+      resourceKey: 'demo-skill',
+      locale: 'zh-CN'
+    })
+    expect(info.titleLocale).toBe('手工标题')
+    expect(info.descriptionLocale).toBe('手工描述')
+  })
+
+  it('upsert: 允许覆盖无 hash 的旧占位文案', () => {
+    putSidecar('/home/test/.kite/i18n/resource-display.i18n.json', {
+      version: 1,
+      resources: {
+        skills: {
+          'demo-skill': {
+            title: { 'zh-CN': 'Code Review' },
+            description: { 'zh-CN': 'Checks code quality' }
+          }
+        }
+      }
+    })
+
+    const wrote = upsertResourceDisplayTranslation({
+      rootPath: '/home/test/.kite',
+      type: 'skill',
+      resourceKey: 'demo-skill',
+      locale: 'zh-CN',
+      sourceTextHash: 'hash-v3',
+      title: '代码审查',
+      description: '用于检查代码质量',
+      allowOverwriteTitleWithoutHash: true,
+      allowOverwriteDescriptionWithoutHash: true
+    })
+
+    expect(wrote).toBe(true)
+    const info = getResourceDisplayTranslationCacheInfo({
+      rootPath: '/home/test/.kite',
+      type: 'skill',
+      resourceKey: 'demo-skill',
+      locale: 'zh-CN'
+    })
+    expect(info.titleLocale).toBe('代码审查')
+    expect(info.descriptionLocale).toBe('用于检查代码质量')
+    expect(info.titleSourceTextHash).toBe('hash-v3')
+    expect(info.descriptionSourceTextHash).toBe('hash-v3')
   })
 })

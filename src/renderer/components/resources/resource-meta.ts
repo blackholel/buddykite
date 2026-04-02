@@ -2,6 +2,7 @@ import type { LucideIcon } from 'lucide-react'
 import { Bot, Zap } from 'lucide-react'
 import { api } from '../../api'
 import type { AnyResource, ResourceType } from './types'
+import { getResourceDisplayName, getResourceUiDescription } from '../../utils/resource-display-name'
 
 export type AnySource = 'app' | 'global' | 'space' | 'installed' | 'plugin'
 
@@ -36,11 +37,6 @@ export function resourceKey(item: { name: string; namespace?: string }): string 
   return item.namespace ? `${item.namespace}:${item.name}` : item.name
 }
 
-function resourceDisplayKey(item: { name: string; displayName?: string; namespace?: string }): string {
-  const base = item.displayName || item.name
-  return item.namespace ? `${item.namespace}:${base}` : base
-}
-
 export function getSourceLabel(source: AnySource, t: (key: string) => string): string {
   return t(DISPLAY_LABEL[source])
 }
@@ -52,8 +48,8 @@ export function getSourceColor(source: AnySource): string {
 export function mapResourceMeta(resource: AnyResource, type: ResourceType): ResourceMeta {
   if (type === 'skill') {
     return {
-      title: resourceDisplayKey(resource),
-      subtitle: resource.description,
+      title: getResourceDisplayName(resource),
+      subtitle: getResourceUiDescription(resource),
       path: resource.path,
       source: resource.source as AnySource,
       namespace: resource.namespace,
@@ -65,8 +61,8 @@ export function mapResourceMeta(resource: AnyResource, type: ResourceType): Reso
 
   if (type === 'agent') {
     return {
-      title: resourceDisplayKey(resource),
-      subtitle: resource.description,
+      title: getResourceDisplayName(resource),
+      subtitle: getResourceUiDescription(resource),
       path: resource.path,
       source: resource.source as AnySource,
       namespace: resource.namespace,
@@ -76,8 +72,8 @@ export function mapResourceMeta(resource: AnyResource, type: ResourceType): Reso
   }
 
   return {
-    title: resourceDisplayKey(resource),
-    subtitle: resource.description,
+    title: getResourceDisplayName(resource),
+    subtitle: getResourceUiDescription(resource),
     path: resource.path,
     source: resource.source as AnySource,
     namespace: resource.namespace,

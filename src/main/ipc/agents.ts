@@ -196,11 +196,21 @@ export function registerAgentsHandlers(): void {
 
   ipcMain.handle(
     'agents:import-from-path',
-    async (_event, sourcePath: string, options?: { overwrite?: boolean }) => {
+    async (_event, sourcePath: string, options?: { overwrite?: boolean }, locale?: string) => {
       try {
         const result = importAgentFile(sourcePath, options)
         if (result.status === 'imported') {
           clearAgentsCache()
+          const normalizedLocale = typeof locale === 'string' ? locale.trim() : ''
+          if (normalizedLocale.length > 0) {
+            setTimeout(() => {
+              try {
+                listAgents(undefined, 'extensions', normalizedLocale)
+              } catch (error) {
+                console.warn('[AgentsIPC] Background translation trigger after import failed:', error)
+              }
+            }, 0)
+          }
         }
         return { success: true, data: result }
       } catch (error: unknown) {

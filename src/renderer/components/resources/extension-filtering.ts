@@ -2,6 +2,7 @@ import type { AgentDefinition } from '../../stores/agents.store'
 import type { SkillDefinition } from '../../stores/skills.store'
 import type { ResourceType } from './types'
 import type { TemplateLibraryTab } from '../../types/template-library'
+import { getResourceDisplayName, getResourceUiDescription } from '../../utils/resource-display-name'
 
 export type FilterTab = 'all' | 'skills' | 'agents'
 
@@ -52,17 +53,18 @@ export function normalizeExtensionItems(params: {
   agents: AgentDefinition[]
 }): ExtensionItem[] {
   const skillItems: ExtensionItem[] = params.skills.map((skill) => {
-    const displayBase = skill.displayName || skill.name
-    const displayName = skill.namespace ? `${skill.namespace}:${displayBase}` : displayBase
+    const displayName = getResourceDisplayName(skill)
+    const description = getResourceUiDescription(skill)
     return {
       id: `skill:${skill.namespace ?? '-'}:${skill.name}`,
       type: 'skill',
       resource: skill,
       searchable: [
         skill.name,
-        skill.displayName,
+        skill.displayNameLocalized,
+        skill.displayNameBase,
         skill.namespace,
-        skill.description,
+        description,
         skill.category,
         ...(skill.triggers || [])
       ].filter(Boolean).join(' ').toLowerCase(),
@@ -71,13 +73,19 @@ export function normalizeExtensionItems(params: {
   })
 
   const agentItems: ExtensionItem[] = params.agents.map((agent) => {
-    const displayBase = agent.displayName || agent.name
-    const displayName = agent.namespace ? `${agent.namespace}:${displayBase}` : displayBase
+    const displayName = getResourceDisplayName(agent)
+    const description = getResourceUiDescription(agent)
     return {
       id: `agent:${agent.namespace ?? '-'}:${agent.name}`,
       type: 'agent',
       resource: agent,
-      searchable: [agent.name, agent.displayName, agent.namespace, agent.description].filter(Boolean).join(' ').toLowerCase(),
+      searchable: [
+        agent.name,
+        agent.displayNameLocalized,
+        agent.displayNameBase,
+        agent.namespace,
+        description
+      ].filter(Boolean).join(' ').toLowerCase(),
       displayName
     }
   })

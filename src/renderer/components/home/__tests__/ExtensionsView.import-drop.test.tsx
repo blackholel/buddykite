@@ -37,6 +37,7 @@ const agentsStoreMock = vi.hoisted(() => ({
 }))
 
 vi.mock('../../../i18n', () => ({
+  getCurrentLanguage: () => 'zh-CN',
   useTranslation: () => ({
     t
   })
@@ -129,6 +130,8 @@ describe('ExtensionsView import drop', () => {
   it('技能页拖入目录时触发 skill 导入', async () => {
     const renderer = createRenderer()
     await renderer.render(<ExtensionsView resourceType="skill" />)
+    expect(skillsStoreMock.loadSkills).toHaveBeenCalledTimes(1)
+    expect(agentsStoreMock.loadAgents).toHaveBeenCalledTimes(1)
 
     const dropzone = renderer.container.querySelector('[data-testid="resource-library-dropzone"]')
     if (!dropzone) throw new Error('dropzone not found')
@@ -138,13 +141,15 @@ describe('ExtensionsView import drop', () => {
     })
     await flushAsyncWork()
 
-    expect(apiMock.importSkillToLibrary).toHaveBeenCalledWith('/tmp/review-skill')
+    expect(apiMock.importSkillToLibrary).toHaveBeenCalledWith('/tmp/review-skill', undefined, 'zh-CN')
     await renderer.unmount()
   })
 
   it('智能体页拖入 markdown 时触发 agent 导入', async () => {
     const renderer = createRenderer()
     await renderer.render(<ExtensionsView resourceType="agent" />)
+    expect(skillsStoreMock.loadSkills).toHaveBeenCalledTimes(1)
+    expect(agentsStoreMock.loadAgents).toHaveBeenCalledTimes(1)
 
     const dropzone = renderer.container.querySelector('[data-testid="resource-library-dropzone"]')
     if (!dropzone) throw new Error('dropzone not found')
@@ -154,7 +159,7 @@ describe('ExtensionsView import drop', () => {
     })
     await flushAsyncWork()
 
-    expect(apiMock.importAgentToLibrary).toHaveBeenCalledWith('/tmp/reviewer.md')
+    expect(apiMock.importAgentToLibrary).toHaveBeenCalledWith('/tmp/reviewer.md', undefined, 'zh-CN')
     await renderer.unmount()
   })
 })

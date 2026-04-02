@@ -16,7 +16,7 @@ function makeSkill(
 describe('skills.service resolveSkillLookupFromList', () => {
   it('prefers exact name match', () => {
     const skills: SkillDefinition[] = [
-      makeSkill('qiaomu-x-article-publisher', { displayName: 'x-article-publisher' }),
+      makeSkill('qiaomu-x-article-publisher', { displayNameBase: 'x-article-publisher' }),
       makeSkill('x-article-publisher'),
     ]
 
@@ -31,7 +31,7 @@ describe('skills.service resolveSkillLookupFromList', () => {
 
   it('supports prefix alias fallback for qiaomu-* skills', () => {
     const skills: SkillDefinition[] = [
-      makeSkill('qiaomu-x-article-publisher', { displayName: 'x-article-publisher' }),
+      makeSkill('qiaomu-x-article-publisher', { displayNameBase: 'x-article-publisher' }),
     ]
 
     const result = resolveSkillLookupFromList(skills, 'x-article-publisher', {
@@ -45,8 +45,8 @@ describe('skills.service resolveSkillLookupFromList', () => {
 
   it('returns ambiguity instead of silent fallback when disallowAmbiguousAlias=true', () => {
     const skills: SkillDefinition[] = [
-      makeSkill('qiaomu-x-article-publisher', { displayName: 'x-article-publisher' }),
-      makeSkill('demo-x-article-publisher', { displayName: 'x-article-publisher' }),
+      makeSkill('qiaomu-x-article-publisher', { displayNameBase: 'x-article-publisher' }),
+      makeSkill('demo-x-article-publisher', { displayNameBase: 'x-article-publisher' }),
     ]
 
     const result = resolveSkillLookupFromList(skills, 'x-article-publisher', {

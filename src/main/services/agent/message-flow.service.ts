@@ -402,13 +402,13 @@ function scoreSkillCandidate(
   skill: {
     name: string
     namespace?: string
-    displayName?: string
+    displayNameBase?: string
     triggers?: string[]
   }
 ): number {
   const normalizedToken = token.toLowerCase()
   const canonical = buildCanonicalSkillName(skill).toLowerCase()
-  const displayName = (skill.displayName || '').toLowerCase()
+  const displayName = (skill.displayNameBase || '').toLowerCase()
   const triggerMatches = Array.isArray(skill.triggers)
     ? skill.triggers.filter((trigger) => trigger.toLowerCase().includes(normalizedToken)).length
     : 0
@@ -427,7 +427,7 @@ function buildDirectiveSuggestions(
   candidates: Array<{
     name: string
     namespace?: string
-    displayName?: string
+    displayNameBase?: string
     triggers?: string[]
   }>
 ): string[] {

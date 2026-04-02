@@ -71,8 +71,10 @@ describe('skills sidecar priority', () => {
 
     const skills = listSkills(undefined, 'extensions', 'zh-CN')
     expect(skills).toHaveLength(1)
-    expect(skills[0].displayName).toBe('演示技能')
-    expect(skills[0].description).toBe('演示描述')
+    expect(skills[0].displayNameLocalized).toBe('演示技能')
+    expect(skills[0].descriptionLocalized).toBe('演示描述')
+    expect(skills[0].displayNameBase).toBe('Demo Skill')
+    expect(skills[0].descriptionBase).toBe('Demo Description')
   })
 
   it('loads space sidecar from <workDir>/.claude/i18n', () => {
@@ -107,11 +109,13 @@ describe('skills sidecar priority', () => {
 
     const skills = listSkills(workDir, 'extensions', 'zh-CN')
     expect(skills).toHaveLength(1)
-    expect(skills[0].displayName).toBe('空间技能')
-    expect(skills[0].description).toBe('空间描述')
+    expect(skills[0].displayNameLocalized).toBe('空间技能')
+    expect(skills[0].descriptionLocalized).toBe('空间描述')
+    expect(skills[0].displayNameBase).toBe('Space Skill')
+    expect(skills[0].descriptionBase).toBe('Space Description')
   })
 
-  it('resolves localized skill displayName for runtime lookup', () => {
+  it('runtime lookup should not consume localized displayName', () => {
     vi.mocked(getLockedUserConfigRootDir).mockReturnValue(tempRoot)
 
     const skillDir = path.join(getKiteSkillsDir(tempRoot), 'brainstorming')
@@ -139,7 +143,7 @@ describe('skills sidecar priority', () => {
     }, null, 2))
 
     const byAlias = getSkillDefinition('头脑风暴', undefined, { locale: 'zh-CN' })
-    expect(byAlias?.name).toBe('brainstorming')
+    expect(byAlias).toBeNull()
   })
 
   it('resolves plugin skill by localized alias and namespaced alias', () => {

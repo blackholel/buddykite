@@ -259,7 +259,11 @@ export interface KiteAPI {
     enabled: boolean
   }) => Promise<IpcResponse>
   openSkillsLibraryFolder: () => Promise<IpcResponse>
-  importSkillToLibrary: (sourcePath: string, options?: { overwrite?: boolean }) => Promise<IpcResponse>
+  importSkillToLibrary: (
+    sourcePath: string,
+    options?: { overwrite?: boolean },
+    locale?: string
+  ) => Promise<IpcResponse>
   showSkillInFolder: (skillPath: string) => Promise<IpcResponse>
   copySkillToSpaceByRef: (
     ref: Record<string, unknown>,
@@ -286,7 +290,11 @@ export interface KiteAPI {
     enabled: boolean
   }) => Promise<IpcResponse>
   openAgentsLibraryFolder: () => Promise<IpcResponse>
-  importAgentToLibrary: (sourcePath: string, options?: { overwrite?: boolean }) => Promise<IpcResponse>
+  importAgentToLibrary: (
+    sourcePath: string,
+    options?: { overwrite?: boolean },
+    locale?: string
+  ) => Promise<IpcResponse>
   showAgentInFolder: (agentPath: string) => Promise<IpcResponse>
   copyAgentToSpaceByRef: (
     ref: Record<string, unknown>,
@@ -555,7 +563,7 @@ const api: KiteAPI = {
   deleteSkillFromLibrary: (skillPath) => ipcRenderer.invoke('skills:delete-library', skillPath),
   setSkillEnabled: (payload) => ipcRenderer.invoke('skills:set-enabled', payload),
   openSkillsLibraryFolder: () => ipcRenderer.invoke('skills:open-library-folder'),
-  importSkillToLibrary: (sourcePath, options) => ipcRenderer.invoke('skills:import-from-path', sourcePath, options),
+  importSkillToLibrary: (sourcePath, options, locale) => ipcRenderer.invoke('skills:import-from-path', sourcePath, options, locale),
   showSkillInFolder: (skillPath) => ipcRenderer.invoke('skills:show-item-in-folder', skillPath),
   copySkillToSpaceByRef: (ref, workDir, options) => ipcRenderer.invoke('skills:copy-to-space-by-ref', ref, workDir, options),
   clearSkillsCache: () => ipcRenderer.invoke('skills:clear-cache'),
@@ -573,7 +581,7 @@ const api: KiteAPI = {
   deleteAgentFromLibrary: (agentPath) => ipcRenderer.invoke('agents:delete-library', agentPath),
   setAgentEnabled: (payload) => ipcRenderer.invoke('agents:set-enabled', payload),
   openAgentsLibraryFolder: () => ipcRenderer.invoke('agents:open-library-folder'),
-  importAgentToLibrary: (sourcePath, options) => ipcRenderer.invoke('agents:import-from-path', sourcePath, options),
+  importAgentToLibrary: (sourcePath, options, locale) => ipcRenderer.invoke('agents:import-from-path', sourcePath, options, locale),
   showAgentInFolder: (agentPath) => ipcRenderer.invoke('agents:show-item-in-folder', agentPath),
   copyAgentToSpaceByRef: (ref, workDir, options) => ipcRenderer.invoke('agents:copy-to-space-by-ref', ref, workDir, options),
   clearAgentsCache: () => ipcRenderer.invoke('agents:clear-cache'),

@@ -3,6 +3,7 @@ import { ChevronDown, MoreHorizontal, Plus, Search, SquarePen, Trash2 } from 'lu
 import { useTranslation } from '../../i18n'
 import { useSkillsStore, type SkillDefinition } from '../../stores/skills.store'
 import { useSpaceStore } from '../../stores/space.store'
+import { getResourceDisplayName, getResourceUiDescription } from '../../utils/resource-display-name'
 
 interface SkillsPanelProps {
   workDir?: string
@@ -11,11 +12,6 @@ interface SkillsPanelProps {
   onCreateSkill?: () => void
   onInsertCreateSkill?: () => void
   preferInsertOnClick?: boolean
-}
-
-function getSkillDisplayName(skill: SkillDefinition): string {
-  const base = skill.displayName || skill.name
-  return skill.namespace ? `${skill.namespace}:${base}` : base
 }
 
 export function SkillsPanel({
@@ -51,8 +47,9 @@ export function SkillsPanel({
     return q
       ? spaceSkills.filter(skill => (
         skill.name.toLowerCase().includes(q) ||
-        skill.displayName?.toLowerCase().includes(q) ||
-        skill.description?.toLowerCase().includes(q)
+        skill.displayNameLocalized?.toLowerCase().includes(q) ||
+        skill.displayNameBase?.toLowerCase().includes(q) ||
+        getResourceUiDescription(skill)?.toLowerCase().includes(q)
       ))
       : spaceSkills
   }, [skills, query])
@@ -123,9 +120,9 @@ export function SkillsPanel({
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <div className="text-xs font-medium truncate">/{getSkillDisplayName(skill)}</div>
-                      {skill.description && (
-                        <div className="text-[11px] text-muted-foreground truncate">{skill.description}</div>
+                      <div className="text-xs font-medium truncate">/{getResourceDisplayName(skill)}</div>
+                      {getResourceUiDescription(skill) && (
+                        <div className="text-[11px] text-muted-foreground truncate">{getResourceUiDescription(skill)}</div>
                       )}
                     </div>
                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100">

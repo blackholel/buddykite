@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react'
 import { X, Edit2, FolderOpen, Trash2, Bot } from 'lucide-react'
 import { useTranslation } from '../../i18n'
 import { useAgentsStore, type AgentDefinition, type AgentContent } from '../../stores/agents.store'
-import { getResourceDisplayName } from '../../utils/resource-display-name'
+import { getResourceDisplayName, getResourceUiDescription } from '../../utils/resource-display-name'
 import { MarkdownRenderer } from '../chat/MarkdownRenderer'
 
 interface AgentDetailModalProps {
@@ -129,8 +129,8 @@ export function AgentDetailModal({ agent, onClose, onEdit }: AgentDetailModalPro
                   {SOURCE_LABELS[agent.source]}
                 </span>
               </div>
-              {agent.description && (
-                <p className="text-sm text-muted-foreground mt-0.5">{agent.description}</p>
+              {getResourceUiDescription(agent) && (
+                <p className="text-sm text-muted-foreground mt-0.5">{getResourceUiDescription(agent)}</p>
               )}
             </div>
           </div>

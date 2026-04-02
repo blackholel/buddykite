@@ -33,6 +33,7 @@ import {
   getLocalizedFrontmatterStringForLocale
 } from './resource-metadata.service'
 import { resolveResourceDisplayOverride } from './resource-display-i18n.service'
+import { queueResourceDisplayTranslation } from './resource-display-translation.service'
 import type { ResourceListView } from '../../shared/resource-access'
 
 // ============================================
@@ -41,11 +42,13 @@ import type { ResourceListView } from '../../shared/resource-access'
 
 export interface AgentDefinition {
   name: string
-  displayName?: string
+  displayNameBase?: string
+  displayNameLocalized?: string
   path: string
   source: 'app' | 'global' | 'space' | 'plugin'
   enabled?: boolean
-  description?: string
+  descriptionBase?: string
+  descriptionLocalized?: string
   pluginRoot?: string
   namespace?: string
 }
@@ -83,6 +86,12 @@ function toLocaleCacheKey(locale?: string): string {
   const trimmed = locale?.trim()
   if (!trimmed) return DEFAULT_LOCALE_CACHE_KEY
   return trimmed.replace(/_/g, '-').toLowerCase()
+}
+
+function shouldAttemptDisplayTranslation(locale?: string): boolean {
+  const normalized = locale?.trim().toLowerCase()
+  if (!normalized) return false
+  return normalized !== 'en' && !normalized.startsWith('en-') && !normalized.startsWith('en_')
 }
 
 function getNormalizedWorkDirKey(workDir: string): string {
@@ -143,7 +152,14 @@ function readAgentMetadata(
   namespace?: string,
   workDir?: string,
   locale?: string
-): { displayName?: string; description?: string } {
+): {
+  displayNameBase?: string
+  displayNameLocalized?: string
+  descriptionBase?: string
+  descriptionLocalized?: string
+  hasLocalizedFrontmatterDisplayName?: boolean
+  hasLocalizedFrontmatterDescription?: boolean
+} {
   try {
     const content = readFileSync(filePath, 'utf-8')
     const metadata = parseResourceMetadata(content)
@@ -156,15 +172,17 @@ function readAgentMetadata(
     const resourceKey = namespace ? `${namespace}:${name}` : name
     const sidecar = resolveResourceDisplayOverride(sourceRoot, 'agent', resourceKey, locale)
     return {
-      displayName: sidecar.titleLocale
-        ?? frontmatterLocalizedDisplayName
-        ?? sidecar.titleDefault
-        ?? frontmatterBaseDisplayName,
-      description: sidecar.descriptionLocale
-        ?? frontmatterLocalizedDescription
+      displayNameBase: frontmatterBaseDisplayName
+        ?? sidecar.titleDefault,
+      displayNameLocalized: sidecar.titleLocale
+        ?? frontmatterLocalizedDisplayName,
+      descriptionBase: frontmatterBaseDescription
         ?? sidecar.descriptionDefault
-        ?? frontmatterBaseDescription
-        ?? metadata.description
+        ?? metadata.description,
+      descriptionLocalized: sidecar.descriptionLocale
+        ?? frontmatterLocalizedDescription,
+      hasLocalizedFrontmatterDisplayName: Boolean(frontmatterLocalizedDisplayName),
+      hasLocalizedFrontmatterDescription: Boolean(frontmatterLocalizedDescription)
     }
   } catch {
     // Ignore read errors
@@ -192,13 +210,36 @@ function scanAgentDir(
         if (!statSync(filePath).isFile()) continue
         const name = file.slice(0, -3)
         const metadata = readAgentMetadata(filePath, name, source, sourceRoot, namespace, workDir, locale)
+        const resourceKey = namespace ? `${namespace}:${name}` : name
+
+        if (sourceRoot && shouldAttemptDisplayTranslation(locale)) {
+          const displayNameBaseForTranslation = metadata.hasLocalizedFrontmatterDisplayName
+            ? undefined
+            : metadata.displayNameBase
+          const descriptionBaseForTranslation = metadata.hasLocalizedFrontmatterDescription
+            ? undefined
+            : metadata.descriptionBase
+          if (displayNameBaseForTranslation || descriptionBaseForTranslation) {
+            queueResourceDisplayTranslation({
+              rootPath: sourceRoot,
+              resourceType: 'agent',
+              resourceKey,
+              locale,
+              displayNameBase: displayNameBaseForTranslation,
+              descriptionBase: descriptionBaseForTranslation
+            })
+          }
+        }
+
         agents.push({
           name,
           path: filePath,
           source,
           enabled: true,
-          description: metadata.description,
-          ...(metadata.displayName && { displayName: metadata.displayName }),
+          ...(metadata.descriptionBase && { descriptionBase: metadata.descriptionBase }),
+          ...(metadata.descriptionLocalized && { descriptionLocalized: metadata.descriptionLocalized }),
+          ...(metadata.displayNameBase && { displayNameBase: metadata.displayNameBase }),
+          ...(metadata.displayNameLocalized && { displayNameLocalized: metadata.displayNameLocalized }),
           ...(pluginRoot && { pluginRoot }),
           ...(namespace && { namespace })
         })
@@ -456,15 +497,17 @@ export function createAgent(workDir: string, name: string, content: string): Age
   invalidateAgentsCache(workDir)
 
   const metadata = parseResourceMetadata(content)
-  const description = metadata.description
-  const displayName = getFrontmatterString(metadata.frontmatter, ['name', 'title'])
+  const descriptionBase =
+    getFrontmatterString(metadata.frontmatter, ['description'])
+    ?? metadata.description
+  const displayNameBase = getFrontmatterString(metadata.frontmatter, ['name', 'title'])
   return {
     name,
     path: agentPath,
     source: 'space',
     enabled: true,
-    description,
-    ...(displayName && { displayName })
+    ...(descriptionBase && { descriptionBase }),
+    ...(displayNameBase && { displayNameBase })
   }
 }
 
@@ -590,14 +633,17 @@ export function createAgentInLibrary(name: string, content: string): AgentDefini
   clearAgentsCache()
 
   const metadata = parseResourceMetadata(content)
-  const displayName = getFrontmatterString(metadata.frontmatter, ['name', 'title'])
+  const displayNameBase = getFrontmatterString(metadata.frontmatter, ['name', 'title'])
+  const descriptionBase =
+    getFrontmatterString(metadata.frontmatter, ['description'])
+    ?? metadata.description
   return {
     name,
     path: agentPath,
     source: 'app',
     enabled: true,
-    description: metadata.description,
-    ...(displayName && { displayName })
+    ...(descriptionBase && { descriptionBase }),
+    ...(displayNameBase && { displayNameBase })
   }
 }
 

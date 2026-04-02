@@ -15,8 +15,9 @@ vi.mock('../../../src/renderer/components/chat/MarkdownRenderer', () => ({
 vi.mock('../../../src/renderer/stores/skills.store', () => ({
   useSkillsStore: () => ({
     loadSkillContent: vi.fn(async () => null),
-    deleteSkill: vi.fn(async () => true),
-    copyToSpace: vi.fn(async () => ({ status: 'copied' }))
+    deleteSkillFromLibrary: vi.fn(async () => true),
+    toggleSkillEnabled: vi.fn(async () => true),
+    showSkillInFolder: vi.fn(async () => true)
   })
 }))
 
@@ -30,8 +31,9 @@ vi.mock('../../../src/renderer/stores/space.store', () => ({
 vi.mock('../../../src/renderer/stores/agents.store', () => ({
   useAgentsStore: () => ({
     loadAgentContent: vi.fn(async () => null),
-    deleteAgent: vi.fn(async () => true),
-    copyToSpace: vi.fn(async () => ({ status: 'copied' }))
+    deleteAgentFromLibrary: vi.fn(async () => true),
+    toggleAgentEnabled: vi.fn(async () => true),
+    showAgentInFolder: vi.fn(async () => true)
   })
 }))
 
@@ -44,12 +46,11 @@ describe('resource detail modal i18n title', () => {
       React.createElement(SkillDetailModal, {
         skill: {
           name: 'review',
-          displayName: '代码审查',
+          displayNameLocalized: '代码审查',
           namespace: 'ops',
           path: '/tmp/.claude/skills/review/SKILL.md',
           source: 'space',
         },
-        workDir: '/tmp',
         onClose: () => undefined
       })
     )
@@ -62,12 +63,11 @@ describe('resource detail modal i18n title', () => {
       React.createElement(AgentDetailModal, {
         agent: {
           name: 'planner',
-          displayName: '规划助手',
+          displayNameLocalized: '规划助手',
           namespace: 'ops',
           path: '/tmp/.claude/agents/planner.md',
           source: 'space',
         },
-        workDir: '/tmp',
         onClose: () => undefined
       })
     )

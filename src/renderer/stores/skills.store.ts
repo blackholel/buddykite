@@ -13,6 +13,7 @@ import { api } from '../api'
 import i18n from '../i18n'
 import { getCacheKey, getAllCacheKeys, GLOBAL_CACHE_KEY } from './cache-keys'
 import type { ResourceChangedPayload } from '../../shared/resource-access'
+import { normalizeLocale } from '../../shared/i18n/locale'
 
 // ============================================
 // Types
@@ -20,11 +21,13 @@ import type { ResourceChangedPayload } from '../../shared/resource-access'
 
 export interface SkillDefinition {
   name: string
-  displayName?: string
+  displayNameBase?: string
+  displayNameLocalized?: string
   path: string
   source: 'app' | 'global' | 'space' | 'installed'
   enabled?: boolean
-  description?: string
+  descriptionBase?: string
+  descriptionLocalized?: string
   triggers?: string[]
   category?: string
   pluginRoot?: string
@@ -41,6 +44,7 @@ interface SkillsState {
   // Data
   skills: SkillDefinition[]
   loadedWorkDir: string | null
+  loadedLocale: string | null
   selectedSkill: SkillDefinition | null
   skillContent: SkillContent | null
   skillsByWorkDir: Record<string | symbol, SkillDefinition[]>
@@ -91,6 +95,7 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
   // Initial state
   skills: [],
   loadedWorkDir: null,
+  loadedLocale: null,
   selectedSkill: null,
   skillContent: null,
   skillsByWorkDir: {},
@@ -104,13 +109,15 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
 
   // Load all skills from all sources
   loadSkills: async (workDir?: string) => {
-    const cacheKey = getCacheKey(workDir)
+    const locale = normalizeLocale(i18n.language)
+    const cacheKey = getCacheKey(workDir, locale)
     const { skillsByWorkDir, dirtyWorkDirs } = get()
     const cached = skillsByWorkDir[cacheKey]
     if (cached && !dirtyWorkDirs.has(cacheKey)) {
       set({
         skills: cached,
         loadedWorkDir: workDir ?? null,
+        loadedLocale: locale,
         error: null,
         isLoading: false
       })
@@ -120,7 +127,7 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
     try {
       set({ isLoading: true, error: null })
 
-      const response = await api.listSkills(workDir, i18n.language, 'extensions')
+      const response = await api.listSkills(workDir, locale, 'extensions')
 
       if (response.success && response.data) {
         const nextByWorkDir = {
@@ -132,6 +139,7 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
         set({
           skills: response.data as SkillDefinition[],
           loadedWorkDir: workDir ?? null,
+          loadedLocale: locale,
           skillsByWorkDir: nextByWorkDir,
           dirtyWorkDirs: nextDirty
         })
@@ -187,7 +195,8 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
 
       if (response.success && response.data) {
         const newSkill = response.data as SkillDefinition
-        const cacheKey = getCacheKey(workDir)
+        const locale = normalizeLocale(i18n.language)
+        const cacheKey = getCacheKey(workDir, locale)
 
         // Add to skills list
         set((state) => ({
@@ -197,6 +206,11 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
             [cacheKey]: [...(state.skillsByWorkDir[cacheKey] || []), newSkill]
           }
         }))
+
+        // Trigger background scan immediately so translation queue starts without waiting for watcher refresh.
+        void api.listSkills(workDir, locale, 'extensions').catch((error) => {
+          console.warn('[SkillsStore] Background skills scan after create failed:', error)
+        })
 
         return newSkill
       } else {
@@ -216,19 +230,28 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
 
       if (response.success && response.data) {
         const newSkill = response.data as SkillDefinition
+        const locale = normalizeLocale(i18n.language)
         set((state) => {
-          const cacheKey = getCacheKey(undefined)
+          const stateLocale = state.loadedLocale || locale
+          const cacheKey = getCacheKey(undefined, stateLocale)
           const current = state.skillsByWorkDir[cacheKey]
             ?? (state.loadedWorkDir === null ? state.skills : [])
           return {
             skills: [...current, newSkill],
             loadedWorkDir: null,
+            loadedLocale: stateLocale,
             skillsByWorkDir: {
               ...state.skillsByWorkDir,
               [cacheKey]: [...current, newSkill]
             }
           }
         })
+
+        // Trigger background scan immediately so translation queue starts without waiting for watcher refresh.
+        void api.listSkills(undefined, locale, 'extensions').catch((error) => {
+          console.warn('[SkillsStore] Background skills scan after library create failed:', error)
+        })
+
         return newSkill
       }
 
@@ -274,7 +297,10 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
       if (response.success) {
         // Remove from skills list
         set((state) => {
-          const cacheKey = getCacheKey(state.loadedWorkDir)
+          const cacheKey = getCacheKey(
+            state.loadedWorkDir,
+            state.loadedLocale || normalizeLocale(i18n.language)
+          )
           return {
             skills: state.skills.filter(s => s.path !== skillPath),
             skillsByWorkDir: {
@@ -436,7 +462,7 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
           return copyResult
         }
         const copiedSkill = copyResult.data
-        const cacheKey = getCacheKey(workDir)
+        const cacheKey = getCacheKey(workDir, normalizeLocale(i18n.language))
 
         // Update skills list - replace by exact path, avoid clobbering same-name resources
         set((state) => ({
@@ -474,7 +500,7 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
   },
 
   markDirty: (workDir) => {
-    const cacheKey = getCacheKey(workDir)
+    const cacheKey = getCacheKey(workDir, normalizeLocale(i18n.language))
     set((state) => {
       const nextDirty = new Set(state.dirtyWorkDirs)
       nextDirty.add(cacheKey)
@@ -502,8 +528,10 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
     const query = searchQuery.toLowerCase()
     return skills.filter(skill =>
       skill.name.toLowerCase().includes(query) ||
-      skill.displayName?.toLowerCase().includes(query) ||
-      skill.description?.toLowerCase().includes(query) ||
+      skill.displayNameLocalized?.toLowerCase().includes(query) ||
+      skill.displayNameBase?.toLowerCase().includes(query) ||
+      skill.descriptionLocalized?.toLowerCase().includes(query) ||
+      skill.descriptionBase?.toLowerCase().includes(query) ||
       skill.category?.toLowerCase().includes(query) ||
       skill.triggers?.some(t => t.toLowerCase().includes(query))
     )

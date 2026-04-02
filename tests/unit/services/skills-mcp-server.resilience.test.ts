@@ -46,7 +46,7 @@ describe('skills-mcp-server resilience', () => {
 
   it('skills_list 命中缓存后不重复查询底层服务', async () => {
     listSkillsMock.mockReturnValue([
-      { name: 'coding-standards', description: 'desc' }
+      { name: 'coding-standards', descriptionBase: 'desc' }
     ])
 
     const server = createSkillsMcpServer('/workspace/project') as {
@@ -66,7 +66,7 @@ describe('skills-mcp-server resilience', () => {
     vi.setSystemTime(new Date('2026-03-09T10:00:00.000Z'))
 
     listSkillsMock.mockReturnValue([
-      { name: 'tdd-workflow', description: 'desc' }
+      { name: 'tdd-workflow', descriptionBase: 'desc' }
     ])
 
     const server = createSkillsMcpServer('/workspace/project') as {

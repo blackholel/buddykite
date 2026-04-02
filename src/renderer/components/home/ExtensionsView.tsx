@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Bot, FolderOpen, Plus, Puzzle, Search, Zap } from 'lucide-react'
 import type { ResourceType } from '../resources/types'
 import { api } from '../../api'
-import { useTranslation } from '../../i18n'
+import { getCurrentLanguage, useTranslation } from '../../i18n'
 import { type AgentDefinition, useAgentsStore } from '../../stores/agents.store'
 import { useChatStore } from '../../stores/chat.store'
 import { type SkillDefinition, useSkillsStore } from '../../stores/skills.store'
@@ -41,9 +41,11 @@ function isEnabled(resource: SkillDefinition | AgentDefinition): boolean {
 
 export function ExtensionsView({ resourceType }: ExtensionsViewProps): JSX.Element {
   const { t } = useTranslation()
+  const locale = getCurrentLanguage()
   const [query, setQuery] = useState('')
   const [isRefreshing, setIsRefreshing] = useState(false)
   const hasRequestedGlobalResources = useRef(false)
+  const hasLocaleEffectInitialized = useRef(false)
   const currentSpace = useSpaceStore((state) => state.currentSpace)
   const currentSpaceId = currentSpace?.id
   const currentConversationId = useChatStore((state) => {
@@ -85,6 +87,17 @@ export function ExtensionsView({ resourceType }: ExtensionsViewProps): JSX.Eleme
     if (!agentsLoading) loadAgents()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  useEffect(() => {
+    if (!hasLocaleEffectInitialized.current) {
+      hasLocaleEffectInitialized.current = true
+      return
+    }
+    void Promise.all([
+      loadSkills(),
+      loadAgents()
+    ])
+  }, [locale, loadAgents, loadSkills])
 
   const normalizedItems = useMemo(() => normalizeExtensionItems({
     skills: skills as SkillDefinition[],
@@ -215,8 +228,8 @@ export function ExtensionsView({ resourceType }: ExtensionsViewProps): JSX.Eleme
 
   const importPathToLibrary = useCallback(async (sourcePath: string): Promise<string | null> => {
     const primaryResponse = resourceType === 'skill'
-      ? await api.importSkillToLibrary(sourcePath)
-      : await api.importAgentToLibrary(sourcePath)
+      ? await api.importSkillToLibrary(sourcePath, undefined, locale)
+      : await api.importAgentToLibrary(sourcePath, undefined, locale)
 
     if (!primaryResponse.success) {
       setLibraryActionError(primaryResponse.error || t('Import failed'))
@@ -228,8 +241,8 @@ export function ExtensionsView({ resourceType }: ExtensionsViewProps): JSX.Eleme
       const shouldOverwrite = window.confirm(t('Resource already exists. Replace it?'))
       if (!shouldOverwrite) return null
       const overwriteResponse = resourceType === 'skill'
-        ? await api.importSkillToLibrary(sourcePath, { overwrite: true })
-        : await api.importAgentToLibrary(sourcePath, { overwrite: true })
+        ? await api.importSkillToLibrary(sourcePath, { overwrite: true }, locale)
+        : await api.importAgentToLibrary(sourcePath, { overwrite: true }, locale)
       if (!overwriteResponse.success) {
         setLibraryActionError(overwriteResponse.error || t('Import failed'))
         return null
@@ -248,7 +261,7 @@ export function ExtensionsView({ resourceType }: ExtensionsViewProps): JSX.Eleme
     }
 
     return data.path || null
-  }, [resourceType, t])
+  }, [locale, resourceType, t])
 
   const extractDroppedPaths = useCallback((event: React.DragEvent<HTMLDivElement>): string[] => {
     const paths = new Set<string>()

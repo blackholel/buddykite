@@ -7,7 +7,7 @@ import { useState, useEffect } from 'react'
 import { X, Edit2, FolderOpen, Trash2, Zap } from 'lucide-react'
 import { useTranslation } from '../../i18n'
 import { useSkillsStore, type SkillDefinition, type SkillContent } from '../../stores/skills.store'
-import { getResourceDisplayName } from '../../utils/resource-display-name'
+import { getResourceDisplayName, getResourceUiDescription } from '../../utils/resource-display-name'
 import { MarkdownRenderer } from '../chat/MarkdownRenderer'
 
 interface SkillDetailModalProps {
@@ -139,8 +139,8 @@ export function SkillDetailModal({ skill, onClose, onEdit }: SkillDetailModalPro
                   {SOURCE_LABELS[skill.source]}
                 </span>
               </div>
-              {skill.description && (
-                <p className="text-sm text-muted-foreground mt-0.5">{skill.description}</p>
+              {getResourceUiDescription(skill) && (
+                <p className="text-sm text-muted-foreground mt-0.5">{getResourceUiDescription(skill)}</p>
               )}
             </div>
           </div>
