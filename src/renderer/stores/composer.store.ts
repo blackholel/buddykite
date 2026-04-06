@@ -6,6 +6,7 @@
  */
 
 import { create } from 'zustand'
+import type { SelectedComposerResourceChip } from '../utils/composer-resource-chip'
 
 export interface InsertRequest {
   id: string
@@ -15,15 +16,20 @@ export interface InsertRequest {
 
 interface ComposerState {
   insertQueue: InsertRequest[]
+  bootstrapChipsByConversation: Map<string, SelectedComposerResourceChip[]>
   requestInsert: (text: string, source?: InsertRequest['source']) => void
   dequeueInsert: (id: string) => void
   clearInserts: () => void
+  queueBootstrapChip: (conversationId: string, chip: SelectedComposerResourceChip) => void
+  consumeBootstrapChips: (conversationId: string) => SelectedComposerResourceChip[]
+  clearBootstrapChips: () => void
 }
 
 const createInsertId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
 
-export const useComposerStore = create<ComposerState>((set) => ({
+export const useComposerStore = create<ComposerState>((set, get) => ({
   insertQueue: [],
+  bootstrapChipsByConversation: new Map<string, SelectedComposerResourceChip[]>(),
 
   requestInsert: (text, source) =>
     set((state) => ({
@@ -35,5 +41,29 @@ export const useComposerStore = create<ComposerState>((set) => ({
       insertQueue: state.insertQueue.filter((item) => item.id !== id)
     })),
 
-  clearInserts: () => set({ insertQueue: [] })
+  clearInserts: () => set({ insertQueue: [] }),
+
+  queueBootstrapChip: (conversationId, chip) =>
+    set((state) => {
+      const next = new Map(state.bootstrapChipsByConversation)
+      const current = next.get(conversationId) || []
+      next.set(conversationId, [...current, chip])
+      return { bootstrapChipsByConversation: next }
+    }),
+
+  consumeBootstrapChips: (conversationId) => {
+    const current = get().bootstrapChipsByConversation.get(conversationId) || []
+    if (current.length === 0) {
+      return []
+    }
+
+    set((state) => {
+      const next = new Map(state.bootstrapChipsByConversation)
+      next.delete(conversationId)
+      return { bootstrapChipsByConversation: next }
+    })
+    return current
+  },
+
+  clearBootstrapChips: () => set({ bootstrapChipsByConversation: new Map() })
 }))

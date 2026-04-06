@@ -576,7 +576,10 @@ export function UnifiedPage() {
               <div className="h-full" style={topBarContentStyle} />
             </div>
             <div className="flex-1 min-h-0 overflow-hidden">
-              <ExtensionsView resourceType={rightPanelMode === 'skills' ? 'skill' : 'agent'} />
+              <ExtensionsView
+                resourceType={rightPanelMode === 'skills' ? 'skill' : 'agent'}
+                onSkillConversationOpened={() => setRightPanelMode('artifacts')}
+              />
             </div>
           </div>
         ) : (

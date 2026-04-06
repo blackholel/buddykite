@@ -135,4 +135,22 @@ describe('ExtensionsView library mode', () => {
     expect(reviewerPos).toBeGreaterThan(-1)
     expect(helperPos).toBeLessThan(reviewerPos)
   })
+
+  it('技能模式存在 space 级技能时仅展示当前项目技能', () => {
+    skills.push({
+      name: 'browse',
+      path: '/tmp/space-1/.claude/skills/browse',
+      source: 'space',
+      enabled: true,
+    })
+
+    const html = renderToStaticMarkup(<ExtensionsView resourceType="skill" />)
+
+    expect(html).toContain('skill:browse:enabled')
+    expect(html).not.toContain('skill:alpha:enabled')
+    expect(html).not.toContain('skill:beta:enabled')
+    expect(html).not.toContain('skill:zeta:disabled')
+
+    skills.pop()
+  })
 })

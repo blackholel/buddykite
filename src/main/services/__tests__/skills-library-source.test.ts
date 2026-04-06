@@ -77,4 +77,14 @@ describe('skills library source', () => {
     const resources = listSkills(undefined, 'extensions')
     expect(resources.find((item) => item.name === 'review')?.enabled).toBe(false)
   })
+
+  it('loads skills under non-English locale without dropping entries', () => {
+    const configRoot = setupUserRoot()
+    const skillDir = join(getKiteSkillsDir(configRoot), 'review')
+    mkdirSync(skillDir, { recursive: true })
+    writeFileSync(join(skillDir, 'SKILL.md'), '# review\n', 'utf-8')
+
+    const resources = listSkills(undefined, 'extensions', 'zh-CN')
+    expect(resources.find((item) => item.name === 'review')).toBeTruthy()
+  })
 })

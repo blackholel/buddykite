@@ -22,6 +22,7 @@
 import { create } from 'zustand'
 import { api } from '../api'
 import { useAppStore } from './app.store'
+import { useComposerStore } from './composer.store'
 import { useTaskStore } from './task.store'
 import { normalizeChatMode } from '../types'
 import type {
@@ -189,6 +190,13 @@ const GUIDE_FALLBACK_TO_NEW_RUN_ERROR_CODES = new Set<string>([
   'ASK_USER_QUESTION_NO_ACTIVE_SESSION',
   'ASK_USER_QUESTION_RUN_MISMATCH'
 ])
+
+const SKILL_CREATOR_BOOTSTRAP_CHIP = {
+  id: 'skill:skill-creator',
+  type: 'skill' as const,
+  displayName: 'skill-creator',
+  token: '/skill-creator'
+}
 
 const SPACE_ROUTING_ERROR_CODES = {
   SPACE_CONVERSATION_MISMATCH: 'SPACE_CONVERSATION_MISMATCH',
@@ -615,6 +623,7 @@ interface ChatState {
   // Conversation actions
   loadConversations: (spaceId: string) => Promise<void>
   createConversation: (spaceId: string, title?: string) => Promise<Conversation | null>
+  openSkillCreatorConversation: (spaceId?: string | null, workDir?: string | null, spaceLabel?: string) => Promise<boolean>
   ensureConversationLoaded: (
     spaceId: string,
     conversationId: string,
@@ -1499,6 +1508,35 @@ export const useChatStore = create<ChatState>((set, get) => ({
     } catch (error) {
       console.error('Failed to create conversation:', error)
       return null
+    }
+  },
+
+  openSkillCreatorConversation: async (spaceId, workDir, spaceLabel) => {
+    if (!spaceId || !workDir) {
+      return false
+    }
+
+    try {
+      set({ currentSpaceId: spaceId })
+      const createdConversation = await get().createConversation(spaceId)
+      if (!createdConversation) {
+        return false
+      }
+
+      void get().selectConversation(createdConversation.id)
+      await canvasLifecycle.openChat(
+        spaceId,
+        createdConversation.id,
+        createdConversation.title,
+        workDir,
+        spaceLabel,
+        false
+      )
+      useComposerStore.getState().queueBootstrapChip(createdConversation.id, SKILL_CREATOR_BOOTSTRAP_CHIP)
+      return true
+    } catch (error) {
+      console.error('[ChatStore] Failed to open skill creator conversation:', error)
+      return false
     }
   },
 

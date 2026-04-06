@@ -257,6 +257,7 @@ export function InputArea({
   const lastExpandContextRef = useRef<{ stateKey: string | null; query: string } | null>(null)
   const insertQueue = useComposerStore(state => state.insertQueue)
   const dequeueInsert = useComposerStore(state => state.dequeueInsert)
+  const consumeBootstrapChips = useComposerStore(state => state.consumeBootstrapChips)
 
   const { currentSpace, spaces, haloSpace } = useSpaceStore(
     useShallow((state) => ({
@@ -991,6 +992,21 @@ export function InputArea({
     dequeueInsert(next.id)
   }, [insertQueue, dequeueInsert, insertText])
 
+  useEffect(() => {
+    const conversationId = conversation?.id
+    if (!conversationId) return
+
+    const bootstrapChips = consumeBootstrapChips(conversationId)
+    if (bootstrapChips.length === 0) return
+
+    setSelectedResourceChips((prev) => {
+      const existingIds = new Set(prev.map((chip) => chip.id))
+      const nextChips = bootstrapChips.filter((chip) => !existingIds.has(chip.id))
+      if (nextChips.length === 0) return prev
+      return [...prev, ...nextChips]
+    })
+  }, [consumeBootstrapChips, conversation?.id])
+
   const removeResourceChip = useCallback((chipId: string) => {
     setSelectedResourceChips(prev => prev.filter((chip) => chip.id !== chipId))
     textareaRef.current?.focus()
@@ -1062,6 +1078,11 @@ export function InputArea({
     }, 2500)
     return () => window.clearTimeout(timer)
   }, [queueHint])
+
+  const hasSkillCreatorChip = selectedResourceChips.some((chip) => chip.token === '/skill-creator')
+  const resolvedPlaceholder = hasSkillCreatorChip
+    ? t('Describe the skill you want to create, Kite will help you create it')
+    : (placeholder || t('Describe what you want to get done, Kite will start immediately'))
 
   return (
     <div className={`
@@ -1321,7 +1342,7 @@ export function InputArea({
                 setIsComposing(false)
                 requestAnimationFrame(syncTriggerWithCursor)
               }}
-              placeholder={placeholder || t('Describe what you want to get done, Kite will start immediately')}
+              placeholder={resolvedPlaceholder}
               readOnly={isOnboardingSendStep}
               rows={1}
               className={`space-studio-input-field w-full bg-transparent resize-none

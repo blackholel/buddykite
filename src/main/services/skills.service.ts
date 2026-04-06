@@ -583,10 +583,10 @@ function scanSkillDir(
           ?? localizedFrontmatterDisplayName
 
         if (sourceRoot && shouldAttemptDisplayTranslation(locale)) {
-          const displayNameBaseForTranslation = frontmatterLocalizedDisplayName
+          const displayNameBaseForTranslation = localizedFrontmatterDisplayName
             ? undefined
             : displayNameBase
-          const descriptionBaseForTranslation = frontmatterLocalizedDescription
+          const descriptionBaseForTranslation = localizedFrontmatterDescription
             ? undefined
             : descriptionBase
           if (displayNameBaseForTranslation || descriptionBaseForTranslation) {

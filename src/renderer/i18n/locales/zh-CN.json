@@ -276,6 +276,7 @@
   "Delete conversation": "删除对话",
   "Delete space": "删除空间",
   "Describe what you want in plain language; Kite will understand and act.": "用简单的语言描述您的需求,Kite 会理解并执行。",
+  "Describe the skill you want to create, Kite will help you create it": "输入你想创建的技能内容，Kite 会帮你创建一个技能",
   "Describe what you want to get done, Kite will start immediately": "描述你要完成的事，Kite 会立刻开始",
   "Describe your goal and Kite will produce files, drafts, code, and task steps.": "描述目标，Kite 会直接产出文件、草稿、代码和执行步骤。",
   "Describe your needs and Kite will generate complete code across languages and frameworks.": "描述您的需求,Kite 将生成跨语言和框架的完整代码。",
