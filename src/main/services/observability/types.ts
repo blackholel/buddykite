@@ -39,6 +39,12 @@ export interface ObservabilityRunSummary {
   mode: ChatMode
   provider: string
   model: string
+  providerId?: string
+  authMethod?: string
+  accountId?: string
+  tokenSource?: string
+  refreshState?: string
+  killSwitch?: boolean
   sampled: boolean
   enabled: boolean
   status: 'running' | 'completed' | 'stopped' | 'error' | 'no_text' | 'dropped'

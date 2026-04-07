@@ -111,6 +111,29 @@ describe('getAiSetupState', () => {
     expect(state).toEqual({ configured: true, reason: null })
   })
 
+  it('openai-codex endpoint (chatgpt backend /responses) 也应视为有效 openai_compat endpoint', () => {
+    const state = getAiSetupState({
+      ai: {
+        profiles: [
+          {
+            id: 'p-codex',
+            name: 'OpenAI Codex',
+            vendor: 'openai',
+            protocol: 'openai_compat',
+            apiUrl: 'https://chatgpt.com/backend-api/codex/responses',
+            apiKey: 'oauth-token',
+            defaultModel: 'gpt-5-codex',
+            modelCatalog: ['gpt-5-codex'],
+            enabled: true
+          }
+        ],
+        defaultProfileId: 'p-codex'
+      }
+    })
+
+    expect(state).toEqual({ configured: true, reason: null })
+  })
+
   it('uses explicit profileId when provided, even if default profile is invalid', () => {
     const state = getAiSetupState(
       {
@@ -200,5 +223,53 @@ describe('getAiSetupState', () => {
     })
 
     expect(ai.profiles[0].presetKey).toBe('custom')
+  })
+
+  it('ensureAiConfig 应保留 openai-codex 相关配置字段', () => {
+    const ai = ensureAiConfig({
+      profiles: [
+        {
+          id: 'p-codex',
+          name: 'OpenAI Codex',
+          vendor: 'openai',
+          protocol: 'openai_compat',
+          apiUrl: 'https://chatgpt.com/backend-api/codex/responses',
+          apiKey: 'oauth-token',
+          defaultModel: 'gpt-5-codex',
+          modelCatalog: ['gpt-5-codex'],
+          openAICodexAuthMode: 'oauth_browser',
+          openAICodexTenantId: 'tenant-001',
+          openAICodexAccountId: 'acct-001',
+          enabled: true
+        }
+      ],
+      defaultProfileId: 'p-codex'
+    })
+
+    expect(ai.profiles[0].openAICodexAuthMode).toBe('oauth_browser')
+    expect(ai.profiles[0].openAICodexTenantId).toBe('tenant-001')
+    expect(ai.profiles[0].openAICodexAccountId).toBe('acct-001')
+  })
+
+  it('legacy codex profile 缺少 authMode 时应自动迁移为 oauth_browser + default tenant', () => {
+    const ai = ensureAiConfig({
+      profiles: [
+        {
+          id: 'p-codex-legacy',
+          name: 'OpenAI Codex Legacy',
+          vendor: 'openai',
+          protocol: 'openai_compat',
+          apiUrl: 'https://chatgpt.com/backend-api/codex/responses',
+          apiKey: 'sk-user-legacy-token',
+          defaultModel: 'gpt-5-codex',
+          modelCatalog: ['gpt-5-codex'],
+          enabled: true
+        }
+      ],
+      defaultProfileId: 'p-codex-legacy'
+    })
+
+    expect(ai.profiles[0].openAICodexAuthMode).toBe('oauth_browser')
+    expect(ai.profiles[0].openAICodexTenantId).toBe('default')
   })
 })

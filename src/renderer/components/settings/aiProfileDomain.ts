@@ -242,6 +242,16 @@ export function normalizeModelCatalogForDefaultModelChange(
 
 export function normalizeProfileForSave(profile: ApiProfile): ApiProfile {
   const defaultModel = profile.defaultModel.trim() || DEFAULT_MODEL
+  const openAICodexAuthMode = (
+    profile.openAICodexAuthMode === 'api_key' ||
+    profile.openAICodexAuthMode === 'oauth_browser' ||
+    profile.openAICodexAuthMode === 'oauth_device'
+  )
+    ? profile.openAICodexAuthMode
+    : undefined
+  const openAICodexTenantId = profile.openAICodexTenantId?.trim() || undefined
+  const openAICodexAccountId = profile.openAICodexAccountId?.trim() || undefined
+
   return {
     ...profile,
     name: profile.name.trim() || 'Profile',
@@ -250,7 +260,10 @@ export function normalizeProfileForSave(profile: ApiProfile): ApiProfile {
     apiUrl: profile.apiUrl.trim(),
     defaultModel,
     modelCatalog: normalizeModelCatalog(defaultModel, profile.modelCatalog),
-    docUrl: profile.docUrl?.trim() || undefined
+    docUrl: profile.docUrl?.trim() || undefined,
+    openAICodexAuthMode,
+    openAICodexTenantId,
+    openAICodexAccountId
   }
 }
 

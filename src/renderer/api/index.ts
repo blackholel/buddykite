@@ -115,6 +115,60 @@ export const api = {
     return httpRequest('POST', '/api/config/validate', { apiKey, apiUrl, provider, protocol, model })
   },
 
+  startOpenAICodexBrowserAuth: async (input: {
+    tenantId: string
+    redirectUri?: string
+    scope?: string
+    accountId?: string
+  }): Promise<ApiResponse> => {
+    if (isElectron()) {
+      return window.kite.startOpenAICodexBrowserAuth(input)
+    }
+    return { success: false, error: 'Only available in desktop app' }
+  },
+
+  finishOpenAICodexBrowserAuth: async (input: {
+    state: string
+    code: string
+  }): Promise<ApiResponse> => {
+    if (isElectron()) {
+      return window.kite.finishOpenAICodexBrowserAuth(input)
+    }
+    return { success: false, error: 'Only available in desktop app' }
+  },
+
+  startOpenAICodexDeviceAuth: async (input: {
+    tenantId: string
+    scope?: string
+    accountId?: string
+  }): Promise<ApiResponse> => {
+    if (isElectron()) {
+      return window.kite.startOpenAICodexDeviceAuth(input)
+    }
+    return { success: false, error: 'Only available in desktop app' }
+  },
+
+  pollOpenAICodexDeviceAuth: async (input: {
+    deviceCode: string
+  }): Promise<ApiResponse> => {
+    if (isElectron()) {
+      return window.kite.pollOpenAICodexDeviceAuth(input)
+    }
+    return { success: false, error: 'Only available in desktop app' }
+  },
+
+  validateOpenAICodexSession: async (input: {
+    tenantId: string
+    accountId?: string
+    fallbackAccessToken?: string
+    authMode?: 'api_key' | 'oauth_browser' | 'oauth_device'
+  }): Promise<ApiResponse> => {
+    if (isElectron()) {
+      return window.kite.validateOpenAICodexSession(input)
+    }
+    return { success: false, error: 'Only available in desktop app' }
+  },
+
   // ===== Space =====
   getKiteSpace: async (): Promise<ApiResponse> => {
     if (isElectron()) {

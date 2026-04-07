@@ -2,7 +2,7 @@
  * Settings Page - App configuration
  */
 
-import { useState, useEffect } from 'react'
+import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import { useAppStore } from '../stores/app.store'
 import { api } from '../api'
 import type {
@@ -98,6 +98,8 @@ type SettingsSectionId =
 
 type SettingsSectionGroup = 'required' | 'optional' | 'advanced'
 type ModelSetupStep = 'provider' | 'account' | 'model'
+type OpenAICodexAuthMode = 'api_key' | 'oauth_browser' | 'oauth_device'
+type OpenAICodexDeviceAuthState = 'idle' | 'pending' | 'authorized' | 'expired' | 'error'
 
 interface SettingsSectionDef {
   id: SettingsSectionId
@@ -171,6 +173,74 @@ const DEFAULT_EXPANDED_MODEL_STEPS: Record<ModelSetupStep, boolean> = {
   model: false
 }
 
+const OPENAI_CODEX_RESPONSES_ENDPOINT = 'https://chatgpt.com/backend-api/codex/responses'
+const OPENAI_CODEX_DEFAULT_TENANT_ID = 'default'
+
+interface OpenAICodexBrowserSessionState {
+  authUrl: string
+  state: string
+  redirectUri: string
+}
+
+interface OpenAICodexDeviceSessionState {
+  deviceCode: string
+  userCode: string
+  verificationUri: string
+  intervalSec: number
+  expiresAt: number
+}
+
+function asObjectRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object') {
+    return null
+  }
+  return value as Record<string, unknown>
+}
+
+function asStringValue(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function isOpenAICodexBackendUrl(apiUrl: string): boolean {
+  return apiUrl.trim().toLowerCase().includes('chatgpt.com/backend-api')
+}
+
+function parseOpenAICodexCallbackInput(
+  rawValue: string,
+  fallbackState?: string
+): { code: string; state: string } | null {
+  const value = rawValue.trim()
+  if (!value) return null
+
+  try {
+    const parsedUrl = new URL(value)
+    const code = parsedUrl.searchParams.get('code')?.trim() || ''
+    const state = parsedUrl.searchParams.get('state')?.trim() || fallbackState?.trim() || ''
+    if (code && state) {
+      return { code, state }
+    }
+  } catch {
+    // Continue parsing as query string or raw code.
+  }
+
+  const queryString = value.startsWith('?') ? value.slice(1) : value
+  const queryParams = new URLSearchParams(queryString)
+  const queryCode = queryParams.get('code')?.trim() || ''
+  const queryState = queryParams.get('state')?.trim() || fallbackState?.trim() || ''
+  if (queryCode && queryState) {
+    return { code: queryCode, state: queryState }
+  }
+
+  if (!value.includes('=')) {
+    const fallback = fallbackState?.trim() || ''
+    if (fallback) {
+      return { code: value, state: fallback }
+    }
+  }
+
+  return null
+}
+
 // Apple-style toggle component (extracted to top-level to avoid re-creation on every render)
 function AppleToggle({ checked, onChange, disabled = false }: { checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
   return (
@@ -216,6 +286,230 @@ interface UpdaterState {
   baiduExtractCode?: string | null
 }
 
+interface OpenAICodexAuthPanelProps {
+  t: (key: string, options?: Record<string, unknown>) => string
+  isOpenAIProfile: boolean
+  openAICodexAuthMode: OpenAICodexAuthMode
+  isOpenAICodexAuthRunning: boolean
+  openAICodexTenantId: string
+  openAICodexAccountId: string
+  openAICodexBrowserSession: OpenAICodexBrowserSessionState | null
+  openAICodexBrowserCallbackInput: string
+  openAICodexDeviceSession: OpenAICodexDeviceSessionState | null
+  openAICodexDeviceState: OpenAICodexDeviceAuthState
+  openAICodexStatusMessage: string | null
+  onAuthModeChange: (mode: OpenAICodexAuthMode) => void
+  onTenantIdChange: (value: string) => void
+  onAccountIdChange: (value: string) => void
+  onStartBrowserAuth: () => void
+  onFinishBrowserAuth: () => void
+  onStartDeviceAuth: () => void
+  onPollDeviceAuth: () => void
+  onBrowserCallbackInputChange: (value: string) => void
+  onCopyToClipboard: (value: string) => void
+  onOpenExternal: (url: string) => void
+}
+
+const OpenAICodexAuthPanel = memo(function OpenAICodexAuthPanel({
+  t,
+  isOpenAIProfile,
+  openAICodexAuthMode,
+  isOpenAICodexAuthRunning,
+  openAICodexTenantId,
+  openAICodexAccountId,
+  openAICodexBrowserSession,
+  openAICodexBrowserCallbackInput,
+  openAICodexDeviceSession,
+  openAICodexDeviceState,
+  openAICodexStatusMessage,
+  onAuthModeChange,
+  onTenantIdChange,
+  onAccountIdChange,
+  onStartBrowserAuth,
+  onFinishBrowserAuth,
+  onStartDeviceAuth,
+  onPollDeviceAuth,
+  onBrowserCallbackInputChange,
+  onCopyToClipboard,
+  onOpenExternal
+}: OpenAICodexAuthPanelProps) {
+  if (!isOpenAIProfile) return null
+
+  return (
+    <div className="space-y-3 rounded-xl border border-border/75 bg-secondary/20 p-3">
+      <div>
+        <label className="mb-1 block text-xs font-medium text-muted-foreground">{t('Connection method')}</label>
+        <p className="text-xs text-muted-foreground">
+          {t('Use API Key, or authorize your ChatGPT account for openai-codex.')}
+        </p>
+      </div>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+        <button
+          type="button"
+          onClick={() => onAuthModeChange('api_key')}
+          className={`settings-choice-btn ${openAICodexAuthMode === 'api_key' ? 'settings-choice-btn-active' : ''}`}
+        >
+          {t('API Key')}
+        </button>
+        <button
+          type="button"
+          onClick={() => onAuthModeChange('oauth_browser')}
+          className={`settings-choice-btn ${openAICodexAuthMode === 'oauth_browser' ? 'settings-choice-btn-active' : ''}`}
+        >
+          {t('ChatGPT (browser)')}
+        </button>
+        <button
+          type="button"
+          onClick={() => onAuthModeChange('oauth_device')}
+          className={`settings-choice-btn ${openAICodexAuthMode === 'oauth_device' ? 'settings-choice-btn-active' : ''}`}
+        >
+          {t('ChatGPT (device code)')}
+        </button>
+      </div>
+
+      {openAICodexAuthMode !== 'api_key' && (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-muted-foreground">{t('Tenant ID')}</label>
+            <input
+              type="text"
+              value={openAICodexTenantId}
+              onChange={(event) => onTenantIdChange(event.target.value)}
+              className="w-full input-apple px-4 py-2.5 text-sm"
+              placeholder={OPENAI_CODEX_DEFAULT_TENANT_ID}
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-muted-foreground">{t('ChatGPT Account ID (optional)')}</label>
+            <input
+              type="text"
+              value={openAICodexAccountId}
+              onChange={(event) => onAccountIdChange(event.target.value)}
+              className="w-full input-apple px-4 py-2.5 text-sm"
+              placeholder={t('account id')}
+            />
+          </div>
+        </div>
+      )}
+
+      {openAICodexAuthMode === 'oauth_browser' && (
+        <div className="space-y-3 rounded-lg border border-border/70 bg-background/70 p-3">
+          <button
+            type="button"
+            onClick={onStartBrowserAuth}
+            className="settings-action-button settings-action-button-secondary"
+            disabled={isOpenAICodexAuthRunning}
+          >
+            <span>{isOpenAICodexAuthRunning ? t('Starting...') : t('Open browser authorization')}</span>
+          </button>
+          {openAICodexBrowserSession && (
+            <>
+              <div>
+                <p className="text-xs text-muted-foreground">
+                  {t('Authorization link is ready. If browser did not open, use the actions below.')}
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => onCopyToClipboard(openAICodexBrowserSession.authUrl)}
+                    className="settings-action-button settings-action-button-secondary"
+                  >
+                    <span>{t('Copy authorization URL')}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onOpenExternal(openAICodexBrowserSession.authUrl)}
+                    className="settings-action-button settings-action-button-secondary"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    <span>{t('Open again')}</span>
+                  </button>
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {t('If your default browser shows TLS errors, copy this URL and open it manually in another browser.')}
+                </p>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-muted-foreground">{t('Callback URL or code')}</label>
+                <input
+                  type="text"
+                  value={openAICodexBrowserCallbackInput}
+                  onChange={(event) => onBrowserCallbackInputChange(event.target.value)}
+                  className="w-full input-apple px-4 py-2.5 text-sm"
+                  placeholder={t('Paste callback URL, query string, or code')}
+                />
+              </div>
+              <button
+                type="button"
+                onClick={onFinishBrowserAuth}
+                className="settings-action-button settings-action-button-primary"
+                disabled={isOpenAICodexAuthRunning}
+              >
+                <span>{isOpenAICodexAuthRunning ? t('Completing...') : t('Complete browser authorization')}</span>
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      {openAICodexAuthMode === 'oauth_device' && (
+        <div className="space-y-3 rounded-lg border border-border/70 bg-background/70 p-3">
+          <button
+            type="button"
+            onClick={onStartDeviceAuth}
+            className="settings-action-button settings-action-button-secondary"
+            disabled={isOpenAICodexAuthRunning}
+          >
+            <span>{isOpenAICodexAuthRunning ? t('Starting...') : t('Start device authorization')}</span>
+          </button>
+          {openAICodexDeviceSession && (
+            <>
+              <div className="rounded-md bg-secondary/50 px-3 py-2">
+                <p className="text-xs text-muted-foreground">{t('Verification code')}</p>
+                <p className="mt-1 text-base font-semibold tracking-[0.18em] text-foreground">
+                  {openAICodexDeviceSession.userCode}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => onOpenExternal(openAICodexDeviceSession.verificationUri)}
+                  className="settings-action-button settings-action-button-secondary"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  <span>{t('Open verification page')}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={onPollDeviceAuth}
+                  className="settings-action-button settings-action-button-primary"
+                  disabled={isOpenAICodexAuthRunning || openAICodexDeviceState === 'expired' || openAICodexDeviceState === 'authorized'}
+                >
+                  <span>{isOpenAICodexAuthRunning ? t('Checking...') : t('Check authorization')}</span>
+                </button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {openAICodexDeviceState === 'authorized'
+                  ? t('Device authorization completed.')
+                  : openAICodexDeviceState === 'expired'
+                    ? t('Device authorization expired, please start again.')
+                    : `If pending, wait about ${openAICodexDeviceSession.intervalSec} seconds before checking again.`}
+              </p>
+            </>
+          )}
+        </div>
+      )}
+
+      {openAICodexStatusMessage && (
+        <div className="rounded-lg border border-border/70 bg-background/80 px-3 py-2 text-xs text-foreground">
+          {openAICodexStatusMessage}
+        </div>
+      )}
+
+    </div>
+  )
+})
+
 export function SettingsPage() {
   const { t } = useTranslation()
   const { config, setConfig, goBack, setStarterExperienceHiddenForSession } = useAppStore()
@@ -258,10 +552,39 @@ export function SettingsPage() {
   const [updaterState, setUpdaterState] = useState<UpdaterState | null>(null)
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false)
 
-  const selectedProfile = profiles.find(profile => profile.id === selectedProfileId) || null
-  const selectedCatalog = selectedProfile
-    ? normalizeModelCatalog(selectedProfile.defaultModel, selectedProfile.modelCatalog)
-    : []
+  // OpenAI Codex OAuth state
+  const [openAICodexAuthMode, setOpenAICodexAuthMode] = useState<OpenAICodexAuthMode>('api_key')
+  const [openAICodexTenantId, setOpenAICodexTenantId] = useState(OPENAI_CODEX_DEFAULT_TENANT_ID)
+  const [openAICodexAccountId, setOpenAICodexAccountId] = useState('')
+  const [openAICodexBrowserSession, setOpenAICodexBrowserSession] = useState<OpenAICodexBrowserSessionState | null>(null)
+  const [openAICodexBrowserCallbackInput, setOpenAICodexBrowserCallbackInput] = useState('')
+  const [openAICodexDeviceSession, setOpenAICodexDeviceSession] = useState<OpenAICodexDeviceSessionState | null>(null)
+  const [openAICodexDeviceState, setOpenAICodexDeviceState] = useState<OpenAICodexDeviceAuthState>('idle')
+  const [openAICodexStatusMessage, setOpenAICodexStatusMessage] = useState<string | null>(null)
+  const [isOpenAICodexAuthRunning, setIsOpenAICodexAuthRunning] = useState(false)
+
+  const selectedProfile = useMemo(
+    () => profiles.find(profile => profile.id === selectedProfileId) || null,
+    [profiles, selectedProfileId]
+  )
+  const selectedCatalog = useMemo(
+    () => (selectedProfile
+      ? normalizeModelCatalog(selectedProfile.defaultModel, selectedProfile.modelCatalog)
+      : []),
+    [selectedProfile]
+  )
+  const isOpenAIProfile = useMemo(
+    () => Boolean(
+      selectedProfile &&
+      selectedProfile.vendor === 'openai' &&
+      selectedProfile.protocol === 'openai_compat'
+    ),
+    [selectedProfile]
+  )
+  const isOpenAICodexMode = useMemo(
+    () => isOpenAIProfile && openAICodexAuthMode !== 'api_key',
+    [isOpenAIProfile, openAICodexAuthMode]
+  )
   const selectedProfileUrlError = (() => {
     if (!selectedProfile) return null
     const apiUrl = selectedProfile.apiUrl.trim()
@@ -309,6 +632,24 @@ export function SettingsPage() {
     setShowAdvancedConnectionFields(false)
     setShowAdvancedModelFields(false)
     setExpandedModelSteps(DEFAULT_EXPANDED_MODEL_STEPS)
+    setOpenAICodexBrowserSession(null)
+    setOpenAICodexBrowserCallbackInput('')
+    setOpenAICodexDeviceSession(null)
+    setOpenAICodexDeviceState('idle')
+    setOpenAICodexStatusMessage(null)
+    setIsOpenAICodexAuthRunning(false)
+    const profileMode = selectedProfile?.openAICodexAuthMode
+    const fallbackMode = (
+      selectedProfile?.vendor === 'openai' &&
+      selectedProfile.protocol === 'openai_compat' &&
+      isOpenAICodexBackendUrl(selectedProfile.apiUrl)
+    )
+      ? 'oauth_browser'
+      : 'api_key'
+    const nextMode = profileMode || fallbackMode
+    setOpenAICodexAuthMode(nextMode)
+    setOpenAICodexTenantId(selectedProfile?.openAICodexTenantId || OPENAI_CODEX_DEFAULT_TENANT_ID)
+    setOpenAICodexAccountId(selectedProfile?.openAICodexAccountId || '')
   }, [selectedProfileId])
 
   useEffect(() => {
@@ -459,9 +800,13 @@ export function SettingsPage() {
     loadRemoteStatus()
   }
 
-  const copyToClipboard = (text: string) => {
+  const copyToClipboard = useCallback((text: string) => {
     navigator.clipboard.writeText(text)
-  }
+  }, [])
+
+  const handleOpenExternal = useCallback((url: string) => {
+    void api.openExternal(url)
+  }, [])
 
   const handleThemeChange = async (nextTheme: ThemeMode) => {
     setTheme(nextTheme)
@@ -621,7 +966,7 @@ export function SettingsPage() {
     setConfig({ ...config, mcpServers: servers } as KiteConfig)
   }
 
-  const updateSelectedProfile = (updates: Partial<ApiProfile>) => {
+  const updateSelectedProfile = useCallback((updates: Partial<ApiProfile>) => {
     if (!selectedProfileId) return
 
     setProfiles(prevProfiles =>
@@ -634,7 +979,7 @@ export function SettingsPage() {
           : profile
       )
     )
-  }
+  }, [selectedProfileId])
 
   const handleSelectedProfileEnabledChange = (enabled: boolean) => {
     if (!selectedProfile) return
@@ -653,6 +998,325 @@ export function SettingsPage() {
       setDefaultProfileId(selectFirstEnabledProfileId(nextProfiles))
     }
   }
+
+  const persistAiProfiles = async (
+    nextProfilesInput: ApiProfile[],
+    preferredDefaultProfileId: string
+  ): Promise<{
+    normalizedProfiles: ApiProfile[]
+    normalizedDefaultProfileId: string
+  }> => {
+    const normalizedProfiles = nextProfilesInput.map(normalizeProfileForSave)
+    const selectedDefault = normalizedProfiles.find(profile => profile.id === preferredDefaultProfileId)
+    const normalizedDefaultProfileId = selectedDefault && selectedDefault.enabled !== false
+      ? selectedDefault.id
+      : selectFirstEnabledProfileId(normalizedProfiles)
+    const aiConfig = {
+      profiles: normalizedProfiles,
+      defaultProfileId: normalizedDefaultProfileId
+    }
+
+    await api.setConfig({ ai: aiConfig, isFirstLaunch: false })
+    setConfig({
+      ...config,
+      ai: aiConfig,
+      isFirstLaunch: false
+    } as KiteConfig)
+
+    return {
+      normalizedProfiles,
+      normalizedDefaultProfileId
+    }
+  }
+
+  const applyOpenAICodexAuthorizedCredential = async (payload: unknown): Promise<boolean> => {
+    if (!selectedProfileId) {
+      setOpenAICodexStatusMessage(t('Please select an OpenAI account profile first.'))
+      return false
+    }
+
+    const data = asObjectRecord(payload)
+    const token = asObjectRecord(data?.token)
+    const credential = asObjectRecord(data?.credential)
+
+    const accessToken =
+      asStringValue(token?.accessToken) ||
+      asStringValue(credential?.accessToken)
+    if (!accessToken) {
+      setOpenAICodexStatusMessage(t('Authorization succeeded but token is missing, please retry.'))
+      return false
+    }
+
+    const accountId =
+      asStringValue(token?.accountId) ||
+      asStringValue(credential?.accountId)
+    if (!accountId) {
+      setOpenAICodexStatusMessage(t('Authorization succeeded but ChatGPT Account ID is missing. Please reconnect.'))
+      return false
+    }
+    const tenantId = openAICodexTenantId.trim() || OPENAI_CODEX_DEFAULT_TENANT_ID
+
+    let profileMatched = false
+    const nextProfiles = profiles.map(profile => {
+      if (profile.id !== selectedProfileId) return profile
+      profileMatched = true
+      const nextDefaultModel = profile.defaultModel.trim() || 'gpt-5-codex'
+      return {
+        ...profile,
+        apiKey: accessToken,
+        apiUrl: OPENAI_CODEX_RESPONSES_ENDPOINT,
+        openAICodexAuthMode,
+        openAICodexTenantId: tenantId,
+        openAICodexAccountId: accountId,
+        defaultModel: nextDefaultModel,
+        modelCatalog: normalizeModelCatalog(nextDefaultModel, profile.modelCatalog)
+      }
+    })
+    if (!profileMatched) {
+      setOpenAICodexStatusMessage(t('Selected profile not found. Please re-open settings and retry.'))
+      return false
+    }
+
+    setProfiles(nextProfiles)
+    setDefaultProfileId(selectedProfileId)
+    if (accountId) {
+      setOpenAICodexAccountId(accountId)
+    }
+    setOpenAICodexTenantId(tenantId)
+
+    try {
+      const persisted = await persistAiProfiles(nextProfiles, selectedProfileId)
+      const currentProfile = persisted.normalizedProfiles.find(profile => profile.id === selectedProfileId)
+      const currentModel = currentProfile?.defaultModel || selectedProfile?.defaultModel || 'gpt-5-codex'
+      const successMessage = t('ChatGPT authorization succeeded and has been saved as default account.')
+      setOpenAICodexStatusMessage(successMessage)
+      setValidationResult({
+        valid: true,
+        message: successMessage,
+        connectionSummary: successMessage,
+        availableModels: currentProfile?.modelCatalog?.length ? currentProfile.modelCatalog : ['gpt-5-codex'],
+        manualModelInputRequired: false,
+        resolvedModel: currentModel
+      })
+      openModelStep('model')
+      return true
+    } catch (error) {
+      setOpenAICodexStatusMessage(t('Authorization succeeded, but saving settings failed. Click Save and finish to retry.'))
+      setValidationResult({
+        valid: false,
+        message: t('Authorization succeeded, but saving settings failed. Click Save and finish to retry.'),
+        availableModels: [],
+        manualModelInputRequired: false
+      })
+      return false
+    }
+  }
+
+  const handleOpenAICodexAuthModeChange = useCallback((nextMode: OpenAICodexAuthMode) => {
+    if (!selectedProfile || !isOpenAIProfile) return
+
+    setOpenAICodexAuthMode(nextMode)
+    updateSelectedProfile({
+      openAICodexAuthMode: nextMode
+    })
+    setOpenAICodexBrowserSession(null)
+    setOpenAICodexBrowserCallbackInput('')
+    setOpenAICodexDeviceSession(null)
+    setOpenAICodexDeviceState('idle')
+    setOpenAICodexStatusMessage(null)
+    setValidationResult(null)
+
+    if (nextMode === 'api_key') {
+      if (isOpenAICodexBackendUrl(selectedProfile.apiUrl)) {
+        const openAITemplate = AI_PROFILE_TEMPLATES.find(template => template.presetKey === 'openai')
+        if (openAITemplate) {
+          updateSelectedProfile({
+            apiUrl: openAITemplate.apiUrl
+          })
+        }
+      }
+      return
+    }
+
+    if (!isOpenAICodexBackendUrl(selectedProfile.apiUrl)) {
+      updateSelectedProfile({ apiUrl: OPENAI_CODEX_RESPONSES_ENDPOINT })
+    }
+  }, [isOpenAIProfile, selectedProfile, t, updateSelectedProfile])
+
+  const handleOpenAICodexTenantIdChange = useCallback((nextValue: string) => {
+    setOpenAICodexTenantId(nextValue)
+    updateSelectedProfile({ openAICodexTenantId: nextValue })
+  }, [updateSelectedProfile])
+
+  const handleOpenAICodexAccountIdChange = useCallback((nextValue: string) => {
+    setOpenAICodexAccountId(nextValue)
+    updateSelectedProfile({ openAICodexAccountId: nextValue })
+  }, [updateSelectedProfile])
+
+  const handleStartOpenAICodexBrowserAuth = useCallback(async () => {
+    if (!selectedProfile || !isOpenAIProfile) return
+    setIsOpenAICodexAuthRunning(true)
+    setOpenAICodexStatusMessage(null)
+
+    try {
+      const response = await api.startOpenAICodexBrowserAuth({
+        tenantId: openAICodexTenantId.trim() || OPENAI_CODEX_DEFAULT_TENANT_ID,
+        ...(openAICodexAccountId.trim() ? { accountId: openAICodexAccountId.trim() } : {})
+      })
+      if (!response.success) {
+        setOpenAICodexStatusMessage(response.error || t('Failed to start browser authorization'))
+        return
+      }
+
+      const data = asObjectRecord(response.data)
+      const authUrl = asStringValue(data?.authUrl)
+      const state = asStringValue(data?.state)
+      const redirectUri = asStringValue(data?.redirectUri)
+      if (!authUrl || !state) {
+        setOpenAICodexStatusMessage(t('Invalid authorization payload, please retry.'))
+        return
+      }
+
+      setOpenAICodexBrowserSession({ authUrl, state, redirectUri })
+      await api.openExternal(authUrl)
+      setOpenAICodexStatusMessage(t('Browser authorization page opened. Complete sign-in, then paste callback URL below.'))
+    } catch (error) {
+      setOpenAICodexStatusMessage(t('Failed to start browser authorization'))
+    } finally {
+      setIsOpenAICodexAuthRunning(false)
+    }
+  }, [isOpenAIProfile, openAICodexAccountId, openAICodexTenantId, selectedProfile, t])
+
+  const handleFinishOpenAICodexBrowserAuth = useCallback(async () => {
+    if (!openAICodexBrowserSession) {
+      setOpenAICodexStatusMessage(t('Start browser authorization first.'))
+      return
+    }
+
+    const callbackInput = openAICodexBrowserCallbackInput.trim()
+    const parsed = callbackInput
+      ? parseOpenAICodexCallbackInput(callbackInput, openAICodexBrowserSession.state)
+      : { state: openAICodexBrowserSession.state, code: '' }
+    if (!parsed) {
+      setOpenAICodexStatusMessage(t('Paste callback URL (or code), or keep browser open and click complete again.'))
+      return
+    }
+
+    setIsOpenAICodexAuthRunning(true)
+    try {
+      const response = await api.finishOpenAICodexBrowserAuth({
+        state: parsed.state,
+        code: parsed.code
+      })
+      if (!response.success) {
+        setOpenAICodexStatusMessage(response.error || t('Browser authorization failed'))
+        return
+      }
+
+      const applied = await applyOpenAICodexAuthorizedCredential(response.data)
+      if (applied) {
+        setOpenAICodexBrowserSession(null)
+        setOpenAICodexBrowserCallbackInput('')
+      }
+    } catch (error) {
+      setOpenAICodexStatusMessage(t('Browser authorization failed'))
+    } finally {
+      setIsOpenAICodexAuthRunning(false)
+    }
+  }, [applyOpenAICodexAuthorizedCredential, openAICodexBrowserCallbackInput, openAICodexBrowserSession, t])
+
+  const handleStartOpenAICodexDeviceAuth = useCallback(async () => {
+    if (!selectedProfile || !isOpenAIProfile) return
+
+    setIsOpenAICodexAuthRunning(true)
+    setOpenAICodexStatusMessage(null)
+    setOpenAICodexDeviceState('idle')
+    try {
+      const response = await api.startOpenAICodexDeviceAuth({
+        tenantId: openAICodexTenantId.trim() || OPENAI_CODEX_DEFAULT_TENANT_ID,
+        ...(openAICodexAccountId.trim() ? { accountId: openAICodexAccountId.trim() } : {})
+      })
+      if (!response.success) {
+        setOpenAICodexStatusMessage(response.error || t('Failed to start device authorization'))
+        return
+      }
+
+      const data = asObjectRecord(response.data)
+      const deviceCode = asStringValue(data?.deviceCode)
+      const userCode = asStringValue(data?.userCode)
+      const verificationUri = asStringValue(data?.verificationUri)
+      const intervalSec = Number(data?.intervalSec || 5)
+      const expiresIn = Number(data?.expiresIn || 1800)
+      if (!deviceCode || !userCode || !verificationUri) {
+        setOpenAICodexStatusMessage(t('Invalid device authorization payload, please retry.'))
+        return
+      }
+
+      setOpenAICodexDeviceSession({
+        deviceCode,
+        userCode,
+        verificationUri,
+        intervalSec: Number.isFinite(intervalSec) && intervalSec > 0 ? intervalSec : 5,
+        expiresAt: Date.now() + (Number.isFinite(expiresIn) && expiresIn > 0 ? expiresIn : 1800) * 1000
+      })
+      setOpenAICodexDeviceState('pending')
+      await api.openExternal(verificationUri)
+      setOpenAICodexStatusMessage(t('Device authorization started. Enter the code on the opened page, then click Check authorization.'))
+    } catch (error) {
+      setOpenAICodexStatusMessage(t('Failed to start device authorization'))
+    } finally {
+      setIsOpenAICodexAuthRunning(false)
+    }
+  }, [isOpenAIProfile, openAICodexAccountId, openAICodexTenantId, selectedProfile, t])
+
+  const handlePollOpenAICodexDeviceAuth = useCallback(async () => {
+    if (!openAICodexDeviceSession) {
+      setOpenAICodexStatusMessage(t('Start device authorization first.'))
+      return
+    }
+    if (Date.now() >= openAICodexDeviceSession.expiresAt) {
+      setOpenAICodexDeviceState('expired')
+      setOpenAICodexStatusMessage(t('Device authorization has expired. Start again to get a new code.'))
+      return
+    }
+
+    setIsOpenAICodexAuthRunning(true)
+    try {
+      const response = await api.pollOpenAICodexDeviceAuth({
+        deviceCode: openAICodexDeviceSession.deviceCode
+      })
+      if (!response.success) {
+        setOpenAICodexDeviceState('error')
+        setOpenAICodexStatusMessage(response.error || t('Checking device authorization failed'))
+        return
+      }
+
+      const data = asObjectRecord(response.data)
+      const status = asStringValue(data?.status)
+      if (status === 'pending') {
+        setOpenAICodexDeviceState('pending')
+        setOpenAICodexStatusMessage(
+          `Authorization is still pending. Please complete it, then check again in ${openAICodexDeviceSession.intervalSec}s.`
+        )
+        return
+      }
+      if (status !== 'authorized') {
+        setOpenAICodexDeviceState('error')
+        setOpenAICodexStatusMessage(t('Unexpected device authorization response.'))
+        return
+      }
+
+      const applied = await applyOpenAICodexAuthorizedCredential(data)
+      if (applied) {
+        setOpenAICodexDeviceState('authorized')
+      }
+    } catch (error) {
+      setOpenAICodexDeviceState('error')
+      setOpenAICodexStatusMessage(t('Checking device authorization failed'))
+    } finally {
+      setIsOpenAICodexAuthRunning(false)
+    }
+  }, [applyOpenAICodexAuthorizedCredential, openAICodexDeviceSession, t])
 
   const handleAddModelId = () => {
     if (!selectedProfile) return
@@ -709,7 +1373,14 @@ export function SettingsPage() {
       apiUrl: template.apiUrl,
       defaultModel: template.defaultModel,
       modelCatalog: template.modelCatalog,
-      docUrl: template.docUrl
+      docUrl: template.docUrl,
+      openAICodexAuthMode: template.vendor === 'openai' && template.protocol === 'openai_compat'
+        ? 'api_key'
+        : undefined,
+      openAICodexTenantId: template.vendor === 'openai' && template.protocol === 'openai_compat'
+        ? OPENAI_CODEX_DEFAULT_TENANT_ID
+        : undefined,
+      openAICodexAccountId: undefined
     }
 
     setProfiles(prevProfiles => [...prevProfiles, nextProfile])
@@ -748,6 +1419,13 @@ export function SettingsPage() {
         defaultModel: template.defaultModel,
         modelCatalog: template.modelCatalog,
         docUrl: template.docUrl,
+        openAICodexAuthMode: template.vendor === 'openai' && template.protocol === 'openai_compat'
+          ? 'api_key'
+          : undefined,
+        openAICodexTenantId: template.vendor === 'openai' && template.protocol === 'openai_compat'
+          ? OPENAI_CODEX_DEFAULT_TENANT_ID
+          : undefined,
+        openAICodexAccountId: undefined,
         enabled: true
       })
       setValidationResult(null)
@@ -794,6 +1472,67 @@ export function SettingsPage() {
 
   const handleValidateConnection = async () => {
     if (!selectedProfile) return
+
+    if (isOpenAICodexMode) {
+      setIsValidating(true)
+      if (!selectedProfile.apiKey.trim()) {
+        setValidationResult({
+          valid: false,
+          message: t('Complete ChatGPT authorization first.'),
+          availableModels: [],
+          manualModelInputRequired: false
+        })
+        setIsValidating(false)
+        return
+      }
+
+      try {
+        const response = await api.validateOpenAICodexSession({
+          tenantId: openAICodexTenantId.trim() || OPENAI_CODEX_DEFAULT_TENANT_ID,
+          accountId: openAICodexAccountId.trim() || undefined,
+          fallbackAccessToken: selectedProfile.apiKey.trim(),
+          authMode: openAICodexAuthMode
+        })
+        if (!response.success) {
+          setValidationResult({
+            valid: false,
+            message: response.error || t('ChatGPT authorization check failed.'),
+            availableModels: [],
+            manualModelInputRequired: false
+          })
+          return
+        }
+        const data = asObjectRecord(response.data)
+        const validatedAccountId = asStringValue(data?.accountId)
+        if (!validatedAccountId) {
+          setValidationResult({
+            valid: false,
+            message: t('Missing ChatGPT Account ID, please reconnect your account.'),
+            availableModels: [],
+            manualModelInputRequired: false
+          })
+          return
+        }
+
+        if (validatedAccountId !== openAICodexAccountId.trim()) {
+          setOpenAICodexAccountId(validatedAccountId)
+          updateSelectedProfile({ openAICodexAccountId: validatedAccountId })
+        }
+
+        setValidationResult({
+          valid: true,
+          message: t('ChatGPT authorization is ready. You can save this account now.'),
+          connectionSummary: t('ChatGPT authorization is ready. You can save this account now.'),
+          availableModels: selectedCatalog.length > 0 ? selectedCatalog : ['gpt-5-codex'],
+          manualModelInputRequired: false,
+          resolvedModel: selectedProfile.defaultModel || 'gpt-5-codex'
+        })
+        openModelStep('model')
+      } finally {
+        setIsValidating(false)
+      }
+      return
+    }
 
     if (selectedProfile.enabled !== false && !selectedProfile.apiKey.trim()) {
       setValidationResult({ valid: false, message: t('Please enter API Key'), availableModels: [], manualModelInputRequired: false })
@@ -918,36 +1657,15 @@ export function SettingsPage() {
     setValidationResult(null)
 
     try {
-      const normalizedProfiles = profiles.map(normalizeProfileForSave)
-
-      const normalizedDefaultProfileId =
-        (() => {
-          const selectedDefault = normalizedProfiles.find(profile => profile.id === defaultProfileId)
-          if (selectedDefault && selectedDefault.enabled !== false) {
-            return selectedDefault.id
-          }
-          return selectFirstEnabledProfileId(normalizedProfiles)
-        })()
-
-      const aiConfig = {
-        profiles: normalizedProfiles,
-        defaultProfileId: normalizedDefaultProfileId
-      }
-
-      await api.setConfig({ ai: aiConfig, isFirstLaunch: false })
-      const nextConfig = {
-        ...config,
-        ai: aiConfig,
-        isFirstLaunch: false
-      } as KiteConfig
-      setConfig(nextConfig)
+      const persisted = await persistAiProfiles(profiles, defaultProfileId)
+      const persistedSelectedProfile = persisted.normalizedProfiles.find(profile => profile.id === selectedProfile.id) || selectedProfile
       setValidationResult({
         valid: true,
         message: t('Model connected, you can start chatting'),
         connectionSummary: t('Model connected, you can start chatting'),
-        availableModels: normalizeModelCatalog(selectedProfile.defaultModel, selectedCatalog),
+        availableModels: normalizeModelCatalog(persistedSelectedProfile.defaultModel, persistedSelectedProfile.modelCatalog),
         manualModelInputRequired: false,
-        resolvedModel: selectedProfile.defaultModel
+        resolvedModel: persistedSelectedProfile.defaultModel
       })
     } catch (error) {
       setValidationResult({
@@ -995,6 +1713,8 @@ export function SettingsPage() {
     const modelReady = hasDefaultModel
     const completedSteps = [hasProfile, hasApiKey && hasApiUrl, hasDefaultModel].filter(Boolean).length
     const profileStatusKey = hasApiKey ? 'Connected now' : 'Needs connection'
+    const isOpenAICodexConnected = isOpenAICodexMode && hasApiKey
+    const openAICodexConnectedAccountId = openAICodexAccountId.trim()
     const modelChoices = validationResult?.availableModels?.length
       ? validationResult.availableModels
       : (selectedTemplate?.recommendedModels.length ? selectedTemplate.recommendedModels : selectedCatalog)
@@ -1160,7 +1880,11 @@ export function SettingsPage() {
                       >
                         <div className="settings-step-toggle-left">
                           <h4 className="text-sm font-semibold">2. {t('Connect account')}</h4>
-                          <span className="settings-step-status">{t('Step 2: Add your API Key')}</span>
+                          <span className="settings-step-status">
+                            {isOpenAIProfile && openAICodexAuthMode !== 'api_key'
+                              ? t('Step 2: Authorize your ChatGPT account')
+                              : t('Step 2: Add your API Key')}
+                          </span>
                         </div>
                         <div className="settings-step-toggle-right">
                           {accountReady && <CheckCircle2 className="h-4 w-4 text-kite-success" />}
@@ -1196,92 +1920,139 @@ export function SettingsPage() {
                             )}
                           </div>
 
-                          <div>
-                            <label className="mb-1 block text-xs font-medium text-muted-foreground">API Key</label>
-                            <p className="mb-2 text-xs text-muted-foreground">{t('Paste the API Key from the provider console')}</p>
-                            <div className="relative">
-                              <input
-                                type={showApiKey ? 'text' : 'password'}
-                                value={selectedProfile.apiKey}
-                                onChange={(event) => {
-                                  updateSelectedProfile({ apiKey: event.target.value })
-                                  setValidationResult(null)
-                                }}
-                                className="w-full input-apple px-4 py-2.5 pr-11 text-sm"
-                                placeholder={t('Please enter API Key')}
-                              />
-                              <button
-                                type="button"
-                                onClick={() => setShowApiKey(prev => !prev)}
-                                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                                aria-label={showApiKey ? t('Hide API Key') : t('Show API Key')}
-                              >
-                                {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                              </button>
+                          <OpenAICodexAuthPanel
+                            t={t}
+                            isOpenAIProfile={isOpenAIProfile}
+                            openAICodexAuthMode={openAICodexAuthMode}
+                            isOpenAICodexAuthRunning={isOpenAICodexAuthRunning}
+                            openAICodexTenantId={openAICodexTenantId}
+                            openAICodexAccountId={openAICodexAccountId}
+                            openAICodexBrowserSession={openAICodexBrowserSession}
+                            openAICodexBrowserCallbackInput={openAICodexBrowserCallbackInput}
+                            openAICodexDeviceSession={openAICodexDeviceSession}
+                            openAICodexDeviceState={openAICodexDeviceState}
+                            openAICodexStatusMessage={openAICodexStatusMessage}
+                            onAuthModeChange={handleOpenAICodexAuthModeChange}
+                            onTenantIdChange={handleOpenAICodexTenantIdChange}
+                            onAccountIdChange={handleOpenAICodexAccountIdChange}
+                            onStartBrowserAuth={handleStartOpenAICodexBrowserAuth}
+                            onFinishBrowserAuth={handleFinishOpenAICodexBrowserAuth}
+                            onStartDeviceAuth={handleStartOpenAICodexDeviceAuth}
+                            onPollDeviceAuth={handlePollOpenAICodexDeviceAuth}
+                            onBrowserCallbackInputChange={setOpenAICodexBrowserCallbackInput}
+                            onCopyToClipboard={copyToClipboard}
+                            onOpenExternal={handleOpenExternal}
+                          />
+
+                          {isOpenAICodexConnected ? (
+                            <div className="rounded-xl border border-border/75 bg-secondary/20 p-3 text-xs text-muted-foreground">
+                              <p className="text-sm font-medium text-foreground">{t('Connected with ChatGPT official account')}</p>
+                              <p className="mt-2">{t('Routing endpoint is fixed to ChatGPT backend API and saved automatically.')}</p>
+                              {openAICodexConnectedAccountId && (
+                                <p className="mt-1 break-all">
+                                  {t('Account ID')}: {openAICodexConnectedAccountId}
+                                </p>
+                              )}
+                              <p className="mt-1 break-all">
+                                {t('Connection URL')}: {OPENAI_CODEX_RESPONSES_ENDPOINT}
+                              </p>
                             </div>
-                          </div>
+                          ) : (
+                            <>
+                              <div>
+                                <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                                  {isOpenAICodexMode ? t('Access token') : 'API Key'}
+                                </label>
+                                <p className="mb-2 text-xs text-muted-foreground">
+                                  {isOpenAICodexMode
+                                    ? t('This field is auto-filled after ChatGPT authorization. You can still edit it manually.')
+                                    : t('Paste the API Key from the provider console')}
+                                </p>
+                                <div className="relative">
+                                  <input
+                                    type={showApiKey ? 'text' : 'password'}
+                                    value={selectedProfile.apiKey}
+                                    onChange={(event) => {
+                                      updateSelectedProfile({ apiKey: event.target.value })
+                                      setValidationResult(null)
+                                    }}
+                                    className="w-full input-apple px-4 py-2.5 pr-11 text-sm"
+                                    placeholder={isOpenAICodexMode ? t('Authorize first to fill token') : t('Please enter API Key')}
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => setShowApiKey(prev => !prev)}
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                                    aria-label={showApiKey ? t('Hide API Key') : t('Show API Key')}
+                                  >
+                                    {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                  </button>
+                                </div>
+                              </div>
 
-                          <div className="rounded-xl border border-dashed border-border/75 bg-secondary/20 p-3">
-                            <button
-                              type="button"
-                              onClick={() => setShowAdvancedConnectionFields(prev => !prev)}
-                              className="flex w-full items-center justify-between text-left"
-                            >
-                              <span className="text-sm font-medium">{t('Advanced connection settings')}</span>
-                              <span className="text-xs text-muted-foreground">
-                                {showAdvancedConnectionFields || selectedTemplate?.apiUrlBehavior === 'required' ? t('Hide') : t('Show')}
-                              </span>
-                            </button>
+                              <div className="rounded-xl border border-dashed border-border/75 bg-secondary/20 p-3">
+                                <button
+                                  type="button"
+                                  onClick={() => setShowAdvancedConnectionFields(prev => !prev)}
+                                  className="flex w-full items-center justify-between text-left"
+                                >
+                                  <span className="text-sm font-medium">{t('Advanced connection settings')}</span>
+                                  <span className="text-xs text-muted-foreground">
+                                    {showAdvancedConnectionFields || selectedTemplate?.apiUrlBehavior === 'required' ? t('Hide') : t('Show')}
+                                  </span>
+                                </button>
 
-                            {(showAdvancedConnectionFields || selectedTemplate?.apiUrlBehavior === 'required') && (
-                              <div className="mt-3 space-y-3">
-                                {selectedTemplate?.connectionMode === 'custom' && (
-                                  <div>
-                                    <label className="mb-2 block text-xs font-medium text-muted-foreground">{t('Address type')}</label>
-                                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          updateSelectedProfile({ vendor: 'custom', protocol: 'openai_compat' })
+                                {(showAdvancedConnectionFields || selectedTemplate?.apiUrlBehavior === 'required') && (
+                                  <div className="mt-3 space-y-3">
+                                    {selectedTemplate?.connectionMode === 'custom' && (
+                                      <div>
+                                        <label className="mb-2 block text-xs font-medium text-muted-foreground">{t('Address type')}</label>
+                                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              updateSelectedProfile({ vendor: 'custom', protocol: 'openai_compat' })
+                                              setValidationResult(null)
+                                            }}
+                                            className={`settings-choice-btn ${selectedProfile.protocol === 'openai_compat' ? 'settings-choice-btn-active' : ''}`}
+                                          >
+                                            {t('OpenAI compatible address')}
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              updateSelectedProfile({ vendor: 'custom', protocol: 'anthropic_compat' })
+                                              setValidationResult(null)
+                                            }}
+                                            className={`settings-choice-btn ${selectedProfile.protocol === 'anthropic_compat' ? 'settings-choice-btn-active' : ''}`}
+                                          >
+                                            {t('Claude compatible address')}
+                                          </button>
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    <div>
+                                      <label className="mb-1 block text-xs font-medium text-muted-foreground">{t('Connection URL')}</label>
+                                      <p className="mb-2 text-xs text-muted-foreground">{selectedTemplate?.setupCopy.apiUrlHelp}</p>
+                                      <input
+                                        type="text"
+                                        value={selectedProfile.apiUrl}
+                                        onChange={(event) => {
+                                          updateSelectedProfile({ apiUrl: event.target.value })
                                           setValidationResult(null)
                                         }}
-                                        className={`settings-choice-btn ${selectedProfile.protocol === 'openai_compat' ? 'settings-choice-btn-active' : ''}`}
-                                      >
-                                        {t('OpenAI compatible address')}
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          updateSelectedProfile({ vendor: 'custom', protocol: 'anthropic_compat' })
-                                          setValidationResult(null)
-                                        }}
-                                        className={`settings-choice-btn ${selectedProfile.protocol === 'anthropic_compat' ? 'settings-choice-btn-active' : ''}`}
-                                      >
-                                        {t('Claude compatible address')}
-                                      </button>
+                                        className="w-full input-apple px-4 py-2.5 text-sm"
+                                      />
+                                      {selectedProfileUrlInvalid && (
+                                        <p className="mt-1 text-xs text-destructive">{selectedProfileUrlError}</p>
+                                      )}
                                     </div>
                                   </div>
                                 )}
-
-                                <div>
-                                  <label className="mb-1 block text-xs font-medium text-muted-foreground">{t('Connection URL')}</label>
-                                  <p className="mb-2 text-xs text-muted-foreground">{selectedTemplate?.setupCopy.apiUrlHelp}</p>
-                                  <input
-                                    type="text"
-                                    value={selectedProfile.apiUrl}
-                                    onChange={(event) => {
-                                      updateSelectedProfile({ apiUrl: event.target.value })
-                                      setValidationResult(null)
-                                    }}
-                                    className="w-full input-apple px-4 py-2.5 text-sm"
-                                  />
-                                  {selectedProfileUrlInvalid && (
-                                    <p className="mt-1 text-xs text-destructive">{selectedProfileUrlError}</p>
-                                  )}
-                                </div>
                               </div>
-                            )}
-                          </div>
+                            </>
+                          )}
                         </div>
                       )}
                     </section>

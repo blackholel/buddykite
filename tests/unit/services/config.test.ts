@@ -1001,6 +1001,36 @@ describe('Config Service', () => {
       const saved = JSON.parse(fs.readFileSync(configPath, 'utf-8'))
       expect(saved.configSourceMode).toBe('kite')
     })
+
+    it('should persist openai-codex profile fields in ai config', () => {
+      saveConfig({
+        ai: {
+          profiles: [
+            {
+              id: 'p-codex',
+              name: 'OpenAI Codex',
+              vendor: 'openai',
+              protocol: 'openai_compat',
+              presetKey: 'openai',
+              apiUrl: 'https://chatgpt.com/backend-api/codex/responses',
+              apiKey: 'oauth-token',
+              defaultModel: 'gpt-5-codex',
+              modelCatalog: ['gpt-5-codex'],
+              openAICodexAuthMode: 'oauth_browser',
+              openAICodexTenantId: 'tenant-001',
+              openAICodexAccountId: 'acct-001',
+              enabled: true
+            }
+          ],
+          defaultProfileId: 'p-codex'
+        }
+      } as any)
+
+      const config = getConfig()
+      expect(config.ai.profiles[0].openAICodexAuthMode).toBe('oauth_browser')
+      expect(config.ai.profiles[0].openAICodexTenantId).toBe('tenant-001')
+      expect(config.ai.profiles[0].openAICodexAccountId).toBe('acct-001')
+    })
   })
 
   describe('configSourceMode normalization', () => {

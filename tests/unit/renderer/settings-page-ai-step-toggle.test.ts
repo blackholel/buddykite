@@ -16,4 +16,15 @@ describe('settings page ai step toggle contract', () => {
     expect(source).toContain('expandedModelSteps.account')
     expect(source).toContain('expandedModelSteps.model')
   })
+
+  it('memoizes codex auth panel and high-frequency derived values', () => {
+    const source = fs.readFileSync(settingsPageFile, 'utf-8')
+
+    expect(source).toContain('const OpenAICodexAuthPanel = memo(function OpenAICodexAuthPanel')
+    expect(source).toContain('const selectedCatalog = useMemo(')
+    expect(source).toContain('const isOpenAIProfile = useMemo(')
+    expect(source).toContain('const isOpenAICodexMode = useMemo(')
+    expect(source).toContain('const handleOpenAICodexAuthModeChange = useCallback(')
+    expect(source).toContain('<OpenAICodexAuthPanel')
+  })
 })

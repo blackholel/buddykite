@@ -6,6 +6,7 @@ import {
   finalizeAgentRunObservation,
   getAgentRunObservation,
   listAgentRunObservations,
+  setAgentRunObservationProvider,
   startAgentRunObservation
 } from '../../../src/main/services/observability'
 
@@ -130,5 +131,47 @@ describe('Langfuse observability service', () => {
 
     const runs = listAgentRunObservations(10)
     expect(runs.some((item) => item.runId === 'run-noop')).toBe(true)
+  })
+
+  it('provider 额外上下文字段应写入 summary', () => {
+    const handle = startAgentRunObservation({
+      sessionKey: 'space-3:conv-3',
+      spaceId: 'space-3',
+      conversationId: 'conv-3',
+      runId: 'run-provider-extra',
+      mode: 'code',
+      message: 'hello',
+      responseLanguage: 'zh-CN',
+      imageCount: 0,
+      fileContextCount: 0,
+      thinkingEnabled: false
+    })
+
+    setAgentRunObservationProvider(handle, {
+      provider: 'openai',
+      model: 'gpt-5-codex',
+      providerId: 'openai-codex',
+      authMethod: 'oauth',
+      accountId: 'acct-123',
+      tokenSource: 'credential',
+      refreshState: 'performed',
+      killSwitch: false
+    })
+
+    finalizeAgentRunObservation(handle, {
+      status: 'completed',
+      terminalReason: 'completed',
+      provider: 'openai',
+      model: 'gpt-5-codex',
+      finalContent: 'done'
+    })
+
+    const summary = getAgentRunObservation('run-provider-extra')
+    expect(summary?.providerId).toBe('openai-codex')
+    expect(summary?.authMethod).toBe('oauth')
+    expect(summary?.accountId).toBe('acct-123')
+    expect(summary?.tokenSource).toBe('credential')
+    expect(summary?.refreshState).toBe('performed')
+    expect(summary?.killSwitch).toBe(false)
   })
 })

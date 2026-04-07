@@ -46,6 +46,30 @@ export interface KiteAPI {
     protocol?: string,
     model?: string
   ) => Promise<IpcResponse>
+  startOpenAICodexBrowserAuth: (input: {
+    tenantId: string
+    redirectUri?: string
+    scope?: string
+    accountId?: string
+  }) => Promise<IpcResponse>
+  finishOpenAICodexBrowserAuth: (input: {
+    state: string
+    code: string
+  }) => Promise<IpcResponse>
+  startOpenAICodexDeviceAuth: (input: {
+    tenantId: string
+    scope?: string
+    accountId?: string
+  }) => Promise<IpcResponse>
+  pollOpenAICodexDeviceAuth: (input: {
+    deviceCode: string
+  }) => Promise<IpcResponse>
+  validateOpenAICodexSession: (input: {
+    tenantId: string
+    accountId?: string
+    fallbackAccessToken?: string
+    authMode?: 'api_key' | 'oauth_browser' | 'oauth_device'
+  }) => Promise<IpcResponse>
 
   // Space
   getKiteSpace: () => Promise<IpcResponse>
@@ -446,6 +470,16 @@ const api: KiteAPI = {
   setConfig: (updates) => ipcRenderer.invoke('config:set', updates),
   validateApi: (apiKey, apiUrl, provider, protocol, model) =>
     ipcRenderer.invoke('config:validate-api', apiKey, apiUrl, provider, protocol, model),
+  startOpenAICodexBrowserAuth: (input) =>
+    ipcRenderer.invoke('config:openai-codex:start-browser-auth', input),
+  finishOpenAICodexBrowserAuth: (input) =>
+    ipcRenderer.invoke('config:openai-codex:finish-browser-auth', input),
+  startOpenAICodexDeviceAuth: (input) =>
+    ipcRenderer.invoke('config:openai-codex:start-device-auth', input),
+  pollOpenAICodexDeviceAuth: (input) =>
+    ipcRenderer.invoke('config:openai-codex:poll-device-auth', input),
+  validateOpenAICodexSession: (input) =>
+    ipcRenderer.invoke('config:openai-codex:validate-session', input),
 
   // Space
   getKiteSpace: () => ipcRenderer.invoke('space:get-kite'),

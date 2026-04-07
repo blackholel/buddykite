@@ -38,6 +38,7 @@ export type ProviderPresetKey =
   | 'moonshot'
   | 'glm'
   | 'custom'
+export type OpenAICodexAuthMode = 'api_key' | 'oauth_browser' | 'oauth_device'
 
 export interface ApiValidationResult {
   valid: boolean
@@ -60,6 +61,9 @@ export interface ApiProfile {
   defaultModel: string
   modelCatalog: string[]
   docUrl?: string
+  openAICodexAuthMode?: OpenAICodexAuthMode
+  openAICodexTenantId?: string
+  openAICodexAccountId?: string
   enabled: boolean
 }
 
@@ -144,6 +148,15 @@ function isPresetKey(value: unknown): value is ProviderPresetKey {
     value === 'glm' ||
     value === 'custom'
   )
+}
+
+function isOpenAICodexAuthMode(value: unknown): value is OpenAICodexAuthMode {
+  return value === 'api_key' || value === 'oauth_browser' || value === 'oauth_device'
+}
+
+function toOptionalTrimmedString(value: unknown): string | undefined {
+  if (!isNonEmptyString(value)) return undefined
+  return value.trim()
 }
 
 function normalizeUrlForMatching(url: string): string {
@@ -294,24 +307,45 @@ function normalizeProfile(
 
   const defaultModel =
     isNonEmptyString(rawProfile.defaultModel) ? rawProfile.defaultModel.trim() : fallback.defaultModel
+  const vendor = isVendor(rawProfile.vendor) ? rawProfile.vendor : fallback.vendor
+  const protocol = isProtocol(rawProfile.protocol) ? rawProfile.protocol : fallback.protocol
+  const apiUrl = asString(rawProfile.apiUrl, fallback.apiUrl)
+  const explicitAuthMode = isOpenAICodexAuthMode(rawProfile.openAICodexAuthMode)
+    ? rawProfile.openAICodexAuthMode
+    : undefined
+  const inferredCodexOAuthMode =
+    !explicitAuthMode &&
+    vendor === 'openai' &&
+    protocol === 'openai_compat' &&
+    apiUrl.trim().toLowerCase().includes('chatgpt.com/backend-api')
+      ? 'oauth_browser'
+      : undefined
+  const openAICodexAuthMode = explicitAuthMode || inferredCodexOAuthMode
+  const openAICodexTenantId = toOptionalTrimmedString(rawProfile.openAICodexTenantId)
 
   return {
     id: isNonEmptyString(rawProfile.id) ? rawProfile.id.trim() : fallback.id,
     name: isNonEmptyString(rawProfile.name) ? rawProfile.name.trim() : fallback.name,
-    vendor: isVendor(rawProfile.vendor) ? rawProfile.vendor : fallback.vendor,
-    protocol: isProtocol(rawProfile.protocol) ? rawProfile.protocol : fallback.protocol,
+    vendor,
+    protocol,
     presetKey: isPresetKey(rawProfile.presetKey)
       ? rawProfile.presetKey
       : inferProfilePresetKey({
-          vendor: isVendor(rawProfile.vendor) ? rawProfile.vendor : fallback.vendor,
-          protocol: isProtocol(rawProfile.protocol) ? rawProfile.protocol : fallback.protocol,
-          apiUrl: asString(rawProfile.apiUrl, fallback.apiUrl)
+          vendor,
+          protocol,
+          apiUrl
         }),
-    apiUrl: asString(rawProfile.apiUrl, fallback.apiUrl),
+    apiUrl,
     apiKey: asString(rawProfile.apiKey, fallback.apiKey),
     defaultModel,
     modelCatalog: normalizeModelCatalog(rawProfile.modelCatalog, defaultModel),
     docUrl: isNonEmptyString(rawProfile.docUrl) ? rawProfile.docUrl.trim() : undefined,
+    openAICodexAuthMode,
+    openAICodexTenantId:
+      openAICodexAuthMode && openAICodexAuthMode !== 'api_key'
+        ? openAICodexTenantId || 'default'
+        : openAICodexTenantId,
+    openAICodexAccountId: toOptionalTrimmedString(rawProfile.openAICodexAccountId),
     enabled: typeof rawProfile.enabled === 'boolean' ? rawProfile.enabled : true
   }
 }
@@ -453,7 +487,15 @@ export function mirrorLegacyApiToAi(
     ...normalizedAi,
     defaultProfileId,
     profiles: normalizedAi.profiles.map(profile =>
-      profile.id === defaultProfileId ? { ...mirroredProfile, docUrl: profile.docUrl } : profile
+      profile.id === defaultProfileId
+        ? {
+            ...mirroredProfile,
+            docUrl: profile.docUrl,
+            openAICodexAuthMode: profile.openAICodexAuthMode,
+            openAICodexTenantId: profile.openAICodexTenantId,
+            openAICodexAccountId: profile.openAICodexAccountId
+          }
+        : profile
     )
   }
 }
