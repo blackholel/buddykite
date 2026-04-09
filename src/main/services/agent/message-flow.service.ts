@@ -1524,7 +1524,13 @@ export async function sendMessage(
   observationModel = resolved.effectiveModel || resolved.sdkModel || observationModel
   setAgentRunObservationProvider(observabilityHandle, {
     provider: observationProvider,
-    model: observationModel
+    model: observationModel,
+    providerId: resolved.openAICodexContext?.providerId,
+    authMethod: resolved.openAICodexContext?.authMethod,
+    accountId: resolved.openAICodexContext?.accountId,
+    tokenSource: resolved.openAICodexContext?.tokenSource,
+    refreshState: resolved.openAICodexContext?.refreshState,
+    killSwitch: resolved.openAICodexContext?.killSwitch
   })
   endAgentRunObservationPhase(observabilityHandle, 'resolve_provider')
   const isStrictCompatProvider = effectiveAi.disableToolsForCompat

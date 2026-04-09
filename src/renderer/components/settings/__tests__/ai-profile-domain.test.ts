@@ -44,6 +44,9 @@ describe('ai profile domain', () => {
       defaultModel: ' gpt-4o-mini ',
       modelCatalog: ['gpt-4.1-mini'],
       docUrl: ' https://docs.example.com ',
+      openAICodexAuthMode: 'oauth_browser',
+      openAICodexTenantId: ' tenant-001 ',
+      openAICodexAccountId: ' acct-001 ',
       enabled: true
     }
 
@@ -54,7 +57,9 @@ describe('ai profile domain', () => {
       apiKey: 'sk-123',
       defaultModel: 'gpt-4o-mini',
       modelCatalog: ['gpt-4o-mini', 'gpt-4.1-mini'],
-      docUrl: 'https://docs.example.com'
+      docUrl: 'https://docs.example.com',
+      openAICodexTenantId: 'tenant-001',
+      openAICodexAccountId: 'acct-001'
     })
   })
 

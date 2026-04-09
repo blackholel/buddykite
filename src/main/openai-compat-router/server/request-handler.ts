@@ -26,6 +26,97 @@ export interface RequestHandlerOptions {
 }
 
 const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000 // 10 minutes
+const OPENAI_CODEX_BACKEND_HOST = 'chatgpt.com/backend-api/codex'
+const DEFAULT_CODEX_INSTRUCTIONS = 'You are ChatGPT Codex. Follow system constraints, then complete the user request using tools when needed.'
+
+function isOpenAICodexBackendUrl(url: string): boolean {
+  return url.trim().toLowerCase().includes(OPENAI_CODEX_BACKEND_HOST)
+}
+
+function extractSystemInstructionsText(system: AnthropicRequest['system']): string | undefined {
+  if (typeof system === 'string') {
+    const text = system.trim()
+    return text || undefined
+  }
+
+  if (!Array.isArray(system)) {
+    return undefined
+  }
+
+  const text = system
+    .filter(block => block?.type === 'text' && typeof block.text === 'string')
+    .map(block => block.text.trim())
+    .filter(Boolean)
+    .join('\n')
+    .trim()
+
+  return text || undefined
+}
+
+function extractFirstUserText(messages: AnthropicRequest['messages']): string | undefined {
+  if (!Array.isArray(messages)) return undefined
+
+  for (const message of messages) {
+    if (!message || message.role !== 'user') continue
+    if (typeof message.content === 'string') {
+      const text = message.content.trim()
+      if (text) return text
+      continue
+    }
+    if (!Array.isArray(message.content)) continue
+    const text = message.content
+      .filter(block => block?.type === 'text' && typeof block.text === 'string')
+      .map(block => block.text.trim())
+      .filter(Boolean)
+      .join('\n')
+      .trim()
+    if (text) return text
+  }
+
+  return undefined
+}
+
+export function ensureCodexResponsesInstructions(
+  backendUrl: string,
+  anthropicRequest: AnthropicRequest,
+  openaiRequest: Record<string, unknown>
+): void {
+  if (!isOpenAICodexBackendUrl(backendUrl)) return
+
+  // chatgpt codex backend requires explicit store=false.
+  openaiRequest.store = false
+
+  const existingInstructions = typeof openaiRequest.instructions === 'string'
+    ? openaiRequest.instructions.trim()
+    : ''
+  if (existingInstructions) return
+
+  const instructionsFromSystem = extractSystemInstructionsText(anthropicRequest.system)
+  if (instructionsFromSystem) {
+    openaiRequest.instructions = instructionsFromSystem
+    return
+  }
+
+  const firstUserText = extractFirstUserText(anthropicRequest.messages)
+  if (firstUserText) {
+    openaiRequest.instructions = firstUserText.slice(0, 1000)
+    return
+  }
+
+  openaiRequest.instructions = DEFAULT_CODEX_INSTRUCTIONS
+}
+
+function logCodexResponsesRequestShape(backendUrl: string, openaiRequest: Record<string, unknown>): void {
+  if (!isOpenAICodexBackendUrl(backendUrl)) return
+  const instructions =
+    typeof openaiRequest.instructions === 'string' ? openaiRequest.instructions.trim() : ''
+  const storeValue = openaiRequest.store
+  console.log('[RequestHandler] Codex request normalized:', {
+    hasInstructions: Boolean(instructions),
+    instructionsLength: instructions.length,
+    store: storeValue
+  })
+}
 
 /**
  * Send error response in Anthropic format
@@ -48,6 +139,7 @@ function sendError(
 async function fetchUpstream(
   targetUrl: string,
   apiKey: string,
+  extraHeaders: Record<string, string> | undefined,
   body: unknown,
   timeoutMs: number,
   signal?: AbortSignal
@@ -63,7 +155,8 @@ async function fetchUpstream(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`
+        Authorization: `Bearer ${apiKey}`,
+        ...(extraHeaders || {})
       },
       body: JSON.stringify(body),
       signal: signal ?? controller.signal
@@ -83,7 +176,7 @@ export async function handleMessagesRequest(
   options: RequestHandlerOptions = {}
 ): Promise<void> {
   const { debug = false, timeoutMs = DEFAULT_TIMEOUT_MS } = options
-  const { url: backendUrl, key: apiKey, model } = config
+  const { url: backendUrl, key: apiKey, model, headers } = config
 
   // Validate URL has valid endpoint suffix
   if (!isValidEndpointUrl(backendUrl)) {
@@ -119,13 +212,21 @@ export async function handleMessagesRequest(
       const openaiRequest = apiType === 'responses'
         ? convertAnthropicToOpenAIResponses(requestToSend).request
         : convertAnthropicToOpenAIChat(requestToSend).request
+      if (apiType === 'responses') {
+        ensureCodexResponsesInstructions(
+          backendUrl,
+          anthropicRequest,
+          openaiRequest as unknown as Record<string, unknown>
+        )
+        logCodexResponsesRequestShape(backendUrl, openaiRequest as unknown as Record<string, unknown>)
+      }
 
       const toolCount = (openaiRequest as any).tools?.length ?? 0
       console.log(`[RequestHandler] wire=${apiType} tools=${toolCount}`)
       console.log(`[RequestHandler] POST ${backendUrl} (stream=${wantStream ?? false})`)
 
       // Make upstream request - URL is used directly, no modification
-      let upstreamResp = await fetchUpstream(backendUrl, apiKey, openaiRequest, timeoutMs)
+      let upstreamResp = await fetchUpstream(backendUrl, apiKey, headers, openaiRequest, timeoutMs)
       console.log(`[RequestHandler] Upstream response: ${upstreamResp.status}`)
 
       // Handle errors
@@ -149,8 +250,16 @@ export async function handleMessagesRequest(
           const retryRequest = apiType === 'responses'
             ? convertAnthropicToOpenAIResponses({ ...anthropicRequest, stream: true }).request
             : convertAnthropicToOpenAIChat({ ...anthropicRequest, stream: true }).request
+          if (apiType === 'responses') {
+            ensureCodexResponsesInstructions(
+              backendUrl,
+              anthropicRequest,
+              retryRequest as unknown as Record<string, unknown>
+            )
+            logCodexResponsesRequestShape(backendUrl, retryRequest as unknown as Record<string, unknown>)
+          }
 
-          upstreamResp = await fetchUpstream(backendUrl, apiKey, retryRequest, timeoutMs)
+          upstreamResp = await fetchUpstream(backendUrl, apiKey, headers, retryRequest, timeoutMs)
 
           if (!upstreamResp.ok) {
             const retryErrorText = await upstreamResp.text().catch(() => '')
@@ -191,6 +300,16 @@ export async function handleMessagesRequest(
         return sendError(res, 504, 'timeout_error', 'Request timed out')
       }
 
+      const cause = error?.cause as
+        | { name?: string; code?: string; message?: string }
+        | undefined
+      if (cause) {
+        console.error('[RequestHandler] Internal error cause:', {
+          name: cause.name,
+          code: cause.code,
+          message: cause.message
+        })
+      }
       console.error('[RequestHandler] Internal error:', error?.message || error)
       return sendError(res, 500, 'internal_error', error?.message || 'Internal error')
     }

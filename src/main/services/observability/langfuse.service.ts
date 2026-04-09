@@ -364,19 +364,40 @@ export function startAgentRunObservation(
 
 export function setAgentRunObservationProvider(
   handle: AgentRunObservationHandle,
-  payload: { provider: string; model: string }
+  payload: {
+    provider: string
+    model: string
+    providerId?: string
+    authMethod?: string
+    accountId?: string
+    tokenSource?: string
+    refreshState?: string
+    killSwitch?: boolean
+  }
 ): void {
   const context = getRunContext(handle)
   if (!context) return
 
   context.summary.provider = payload.provider
   context.summary.model = payload.model
+  if (payload.providerId) context.summary.providerId = payload.providerId
+  if (payload.authMethod) context.summary.authMethod = payload.authMethod
+  if (payload.accountId) context.summary.accountId = payload.accountId
+  if (payload.tokenSource) context.summary.tokenSource = payload.tokenSource
+  if (payload.refreshState) context.summary.refreshState = payload.refreshState
+  if (typeof payload.killSwitch === 'boolean') context.summary.killSwitch = payload.killSwitch
   upsertSummary(context.summary)
 
   safeUpdateSpan(context.rootSpan, {
     metadata: {
       provider: payload.provider,
-      model: payload.model
+      model: payload.model,
+      providerId: payload.providerId,
+      authMethod: payload.authMethod,
+      accountId: payload.accountId,
+      tokenSource: payload.tokenSource,
+      refreshState: payload.refreshState,
+      killSwitch: payload.killSwitch
     }
   })
 }

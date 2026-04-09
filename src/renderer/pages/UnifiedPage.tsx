@@ -50,6 +50,24 @@ function clampSidebarWidth(width: number): number {
   return Math.max(SIDEBAR_WIDTH_MIN, Math.min(SIDEBAR_WIDTH_MAX, width))
 }
 
+type ActiveConversationSyncTab = {
+  type: string
+  spaceId?: string
+  conversationId?: string
+} | null | undefined
+
+export function resolveConversationSyncTarget(
+  activeTab: ActiveConversationSyncTab,
+  currentSpaceId: string | null,
+  currentConversationId: string | null
+): string | null {
+  if (!currentSpaceId) return null
+  if (!activeTab || activeTab.type !== 'chat') return null
+  if (!activeTab.spaceId || activeTab.spaceId !== currentSpaceId) return null
+  if (!activeTab.conversationId || activeTab.conversationId === currentConversationId) return null
+  return activeTab.conversationId
+}
+
 export function UnifiedPage() {
   const { t } = useTranslation()
   const {
@@ -145,6 +163,7 @@ export function UnifiedPage() {
   }, [spaceById, t])
   const loadingSpaceIdsRef = useRef<Set<string>>(new Set())
   const conversationSelectTicketRef = useRef(0)
+  const tabConversationSyncInFlightRef = useRef<string | null>(null)
   const [artifactRailExpanded, setArtifactRailExpanded] = useState(false)
   const [rightPanelMode, setRightPanelMode] = useState<'artifacts' | 'skills' | 'agents'>('artifacts')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
@@ -218,6 +237,19 @@ export function UnifiedPage() {
     if (!currentSpaceId) return
     void switchSpaceSession(currentSpaceId)
   }, [currentSpaceId, switchSpaceSession])
+
+  useEffect(() => {
+    const targetConversationId = resolveConversationSyncTarget(activeTab, currentSpaceId, currentConversationId)
+    if (!targetConversationId) return
+    if (tabConversationSyncInFlightRef.current === targetConversationId) return
+    tabConversationSyncInFlightRef.current = targetConversationId
+
+    void selectConversation(targetConversationId).finally(() => {
+      if (tabConversationSyncInFlightRef.current === targetConversationId) {
+        tabConversationSyncInFlightRef.current = null
+      }
+    })
+  }, [activeTab, currentConversationId, currentSpaceId, selectConversation])
 
   useEffect(() => {
     if (!currentSpaceId) return
