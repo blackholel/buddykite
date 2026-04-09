@@ -10,10 +10,12 @@ const mockCurrentSpace = {
   path: '/tmp/space-1'
 }
 let mockCurrentSpaceId = 'space-1'
+let mockCurrentConversationId: string | null = null
 let capturedSidebarProps: Record<string, any> | null = null
 let triggerTopTabClick: null | (() => Promise<void>) = null
 let rightPanelModeOverride: 'artifacts' | 'skills' | 'agents' | null = null
 const setRightPanelModeMock = vi.fn()
+const mockSelectConversation = vi.fn(async () => {})
 const mockUpdateSpace = vi.fn(async () => null)
 const mockDeleteSpace = vi.fn(async () => true)
 const mockCreateConversation = vi.fn(async () => null)
@@ -143,13 +145,13 @@ vi.mock('../../stores/space.store', () => ({
 vi.mock('../../stores/chat.store', () => ({
   useChatStore: (selector: (state: any) => unknown) => selector({
     currentSpaceId: mockCurrentSpaceId,
-    getCurrentConversationId: () => null,
+    getCurrentConversationId: () => mockCurrentConversationId,
     getCurrentConversationMeta: () => null,
     spaceStates: new Map(),
     setCurrentSpace: vi.fn(),
     loadConversations: vi.fn(async () => {}),
     createConversation: mockCreateConversation,
-    selectConversation: vi.fn(async () => {}),
+    selectConversation: mockSelectConversation,
     renameConversation: vi.fn(async () => {}),
     deleteConversation: mockDeleteConversation
   })
@@ -161,11 +163,12 @@ vi.mock('../../stores/search.store', () => ({
   })
 }))
 
-import { UnifiedPage } from '../UnifiedPage'
+import { UnifiedPage, resolveConversationSyncTarget } from '../UnifiedPage'
 
 describe('UnifiedPage entry state', () => {
   beforeEach(() => {
     mockCurrentSpaceId = 'space-1'
+    mockCurrentConversationId = null
     mockCurrentSpace.isTemp = false
     capturedSidebarProps = null
     triggerTopTabClick = null
@@ -184,8 +187,45 @@ describe('UnifiedPage entry state', () => {
     mockDeleteSpace.mockClear()
     mockCreateConversation.mockClear()
     mockDeleteConversation.mockClear()
+    mockSelectConversation.mockClear()
     vi.mocked(navigateToConversationContext).mockClear()
     vi.mocked(navigateToSpaceContext).mockClear()
+  })
+
+  it('resolveConversationSyncTarget: 当前 space 的 chat tab 且会话不同，返回目标 conversationId', () => {
+    const target = resolveConversationSyncTarget(
+      { type: 'chat', spaceId: 'space-1', conversationId: 'conv-2' },
+      'space-1',
+      'conv-1'
+    )
+    expect(target).toBe('conv-2')
+  })
+
+  it('resolveConversationSyncTarget: active tab 非 chat 时返回 null', () => {
+    const target = resolveConversationSyncTarget(
+      { type: 'markdown', spaceId: 'space-1', conversationId: 'conv-2' },
+      'space-1',
+      'conv-1'
+    )
+    expect(target).toBeNull()
+  })
+
+  it('resolveConversationSyncTarget: active chat tab 会话与当前一致时返回 null', () => {
+    const target = resolveConversationSyncTarget(
+      { type: 'chat', spaceId: 'space-1', conversationId: 'conv-1' },
+      'space-1',
+      'conv-1'
+    )
+    expect(target).toBeNull()
+  })
+
+  it('resolveConversationSyncTarget: active chat tab 属于其他 space 时返回 null', () => {
+    const target = resolveConversationSyncTarget(
+      { type: 'chat', spaceId: 'space-2', conversationId: 'conv-2' },
+      'space-1',
+      'conv-1'
+    )
+    expect(target).toBeNull()
   })
 
   it('跨 space 会话激活先导航到空间，再异步选中会话并 openChat(false)', async () => {

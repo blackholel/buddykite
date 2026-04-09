@@ -10,6 +10,7 @@ const mockState = vi.hoisted(() => ({
     path: '/tmp/space-1'
   },
   currentSpaceId: 'space-1',
+  currentConversationId: 'conv-1',
   capturedSidebarProps: null as Record<string, any> | null,
   triggerTopTabClick: null as null | (() => Promise<void>),
   canvasTabs: [
@@ -28,6 +29,7 @@ const mockState = vi.hoisted(() => ({
       spaceId: 'space-2'
     }
   ],
+  activeTab: null as Record<string, unknown> | null,
   openChat: vi.fn(async () => {}),
   switchTab: vi.fn(async () => {}),
   switchSpaceSession: vi.fn(async () => {}),
@@ -75,7 +77,7 @@ vi.mock('../../hooks/useSearchShortcuts', () => ({
 vi.mock('../../hooks/useCanvasLifecycle', () => ({
   useCanvasLifecycle: () => ({
     tabs: mockState.canvasTabs,
-    activeTab: null,
+    activeTab: mockState.activeTab,
     isOpen: false,
     setOpen: vi.fn(),
     openChat: mockState.openChat,
@@ -169,8 +171,8 @@ vi.mock('../../stores/space.store', () => ({
 vi.mock('../../stores/chat.store', () => ({
   useChatStore: (selector: (state: any) => unknown) => selector({
     currentSpaceId: mockState.currentSpaceId,
-    getCurrentConversationId: () => 'conv-1',
-    getCurrentConversationMeta: () => ({ id: 'conv-1', title: '会话 A' }),
+    getCurrentConversationId: () => mockState.currentConversationId,
+    getCurrentConversationMeta: () => ({ id: mockState.currentConversationId, title: '会话 A' }),
     spaceStates: mockState.spaceStates,
     setCurrentSpace: vi.fn(),
     loadConversations: vi.fn(async () => {}),
@@ -194,13 +196,15 @@ vi.mock('../../stores/search.store', () => ({
   })
 }))
 
-import { UnifiedPage } from '../UnifiedPage'
+import { UnifiedPage, resolveConversationSyncTarget } from '../UnifiedPage'
 
 describe('UnifiedPage space session flow', () => {
   beforeEach(() => {
     mockState.currentSpaceId = 'space-1'
+    mockState.currentConversationId = 'conv-1'
     mockState.capturedSidebarProps = null
     mockState.triggerTopTabClick = null
+    mockState.activeTab = null
     mockState.openChat.mockClear()
     mockState.switchTab.mockClear()
     mockState.switchSpaceSession.mockClear()
@@ -285,6 +289,13 @@ describe('UnifiedPage space session flow', () => {
     expect(mockState.switchTab).toHaveBeenCalledWith('tab-space-2')
     expect(mockState.navigateToConversationContext).not.toHaveBeenCalled()
     expect(mockState.navigateToSpaceContext).not.toHaveBeenCalled()
+    expect(
+      resolveConversationSyncTarget(
+        { type: 'chat', spaceId: 'space-1', conversationId: 'conv-2' },
+        mockState.currentSpaceId,
+        mockState.currentConversationId
+      )
+    ).toBe('conv-2')
   })
 
   it('点击工作区新建会话会创建并自动打开 chat tab', async () => {
