@@ -16,7 +16,7 @@ import type { Artifact, ArtifactViewMode } from '../../types'
 import { useIsGenerating } from '../../stores/chat.store'
 import { useOnboardingStore } from '../../stores/onboarding.store'
 import { useCanvasStore } from '../../stores/canvas.store'
-import { FolderOpen, Monitor, LayoutGrid, FolderTree, X, Bell } from 'lucide-react'
+import { FolderOpen, Monitor, X } from 'lucide-react'
 import { ONBOARDING_ARTIFACT_NAME } from '../onboarding/onboardingData'
 import { useTranslation } from '../../i18n'
 
@@ -91,10 +91,8 @@ export function ArtifactRail({
   const isExpanded = isOverlayMode ? true : (isControlled ? externalExpanded : internalExpanded)
 
   const [isLoading, setIsLoading] = useState(false)
-  const [railHint, setRailHint] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<ArtifactViewMode>(getInitialViewMode)
   const [mobileOverlayOpen, setMobileOverlayOpen] = useState(false)
-  const previousArtifactCountRef = useRef<number | null>(null)
   const previousActiveArtifactPathRef = useRef<string | null>(null)
   const latestSpaceIdRef = useRef(spaceId)
   const loadArtifactsRequestIdRef = useRef(0)
@@ -140,14 +138,6 @@ export function ArtifactRail({
   }, [isOnboardingViewStep, completeOnboarding])
 
   // Toggle view mode and persist
-  const toggleViewMode = useCallback(() => {
-    setViewMode(prev => {
-      const next = prev === 'card' ? 'tree' : 'card'
-      localStorage.setItem(VIEW_MODE_STORAGE_KEY, next)
-      return next
-    })
-  }, [])
-
   // Close mobile overlay when switching to desktop
   useEffect(() => {
     if (!isMobile && mobileOverlayOpen) {
@@ -156,24 +146,13 @@ export function ArtifactRail({
   }, [isMobile, mobileOverlayOpen])
 
   useEffect(() => {
-    if (!railHint) return
-    const timer = window.setTimeout(() => {
-      setRailHint(null)
-    }, 3500)
-    return () => window.clearTimeout(timer)
-  }, [railHint])
-
-  useEffect(() => {
     if (!activeArtifactPath) {
       previousActiveArtifactPathRef.current = null
       return
     }
     if (previousActiveArtifactPathRef.current === activeArtifactPath) return
     previousActiveArtifactPathRef.current = activeArtifactPath
-    if (!isExpanded) {
-      setRailHint(t('Preview opened. Click Current space files to locate this file.'))
-    }
-  }, [activeArtifactPath, isExpanded, t])
+  }, [activeArtifactPath])
 
   // Load artifacts from the main process
   const loadArtifacts = useCallback(async () => {
@@ -188,20 +167,7 @@ export function ArtifactRail({
       if (isStale) return
       if (response.success && response.data) {
         const nextArtifacts = response.data as Artifact[]
-        const nextCount = nextArtifacts.length
-        const previousCount = previousArtifactCountRef.current
-        const hasNewArtifacts = previousCount != null && nextCount > previousCount
 
-        if (hasNewArtifacts && isExpanded && !isOverlayMode && collapseMode === 'rail') {
-          if (isControlled) {
-            onExpandedChange?.(false)
-          } else {
-            setInternalExpanded(false)
-          }
-          setRailHint(t('New files are ready. Click Current space files to review.'))
-        }
-
-        previousArtifactCountRef.current = nextCount
         setArtifacts(nextArtifacts)
       }
     } catch (error) {
@@ -213,10 +179,9 @@ export function ArtifactRail({
       if (isStale) return
       setIsLoading(false)
     }
-  }, [collapseMode, isControlled, isExpanded, isOverlayMode, onExpandedChange, spaceId, t])
+  }, [spaceId])
 
   useEffect(() => {
-    previousArtifactCountRef.current = null
     previousActiveArtifactPathRef.current = null
   }, [spaceId])
 
@@ -243,7 +208,6 @@ export function ArtifactRail({
   }, [isOnboardingViewStep, loadArtifacts])
 
   const handleShowCurrentSpaceFiles = useCallback(() => {
-    setRailHint(null)
     setViewMode('tree')
     localStorage.setItem(VIEW_MODE_STORAGE_KEY, 'tree')
 
@@ -325,39 +289,6 @@ export function ArtifactRail({
     </div>
   )
 
-  // Shared footer renderer
-  // flex-shrink-0 ensures footer doesn't compress, allowing content to take remaining space
-  const renderFooter = () => (
-    <div className="flex-shrink-0 p-2 border-t border-border">
-      {railHint && (
-        <div className="mb-2 flex items-start gap-1.5 rounded-lg border border-border bg-secondary/50 px-2 py-1.5 text-[11px] text-muted-foreground">
-          <Bell className="w-3.5 h-3.5 mt-0.5 text-foreground/60 flex-shrink-0" />
-          <span className="leading-relaxed">{railHint}</span>
-        </div>
-      )}
-      {viewMode === 'card' && artifacts.length > 0 && (
-        <p className="text-xs text-muted-foreground text-center mb-2">
-          {artifacts.length} {t('artifacts')}
-        </p>
-      )}
-      {isWebMode ? (
-        <div className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs text-muted-foreground/50 rounded-lg cursor-not-allowed">
-          <Monitor className="w-4 h-4" />
-          <span>{t('Please open folder in client')}</span>
-        </div>
-      ) : (
-        <button
-          onClick={handleShowCurrentSpaceFiles}
-          className="w-full flex items-center justify-center gap-1.5 px-2 py-2 text-xs text-muted-foreground hover:bg-secondary hover:text-foreground rounded-lg transition-colors"
-          title={t('Show current space files')}
-        >
-          <FolderOpen className="w-4 h-4 text-amber-500" />
-          <span>{t('Current space files')}</span>
-        </button>
-      )}
-    </div>
-  )
-
   // ==================== Mobile Overlay Mode ====================
   if (isMobile) {
     return (
@@ -379,7 +310,7 @@ export function ArtifactRail({
           "
           aria-label={t('Open artifacts panel')}
         >
-          <FolderOpen className="w-4 h-4 text-amber-500" />
+          <FolderOpen className="w-4 h-4 text-muted-foreground/75" />
           <span className="text-[10px] font-medium text-muted-foreground">
             {displayCount}
           </span>
@@ -405,28 +336,10 @@ export function ArtifactRail({
               "
             >
               {/* Header */}
-              <div className="p-3 border-b border-border flex items-center justify-between">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-sm font-medium text-muted-foreground">
-                    {t('Resources')} ({displayCount})
-                  </span>
-                  <button
-                    onClick={toggleViewMode}
-                    className={`
-                      p-1 rounded transition-all duration-200
-                      hover:bg-secondary/80
-                      ${viewMode === 'tree' ? 'bg-secondary text-primary' : 'text-muted-foreground/50 hover:text-muted-foreground'}
-                    `}
-                    title={viewMode === 'card' ? t('Switch to tree view') : t('Switch to card view')}
-                    aria-label={viewMode === 'card' ? t('Switch to tree view') : t('Switch to card view')}
-                  >
-                    {viewMode === 'card' ? (
-                      <FolderTree className="w-3.5 h-3.5" />
-                    ) : (
-                      <LayoutGrid className="w-3.5 h-3.5" />
-                    )}
-                  </button>
-                </div>
+              <div className="p-3 border-b border-border/60 flex items-center justify-between">
+                <span className="text-xs font-medium tracking-[0.04em] text-muted-foreground/75">
+                  {t('Current space files')}
+                </span>
                 <button
                   onClick={() => setMobileOverlayOpen(false)}
                   className="p-1 hover:bg-secondary rounded transition-colors"
@@ -438,9 +351,6 @@ export function ArtifactRail({
 
               {/* Content */}
               {renderContent()}
-
-              {/* Footer */}
-              {renderFooter()}
             </div>
           </div>
         )}
@@ -451,28 +361,10 @@ export function ArtifactRail({
   if (isOverlayMode) {
     return (
       <div className="space-studio-rail space-studio-rail-overlay h-full w-full flex flex-col relative">
-        <div className="flex-shrink-0 px-3 h-10 border-b border-border flex items-center justify-between">
-          <div className="flex items-center gap-1.5">
-            <span className="text-sm font-medium text-muted-foreground">
-              {t('Resources')} ({displayCount})
-            </span>
-            <button
-              onClick={toggleViewMode}
-              className={`
-                p-1 rounded transition-all duration-200
-                hover:bg-secondary/80
-                ${viewMode === 'tree' ? 'bg-secondary text-primary' : 'text-muted-foreground/50 hover:text-muted-foreground'}
-              `}
-              title={viewMode === 'card' ? t('Switch to tree view (developer)') : t('Switch to card view')}
-              aria-label={viewMode === 'card' ? t('Switch to tree view (developer)') : t('Switch to card view')}
-            >
-              {viewMode === 'card' ? (
-                <FolderTree className="w-3.5 h-3.5" />
-              ) : (
-                <LayoutGrid className="w-3.5 h-3.5" />
-              )}
-            </button>
-          </div>
+        <div className="flex-shrink-0 px-3 h-10 border-b border-border/60 flex items-center justify-between">
+          <span className="text-xs font-medium tracking-[0.04em] text-muted-foreground/75">
+            {t('Current space files')}
+          </span>
           <button
             onClick={onClose}
             className="p-1 hover:bg-secondary rounded transition-colors"
@@ -483,7 +375,6 @@ export function ArtifactRail({
         </div>
 
         {renderContent()}
-        {renderFooter()}
       </div>
     )
   }
@@ -506,27 +397,9 @@ export function ArtifactRail({
       {/* Header - height matches CanvasTabs (py-1.5 + h-7 content = ~40px) */}
       <div className="flex-shrink-0 px-3 h-10 flex items-center justify-between">
         {isExpanded && (
-          <div className="flex items-center gap-1.5">
-            <span className="text-sm font-medium text-muted-foreground">
-              {t('Resources')} ({displayCount})
-            </span>
-            <button
-              onClick={toggleViewMode}
-              className={`
-                p-1 rounded transition-all duration-200
-                hover:bg-secondary/80
-                ${viewMode === 'tree' ? 'bg-secondary text-primary' : 'text-muted-foreground/50 hover:text-muted-foreground'}
-              `}
-              title={viewMode === 'card' ? t('Switch to tree view (developer)') : t('Switch to card view')}
-              aria-label={viewMode === 'card' ? t('Switch to tree view (developer)') : t('Switch to card view')}
-            >
-              {viewMode === 'card' ? (
-                <FolderTree className="w-3.5 h-3.5" />
-              ) : (
-                <LayoutGrid className="w-3.5 h-3.5" />
-              )}
-            </button>
-          </div>
+          <span className="text-xs font-medium tracking-[0.04em] text-muted-foreground/75">
+            {t('Current space files')}
+          </span>
         )}
         {showHeaderToggle && isExpanded && (
           <button
@@ -535,16 +408,13 @@ export function ArtifactRail({
             title={t('Collapse artifacts panel')}
             aria-label={t('Collapse artifacts panel')}
           >
-            <FolderOpen className="w-4 h-4 text-amber-500" />
+            <FolderOpen className="w-4 h-4 text-muted-foreground/75" />
           </button>
         )}
       </div>
 
       {/* Content */}
       {isExpanded && renderContent()}
-
-      {/* Footer */}
-      {isExpanded && renderFooter()}
 
       {/* Collapsed state - show folder icon */}
       {!isExpanded && collapseMode === 'rail' && (
@@ -566,7 +436,7 @@ export function ArtifactRail({
               title={t('Show current space files')}
               aria-label={t('Show current space files')}
             >
-              <FolderOpen className="w-5 h-5 text-amber-500" />
+              <FolderOpen className="w-5 h-5 text-muted-foreground/75" />
             </button>
           )}
         </div>

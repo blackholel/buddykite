@@ -253,7 +253,7 @@ describe('UnifiedPage sidebar resize', () => {
 
     const sidebar = renderer.container.querySelector('[data-testid="mock-unified-sidebar"]')
     const handle = renderer.container.querySelector('[data-testid="unified-sidebar-resize-handle"]')
-    expect(sidebar?.getAttribute('data-expanded-width')).toBe('240')
+    expect(sidebar?.getAttribute('data-expanded-width')).toBe('288')
     expect(handle).not.toBeNull()
 
     await dragHandle(handle as Element, 240, 900)

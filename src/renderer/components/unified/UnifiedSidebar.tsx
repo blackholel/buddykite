@@ -480,10 +480,15 @@ export function UnifiedSidebar({
                     </button>
                     <button
                       onClick={() => handleSelectSpace(space.id)}
-                      className="flex-1 min-w-0 flex items-center gap-2 text-left"
+                      className="flex flex-1 min-w-0 items-center gap-2 text-left"
                     >
-                      <SpaceIcon iconId={space.icon} size={16} />
-                      <span className="text-sm truncate">{space.isTemp ? 'Kite' : space.name}</span>
+                      <SpaceIcon
+                        iconId={space.icon}
+                        size={16}
+                        colored={false}
+                        className="h-4 w-4 shrink-0 text-muted-foreground/80"
+                      />
+                      <span className="min-w-0 flex-1 truncate text-sm">{space.isTemp ? 'Kite' : space.name}</span>
                     </button>
                     {statusLabel ? (
                       <span className="unified-space-row-status text-[11px] text-muted-foreground bg-background/60 rounded-md px-1.5 py-0.5">

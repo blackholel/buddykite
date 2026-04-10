@@ -42,7 +42,7 @@ function pickNextSpaceAfterDelete<T extends { id: string; updatedAt: string }>(
 }
 
 const SIDEBAR_WIDTH_STORAGE_KEY = 'hello-halo:unified-sidebar-width'
-const SIDEBAR_WIDTH_DEFAULT = 240
+const SIDEBAR_WIDTH_DEFAULT = 288
 const SIDEBAR_WIDTH_MIN = 220
 const SIDEBAR_WIDTH_MAX = 400
 

@@ -156,7 +156,13 @@ export function ArtifactCard({ artifact, spaceId, isActive = false }: ArtifactCa
       <div className="flex items-center gap-2.5">
         {/* Icon */}
         <div className={`transition-transform duration-200 ${isHovered ? 'scale-110' : ''}`}>
-          <FileIcon extension={artifact.extension} isFolder={isFolder} size={18} />
+          <FileIcon
+            extension={artifact.extension}
+            isFolder={isFolder}
+            colored={false}
+            className="text-muted-foreground/75"
+            size={18}
+          />
         </div>
 
         {/* File info */}

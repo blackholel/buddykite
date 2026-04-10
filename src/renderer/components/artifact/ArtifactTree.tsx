@@ -47,8 +47,8 @@ interface ArtifactTreeProps {
 }
 
 // Fixed offsets for tree height calculation (in pixels)
-// App Header (44) + Rail Header (40) + Rail Footer (~60) + Tree Header (28) + Toolbar (32) + buffer
-const TREE_HEIGHT_OFFSET = 212
+// App Header (44) + Rail Header (40) + Rail Footer (~60) + buffer
+const TREE_HEIGHT_OFFSET = 152
 
 // Simple hook using window height minus fixed offset
 // No complex measurement needed - window.innerHeight is always immediately available
@@ -241,16 +241,6 @@ export function ArtifactTree({ spaceId, activeFilePath = null }: ArtifactTreePro
     return () => window.cancelAnimationFrame(raf)
   }, [createDraft?.type, createDraft?.parentPath])
 
-  // Count total items
-  const itemCount = useMemo(() => {
-    const count = (nodes: TreeNodeData[]): number => {
-      return nodes.reduce((sum, node) => {
-        return sum + 1 + (node.children ? count(node.children) : 0)
-      }, 0)
-    }
-    return count(treeData)
-  }, [treeData])
-
   // File operations
   const startCreateDraft = useCallback((type: 'file' | 'folder', parentPath?: string) => {
     const targetDir = parentPath || spaceWorkingDir
@@ -427,7 +417,7 @@ export function ArtifactTree({ spaceId, activeFilePath = null }: ArtifactTreePro
     if (!createDraft) return null
 
     return (
-      <div className="px-2 py-1 border-b border-border/50 bg-card/95">
+      <div className="px-2 py-1">
         <div className="flex items-center gap-2 rounded border border-primary/40 bg-background px-2 py-1">
           {createDraft.type === 'folder' ? (
             <FolderPlus className="w-3.5 h-3.5 text-primary flex-shrink-0" />
@@ -485,7 +475,7 @@ export function ArtifactTree({ spaceId, activeFilePath = null }: ArtifactTreePro
     return (
       <div className="flex flex-col h-full">
         {/* Toolbar */}
-        <div className="flex-shrink-0 flex items-center gap-1 px-2 py-1 border-b border-border/50 bg-card/95">
+        <div className="flex-shrink-0 flex items-center gap-1 px-2 py-1.5">
           <button
             onClick={() => startCreateDraft('file')}
             className="p-1 rounded hover:bg-secondary/80 text-muted-foreground hover:text-foreground transition-colors"
@@ -585,7 +575,7 @@ export function ArtifactTree({ spaceId, activeFilePath = null }: ArtifactTreePro
       <TreeOperationsContext.Provider value={treeOperations}>
         <div ref={containerRef} className="flex flex-col h-full relative">
           {/* Toolbar */}
-          <div className="flex-shrink-0 flex items-center gap-1 px-2 py-1 border-b border-border/50 bg-card/95">
+          <div className="flex-shrink-0 flex items-center gap-1 px-2 py-1.5">
             <button
               onClick={() => startCreateDraft('file')}
               className="p-1 rounded hover:bg-secondary/80 text-muted-foreground hover:text-foreground transition-colors"
@@ -607,11 +597,6 @@ export function ArtifactTree({ spaceId, activeFilePath = null }: ArtifactTreePro
             >
               <RefreshCw className="w-3.5 h-3.5" />
             </button>
-          </div>
-
-          {/* Header with count */}
-          <div className="flex-shrink-0 bg-card/95 backdrop-blur-sm px-2 py-1.5 border-b border-border/50 text-[10px] text-muted-foreground uppercase tracking-wider">
-            {t('Current space files')} ({itemCount})
           </div>
 
           {renderCreateDraftInput()}
@@ -847,6 +832,8 @@ function TreeNodeComponent({ node, style, dragHandle }: NodeRendererProps<TreeNo
           extension={data.extension}
           isFolder={isFolder}
           isOpen={isFolder && node.isOpen}
+          colored={false}
+          className="text-muted-foreground/75"
           size={15}
         />
       </span>
