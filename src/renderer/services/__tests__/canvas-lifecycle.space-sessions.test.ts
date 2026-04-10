@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { canvasLifecycle } from '../canvas-lifecycle'
 
 describe('canvasLifecycle space sessions', () => {
@@ -161,5 +161,30 @@ describe('canvasLifecycle space sessions', () => {
 
     expect(result.removedTabIds).toHaveLength(2)
     expect(notifications).toHaveLength(1)
+  })
+
+  it('setOpen 过渡结束后会同步通知 isTransitioning=false', async () => {
+    await canvasLifecycle.openChat('space-a', 'conv-a-1', 'A 会话 1')
+    const transitionStates: boolean[] = []
+    const unsubscribe = canvasLifecycle.onTransitioningStateChange((isTransitioning) => {
+      transitionStates.push(isTransitioning)
+    })
+
+    transitionStates.length = 0
+    vi.useFakeTimers()
+    try {
+      canvasLifecycle.setOpen(false)
+
+      expect(canvasLifecycle.getIsTransitioning()).toBe(true)
+      expect(transitionStates).toEqual([true])
+
+      vi.advanceTimersByTime(300)
+
+      expect(canvasLifecycle.getIsTransitioning()).toBe(false)
+      expect(transitionStates).toEqual([true, false])
+    } finally {
+      unsubscribe()
+      vi.useRealTimers()
+    }
   })
 })

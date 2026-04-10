@@ -380,6 +380,8 @@ export function CollapsibleCanvas({ children }: CollapsibleCanvasProps) {
     <div
       className={`
         ${canvasWidth}
+        h-full min-h-0
+        flex flex-col
         overflow-hidden
         transition-all duration-300 ease-in-out
         ${isTransitioning ? 'pointer-events-none' : ''}

@@ -137,7 +137,7 @@ export function MarkdownViewer({ tab, onScrollChange, onContentChange, onSave }:
   const markdownBasePath = tab.path ? dirname(tab.path) : tab.workDir
 
   return (
-    <div className="relative flex flex-col h-full bg-background">
+    <div className="relative flex flex-col h-full min-h-0 bg-background">
       {/* Toolbar */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-card/50">
         <div className="flex items-center gap-2">
@@ -218,7 +218,7 @@ export function MarkdownViewer({ tab, onScrollChange, onContentChange, onSave }:
       <div
         ref={containerRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-auto"
+        className="flex-1 min-h-0 overflow-auto"
       >
         {viewMode === 'rendered' ? (
           <div className="p-6">

@@ -30,6 +30,7 @@ export function useCanvasLifecycle() {
   const [tabs, setTabs] = useState<TabState[]>(() => canvasLifecycle.getTabs())
   const [activeTabId, setActiveTabId] = useState<string | null>(() => canvasLifecycle.getActiveTabId())
   const [isOpen, setIsOpen] = useState(() => canvasLifecycle.getIsOpen())
+  const [isTransitioning, setIsTransitioning] = useState(() => canvasLifecycle.getIsTransitioning())
   const [currentSpaceId, setCurrentSpaceId] = useState<string | null>(() => canvasLifecycle.getCurrentSpaceId())
 
   // Subscribe to state changes
@@ -41,11 +42,13 @@ export function useCanvasLifecycle() {
     })
     const unsubActive = canvasLifecycle.onActiveTabChange(setActiveTabId)
     const unsubOpen = canvasLifecycle.onOpenStateChange(setIsOpen)
+    const unsubTransition = canvasLifecycle.onTransitioningStateChange(setIsTransitioning)
 
     return () => {
       unsubTabs()
       unsubActive()
       unsubOpen()
+      unsubTransition()
     }
   }, [])
 
@@ -183,7 +186,7 @@ export function useCanvasLifecycle() {
     activeTabId,
     activeTab,
     isOpen,
-    isTransitioning: canvasLifecycle.getIsTransitioning(),
+    isTransitioning,
     tabCount: tabs.length,
     currentSpaceId,
     currentSpaceSession,

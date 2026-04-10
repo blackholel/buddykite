@@ -66,6 +66,7 @@ export interface CloseConversationTabsResult {
 type TabsChangeCallback = (tabs: TabState[]) => void
 type ActiveTabChangeCallback = (tabId: string | null) => void
 type OpenStateChangeCallback = (isOpen: boolean) => void
+type TransitioningStateChangeCallback = (isTransitioning: boolean) => void
 
 // ============================================
 // Utility Functions
@@ -205,6 +206,8 @@ class CanvasLifecycle {
   private tabsChangeCallbacks: Set<TabsChangeCallback> = new Set()
   private activeTabChangeCallbacks: Set<ActiveTabChangeCallback> = new Set()
   private openStateChangeCallbacks: Set<OpenStateChangeCallback> = new Set()
+  private transitioningStateChangeCallbacks: Set<TransitioningStateChangeCallback> = new Set()
+  private transitionTimer: ReturnType<typeof setTimeout> | null = null
 
   // Track if already initialized
   private initialized: boolean = false
@@ -220,7 +223,15 @@ class CanvasLifecycle {
    * Cleanup resources
    */
   destroy(): void {
+    this.clearTransitionTimer()
     void this.closeAll()
+  }
+
+  private clearTransitionTimer(): void {
+    if (this.transitionTimer != null) {
+      clearTimeout(this.transitionTimer)
+      this.transitionTimer = null
+    }
   }
 
   private createSession(spaceId: string): SpaceSessionState {
@@ -1010,14 +1021,18 @@ class CanvasLifecycle {
     // Can't open if no visible tabs
     if (open && this.getVisibleTabs().length === 0) return
 
+    this.clearTransitionTimer()
     this.isOpen = open
     this.isTransitioning = true
 
+    this.notifyTransitioningStateChange()
     this.notifyOpenStateChange()
 
     // Clear transitioning after animation
-    setTimeout(() => {
+    this.transitionTimer = setTimeout(() => {
       this.isTransitioning = false
+      this.transitionTimer = null
+      this.notifyTransitioningStateChange()
     }, 300)
   }
 
@@ -1099,6 +1114,13 @@ class CanvasLifecycle {
     return () => this.openStateChangeCallbacks.delete(callback)
   }
 
+  onTransitioningStateChange(callback: TransitioningStateChangeCallback): () => void {
+    this.transitioningStateChangeCallbacks.add(callback)
+    // Immediately call with current state
+    callback(this.isTransitioning)
+    return () => this.transitioningStateChangeCallbacks.delete(callback)
+  }
+
   // ============================================
   // Notification Helpers
   // ============================================
@@ -1114,6 +1136,10 @@ class CanvasLifecycle {
 
   private notifyOpenStateChange(): void {
     this.openStateChangeCallbacks.forEach(cb => cb(this.isOpen))
+  }
+
+  private notifyTransitioningStateChange(): void {
+    this.transitioningStateChangeCallbacks.forEach(cb => cb(this.isTransitioning))
   }
 }
 

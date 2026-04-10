@@ -95,6 +95,10 @@ export const useCanvasStore = create<CanvasState>((set, get) => {
     set({ isOpen })
   })
 
+  canvasLifecycle.onTransitioningStateChange((isTransitioning) => {
+    set({ isTransitioning })
+  })
+
   return {
     // Initial state - synchronized from canvasLifecycle singleton
     isOpen: canvasLifecycle.getIsOpen(),
