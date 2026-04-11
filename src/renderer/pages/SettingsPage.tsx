@@ -54,8 +54,67 @@ function selectFirstEnabledProfileId(profiles: ApiProfile[]): string {
   return enabledProfile?.id || profiles[0]?.id || ''
 }
 
-function ensureTemplateProfiles(profiles: ApiProfile[]): ApiProfile[] {
-  return profiles
+export function resolveTemplateKeyFromProfile(profile: ApiProfile): string | null {
+  if (profile.vendor === 'minimax' && profile.protocol === 'anthropic_compat') return 'minimax'
+  if (profile.vendor === 'moonshot' && profile.protocol === 'anthropic_compat') return 'moonshot'
+  if (profile.vendor === 'zhipu' && profile.protocol === 'anthropic_compat') return 'glm'
+  if (profile.vendor === 'openai' && profile.protocol === 'openai_compat') return 'openai'
+  if (profile.vendor === 'anthropic' && profile.protocol === 'anthropic_official') return 'anthropic_official'
+  if (profile.protocol === 'anthropic_compat' && (profile.vendor === 'custom' || profile.vendor === 'anthropic')) {
+    return 'anthropic_compat'
+  }
+  return null
+}
+
+export function createTemplatePlaceholderProfile(templateKey: string): ApiProfile {
+  const template = AI_PROFILE_TEMPLATES.find(item => item.key === templateKey) || AI_PROFILE_TEMPLATES[0]
+  return {
+    id: `preset-${template.key}`,
+    name: template.label,
+    apiKey: '',
+    enabled: false,
+    presetKey: template.presetKey,
+    vendor: template.vendor,
+    protocol: template.protocol,
+    apiUrl: template.apiUrl,
+    defaultModel: template.defaultModel,
+    modelCatalog: [...template.modelCatalog],
+    docUrl: template.docUrl,
+    openAICodexAuthMode: template.vendor === 'openai' && template.protocol === 'openai_compat'
+      ? 'api_key'
+      : undefined,
+    openAICodexTenantId: template.vendor === 'openai' && template.protocol === 'openai_compat'
+      ? OPENAI_CODEX_DEFAULT_TENANT_ID
+      : undefined,
+    openAICodexAccountId: undefined
+  }
+}
+
+export function getFirstMissingTemplateKey(profiles: ApiProfile[]): string | null {
+  const existingTemplateKeys = new Set(
+    profiles
+      .map(resolveTemplateKeyFromProfile)
+      .filter((templateKey): templateKey is string => Boolean(templateKey))
+  )
+  const missingTemplate = AI_PROFILE_TEMPLATES.find(template => !existingTemplateKeys.has(template.key))
+  return missingTemplate?.key || null
+}
+
+export function ensureTemplateProfiles(profiles: ApiProfile[]): ApiProfile[] {
+  const templateProfileByKey = new Map<string, ApiProfile>()
+
+  for (const profile of profiles) {
+    const templateKey = resolveTemplateKeyFromProfile(profile)
+    if (!templateKey || templateProfileByKey.has(templateKey)) continue
+    templateProfileByKey.set(templateKey, profile)
+  }
+
+  const mergedTemplateProfiles = AI_PROFILE_TEMPLATES.map(template =>
+    templateProfileByKey.get(template.key) || createTemplatePlaceholderProfile(template.key)
+  )
+
+  const additionalProfiles = profiles.filter(profile => !resolveTemplateKeyFromProfile(profile))
+  return [...mergedTemplateProfiles, ...additionalProfiles]
 }
 
 function getProfileMonogram(name: string): string {
@@ -168,7 +227,7 @@ const SETTINGS_SECTION_GROUPS: Array<{ id: SettingsSectionGroup; labelKey: strin
 ]
 
 const DEFAULT_EXPANDED_MODEL_STEPS: Record<ModelSetupStep, boolean> = {
-  provider: false,
+  provider: true,
   account: true,
   model: false
 }
@@ -567,6 +626,8 @@ export function SettingsPage() {
     () => profiles.find(profile => profile.id === selectedProfileId) || null,
     [profiles, selectedProfileId]
   )
+  const firstMissingTemplateKey = useMemo(() => getFirstMissingTemplateKey(profiles), [profiles])
+  const canAddProfileFromTemplate = Boolean(firstMissingTemplateKey)
   const selectedCatalog = useMemo(
     () => (selectedProfile
       ? normalizeModelCatalog(selectedProfile.defaultModel, selectedProfile.modelCatalog)
@@ -1361,12 +1422,12 @@ export function SettingsPage() {
   const createProfileFromTemplate = (templateKey?: string) => {
     const template = AI_PROFILE_TEMPLATES.find(item => item.key === templateKey) || AI_PROFILE_TEMPLATES[0]
     const profileName = toUniqueProfileName(template.label, profiles)
-    const profileId = createProfileId(template.key)
+    const profileId = templateKey ? `preset-${template.key}` : createProfileId(template.key)
     const nextProfile: ApiProfile = {
       id: profileId,
       name: profileName,
       apiKey: '',
-      enabled: true,
+      enabled: false,
       presetKey: template.presetKey,
       vendor: template.vendor,
       protocol: template.protocol,
@@ -1392,14 +1453,15 @@ export function SettingsPage() {
   }
 
   const handleAddProfileFromTemplate = () => {
-    createProfileFromTemplate(selectedTemplate?.key)
+    if (!firstMissingTemplateKey) return
+    createProfileFromTemplate(firstMissingTemplateKey)
   }
 
   const handleSelectProviderTemplate = (templateKey: string) => {
     const template = AI_PROFILE_TEMPLATES.find(item => item.key === templateKey)
     if (!template) return
 
-    const existingProfile = profiles.find(profile => profile.presetKey === template.presetKey)
+    const existingProfile = profiles.find(profile => resolveTemplateKeyFromProfile(profile) === template.key)
     if (existingProfile) {
       setSelectedProfileId(existingProfile.id)
       setValidationResult(null)
@@ -1741,7 +1803,8 @@ export function SettingsPage() {
                 <button
                   type="button"
                   onClick={handleAddProfileFromTemplate}
-                  className="inline-flex h-7 w-7 items-center justify-center rounded-md text-xl leading-none text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
+                  disabled={!canAddProfileFromTemplate}
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-md text-xl leading-none text-muted-foreground hover:bg-secondary/60 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
                   title={t('Add account')}
                 >
                   +
