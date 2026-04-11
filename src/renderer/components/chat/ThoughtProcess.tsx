@@ -612,7 +612,7 @@ export function ThoughtProcess({
         className={`
           relative rounded-2xl border overflow-hidden transition-all duration-300
           ${isThinking
-            ? 'border-primary/25 bg-primary/[0.03]'
+            ? 'border-primary/25 bg-primary/[0.03] thinking-pulse'
             : errorCount > 0
               ? 'border-destructive/20 bg-destructive/[0.03]'
               : 'border-border/30 bg-secondary/10'
@@ -625,7 +625,7 @@ export function ThoughtProcess({
           className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-secondary/20 transition-colors duration-200"
         >
           {isThinking ? (
-            <Loader2 size={14} className="text-primary animate-spin" />
+            <Zap size={14} className="text-primary/80" />
           ) : (
             <CheckCircle2
               size={14}
@@ -633,8 +633,12 @@ export function ThoughtProcess({
             />
           )}
 
-          <div className="min-w-0 flex-1">
-            <div className={`text-[13px] font-medium ${isThinking ? 'text-primary' : 'text-foreground/80'}`}>
+          <div className="min-w-0 flex-1" role="status" aria-live="polite" aria-atomic="true">
+            <div
+              className={`text-[13px] font-medium ${
+                isThinking ? 'text-primary thinking-status-shimmer' : 'text-foreground/80'
+              }`}
+            >
               AI 正在执行
             </div>
             {(() => {

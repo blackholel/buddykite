@@ -8,7 +8,7 @@ describe('ThoughtProcess visibility filtering', () => {
       {
         id: 't-debug',
         type: 'system',
-        content: 'hook raw output',
+        content: 'Connected | Model: gpt-5.4',
         timestamp: new Date().toISOString(),
         visibility: 'debug'
       },

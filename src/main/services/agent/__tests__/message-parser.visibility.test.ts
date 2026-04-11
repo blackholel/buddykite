@@ -15,7 +15,7 @@ describe('message-parser visibility', () => {
     expect(hookStarted[0].visibility).toBe('debug')
   })
 
-  it('keeps user-facing system summaries as user visibility', () => {
+  it('marks init system message as debug while keeping user-facing summaries visible', () => {
     const initThoughts = parseSDKMessages({
       type: 'system',
       subtype: 'init',
@@ -29,7 +29,7 @@ describe('message-parser visibility', () => {
       summary: 'Running task'
     })
 
-    expect(initThoughts[0]?.visibility).toBe('user')
+    expect(initThoughts[0]?.visibility).toBe('debug')
     expect(taskThoughts[0]?.visibility).toBe('user')
   })
 

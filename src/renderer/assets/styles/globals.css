@@ -421,6 +421,37 @@ body {
   animation: thinking-pulse 2s ease-in-out infinite;
 }
 
+@keyframes thinking-status-shimmer {
+  0% {
+    text-shadow: 0 0 0 hsl(var(--primary) / 0.0);
+    opacity: 0.72;
+  }
+  50% {
+    text-shadow: 0 0 10px hsl(var(--primary) / 0.22);
+    opacity: 1;
+  }
+  100% {
+    text-shadow: 0 0 0 hsl(var(--primary) / 0.0);
+    opacity: 0.72;
+  }
+}
+
+.thinking-status-shimmer {
+  animation: thinking-status-shimmer 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progress-indeterminate,
+  .thinking-pulse,
+  .thinking-status-shimmer {
+    animation: none !important;
+  }
+
+  .progress-indeterminate {
+    transform: none !important;
+  }
+}
+
 /* Gentle pulse animation */
 @keyframes pulse-gentle {
   0%, 100% {

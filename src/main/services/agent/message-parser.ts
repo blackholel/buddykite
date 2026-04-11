@@ -131,7 +131,7 @@ export function parseSDKMessages(message: any, options?: ParseSDKMessageOptions)
         type: 'system',
         content: `Connected | Model: ${displayModel}`,
         timestamp,
-        visibility: 'user',
+        visibility: 'debug',
         parentToolUseId
       })
       return thoughts
