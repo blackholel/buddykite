@@ -164,6 +164,8 @@ export function UnifiedPage() {
   const loadingSpaceIdsRef = useRef<Set<string>>(new Set())
   const conversationSelectTicketRef = useRef(0)
   const tabConversationSyncInFlightRef = useRef<string | null>(null)
+  const autoCreateConversationInFlightRef = useRef<Set<string>>(new Set())
+  const latestCurrentSpaceIdRef = useRef<string | null>(currentSpaceId)
   const [artifactRailExpanded, setArtifactRailExpanded] = useState(false)
   const [rightPanelMode, setRightPanelMode] = useState<'artifacts' | 'skills' | 'agents'>('artifacts')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
@@ -229,6 +231,10 @@ export function UnifiedPage() {
   ])
 
   useEffect(() => {
+    latestCurrentSpaceIdRef.current = currentSpaceId
+  }, [currentSpaceId])
+
+  useEffect(() => {
     if (!currentSpaceId || spaceStates.has(currentSpaceId)) return
     void ensureSpaceConversationsLoaded(currentSpaceId)
   }, [currentSpaceId, ensureSpaceConversationsLoaded, spaceStates])
@@ -258,6 +264,51 @@ export function UnifiedPage() {
     const entry = pickEntryConversation(spaceState.conversations) || spaceState.conversations[0]
     void selectConversation(entry.id)
   }, [currentSpaceId, selectConversation, spaceStates])
+
+  useEffect(() => {
+    if (!currentSpaceId) return
+    const spaceState = spaceStates.get(currentSpaceId)
+    if (!spaceState) return
+    if (spaceState.currentConversationId || spaceState.conversations.length > 0) return
+    if (autoCreateConversationInFlightRef.current.has(currentSpaceId)) return
+
+    autoCreateConversationInFlightRef.current.add(currentSpaceId)
+    const targetSpaceId = currentSpaceId
+    const targetSpace = spaceById.get(targetSpaceId)
+    const workDir = targetSpace?.path
+    const spaceLabel = resolveSpaceTabLabel(targetSpaceId)
+
+    void (async () => {
+      try {
+        const createdConversation = await createConversation(targetSpaceId)
+        if (!createdConversation) return
+
+        if (latestCurrentSpaceIdRef.current !== targetSpaceId) return
+        await selectConversation(createdConversation.id)
+        if (latestCurrentSpaceIdRef.current !== targetSpaceId) return
+
+        await openChat(
+          targetSpaceId,
+          createdConversation.id,
+          createdConversation.title?.trim() || t('New conversation'),
+          workDir,
+          spaceLabel,
+          false
+        )
+      } finally {
+        autoCreateConversationInFlightRef.current.delete(targetSpaceId)
+      }
+    })()
+  }, [
+    createConversation,
+    currentSpaceId,
+    openChat,
+    resolveSpaceTabLabel,
+    selectConversation,
+    spaceById,
+    spaceStates,
+    t
+  ])
 
   useEffect(() => {
     if (!currentSpaceId || !currentConversationId) return

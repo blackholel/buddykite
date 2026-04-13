@@ -1,6 +1,12 @@
+/** @vitest-environment jsdom */
+
+import { act } from 'react'
+import { createRoot } from 'react-dom/client'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { navigateToConversationContext, navigateToSpaceContext } from '../../utils/space-conversation-navigation'
+
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
 const mockCurrentSpace = {
   id: 'space-1',
@@ -11,6 +17,8 @@ const mockCurrentSpace = {
 }
 let mockCurrentSpaceId = 'space-1'
 let mockCurrentConversationId: string | null = null
+let mockSpaceStates = new Map<string, any>()
+let mockSpaces: any[] = []
 let capturedSidebarProps: Record<string, any> | null = null
 let triggerTopTabClick: null | (() => Promise<void>) = null
 let rightPanelModeOverride: 'artifacts' | 'skills' | 'agents' | null = null
@@ -133,7 +141,7 @@ vi.mock('../../stores/space.store', () => ({
   useSpaceStore: (selector: (state: any) => unknown) => selector({
     currentSpace: mockCurrentSpace,
     kiteSpace: null,
-    spaces: [],
+    spaces: mockSpaces,
     loadSpaces: vi.fn(async () => {}),
     setCurrentSpace: vi.fn(),
     createSpace: vi.fn(async () => null),
@@ -147,7 +155,7 @@ vi.mock('../../stores/chat.store', () => ({
     currentSpaceId: mockCurrentSpaceId,
     getCurrentConversationId: () => mockCurrentConversationId,
     getCurrentConversationMeta: () => null,
-    spaceStates: new Map(),
+    spaceStates: mockSpaceStates,
     setCurrentSpace: vi.fn(),
     loadConversations: vi.fn(async () => {}),
     createConversation: mockCreateConversation,
@@ -165,10 +173,46 @@ vi.mock('../../stores/search.store', () => ({
 
 import { UnifiedPage, resolveConversationSyncTarget } from '../UnifiedPage'
 
+function createRenderer() {
+  const container = document.createElement('div')
+  document.body.appendChild(container)
+  const root = createRoot(container)
+
+  return {
+    container,
+    async render(element: JSX.Element) {
+      await act(async () => {
+        root.render(element)
+      })
+    },
+    async unmount() {
+      await act(async () => {
+        root.unmount()
+      })
+      container.remove()
+    }
+  }
+}
+
+function buildConversationMeta(id: string, title: string) {
+  return {
+    id,
+    title,
+    createdAt: '2026-04-13T09:00:00.000Z',
+    updatedAt: '2026-04-13T09:00:00.000Z',
+    messageCount: 0
+  }
+}
+
 describe('UnifiedPage entry state', () => {
   beforeEach(() => {
     mockCurrentSpaceId = 'space-1'
     mockCurrentConversationId = null
+    mockSpaceStates = new Map()
+    mockSpaces = []
+    mockCurrentSpace.id = 'space-1'
+    mockCurrentSpace.name = 'Space 1'
+    mockCurrentSpace.path = '/tmp/space-1'
     mockCurrentSpace.isTemp = false
     capturedSidebarProps = null
     triggerTopTabClick = null
@@ -458,5 +502,157 @@ describe('UnifiedPage entry state', () => {
     const html = renderToStaticMarkup(<UnifiedPage />)
     expect(html).toContain('Canvas Tab Bar')
     expect(html).toContain('Canvas Surface')
+  })
+
+  it('空工作区会自动创建并打开首个会话', async () => {
+    mockSpaceStates = new Map([
+      ['space-1', { currentConversationId: null, conversations: [] }]
+    ])
+    mockSpaces = [{
+      id: 'space-1',
+      name: 'Space 1',
+      icon: 'folder',
+      isTemp: false,
+      path: '/tmp/space-1',
+      updatedAt: '2026-04-13T09:00:00.000Z'
+    }]
+    mockCreateConversation.mockResolvedValueOnce({
+      id: 'conv-auto',
+      spaceId: 'space-1',
+      title: 'Auto conversation',
+      createdAt: '2026-04-13T09:00:00.000Z',
+      updatedAt: '2026-04-13T09:00:00.000Z'
+    })
+
+    const renderer = createRenderer()
+    await renderer.render(<UnifiedPage />)
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(mockCreateConversation).toHaveBeenCalledWith('space-1')
+    expect(mockSelectConversation).toHaveBeenCalledWith('conv-auto')
+    expect(mockCanvasState.openChat).toHaveBeenCalledWith(
+      'space-1',
+      'conv-auto',
+      'Auto conversation',
+      '/tmp/space-1',
+      'Space 1',
+      false
+    )
+
+    await renderer.unmount()
+  })
+
+  it('自动创建进行中重复渲染不会重复触发 createConversation', async () => {
+    mockSpaceStates = new Map([
+      ['space-1', { currentConversationId: null, conversations: [] }]
+    ])
+    mockSpaces = [{
+      id: 'space-1',
+      name: 'Space 1',
+      icon: 'folder',
+      isTemp: false,
+      path: '/tmp/space-1',
+      updatedAt: '2026-04-13T09:00:00.000Z'
+    }]
+
+    let resolveCreate: ((value: any) => void) | null = null
+    mockCreateConversation.mockImplementationOnce(async () => {
+      return await new Promise((resolve) => {
+        resolveCreate = resolve
+      })
+    })
+
+    const renderer = createRenderer()
+    await renderer.render(<UnifiedPage />)
+    expect(mockCreateConversation).toHaveBeenCalledTimes(1)
+
+    mockSpaceStates = new Map(mockSpaceStates)
+    await renderer.render(<UnifiedPage />)
+    expect(mockCreateConversation).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      resolveCreate?.({
+        id: 'conv-auto',
+        spaceId: 'space-1',
+        title: 'Auto conversation',
+        createdAt: '2026-04-13T09:00:00.000Z',
+        updatedAt: '2026-04-13T09:00:00.000Z'
+      })
+      await Promise.resolve()
+    })
+
+    await renderer.unmount()
+  })
+
+  it('自动创建期间切换工作区，不会把旧空间会话强行选中到当前空间', async () => {
+    mockSpaceStates = new Map([
+      ['space-1', { currentConversationId: null, conversations: [] }]
+    ])
+    mockSpaces = [
+      {
+        id: 'space-1',
+        name: 'Space 1',
+        icon: 'folder',
+        isTemp: false,
+        path: '/tmp/space-1',
+        updatedAt: '2026-04-13T09:00:00.000Z'
+      },
+      {
+        id: 'space-2',
+        name: 'Space 2',
+        icon: 'folder',
+        isTemp: false,
+        path: '/tmp/space-2',
+        updatedAt: '2026-04-13T08:00:00.000Z'
+      }
+    ]
+
+    let resolveCreate: ((value: any) => void) | null = null
+    mockCreateConversation.mockImplementationOnce(async () => {
+      return await new Promise((resolve) => {
+        resolveCreate = resolve
+      })
+    })
+
+    const renderer = createRenderer()
+    await renderer.render(<UnifiedPage />)
+    expect(mockCreateConversation).toHaveBeenCalledTimes(1)
+
+    mockCurrentSpaceId = 'space-2'
+    mockCurrentConversationId = 'conv-2'
+    mockCurrentSpace.id = 'space-2'
+    mockCurrentSpace.name = 'Space 2'
+    mockCurrentSpace.path = '/tmp/space-2'
+    mockSpaceStates = new Map([
+      ['space-1', { currentConversationId: null, conversations: [] }],
+      ['space-2', { currentConversationId: 'conv-2', conversations: [buildConversationMeta('conv-2', 'Conversation 2')] }]
+    ])
+    await renderer.render(<UnifiedPage />)
+
+    await act(async () => {
+      resolveCreate?.({
+        id: 'conv-auto',
+        spaceId: 'space-1',
+        title: 'Auto conversation',
+        createdAt: '2026-04-13T09:00:00.000Z',
+        updatedAt: '2026-04-13T09:00:00.000Z'
+      })
+      await Promise.resolve()
+    })
+
+    expect(mockSelectConversation).not.toHaveBeenCalledWith('conv-auto')
+    expect(mockCanvasState.openChat).not.toHaveBeenCalledWith(
+      'space-1',
+      'conv-auto',
+      expect.any(String),
+      expect.anything(),
+      expect.any(String),
+      false
+    )
+
+    await renderer.unmount()
   })
 })

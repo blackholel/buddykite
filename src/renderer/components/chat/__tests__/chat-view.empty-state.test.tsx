@@ -1,7 +1,23 @@
-import { describe, expect, it, vi } from 'vitest'
+/** @vitest-environment jsdom */
+
+import { act } from 'react'
+import { createRoot } from 'react-dom/client'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
 
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+
 let mockAiConfigured = true
+let mockCurrentConversationId: string | null = 'conv-1'
+const mockCreateConversation = vi.fn(async () => ({
+  id: 'conv-new',
+  spaceId: 'space-1',
+  title: 'New conversation',
+  createdAt: '2026-04-13T09:00:00.000Z',
+  updatedAt: '2026-04-13T09:00:00.000Z'
+}))
+const mockSelectConversation = vi.fn(async () => {})
+const mockSubmitTurn = vi.fn(async () => {})
 
 vi.mock('../../../../shared/types/ai-profile', () => ({
   getAiSetupState: () => ({
@@ -70,7 +86,7 @@ vi.mock('../../../stores/chat.store', () => ({
     changeSets: new Map(),
     getCurrentConversation: () => null,
     getCurrentConversationMeta: () => null,
-    getCurrentConversationId: () => 'conv-1',
+    getCurrentConversationId: () => mockCurrentConversationId,
     getCurrentSession: () => ({
       isGenerating: false,
       activeRunId: null,
@@ -99,9 +115,11 @@ vi.mock('../../../stores/chat.store', () => ({
     loadChangeSets: vi.fn(),
     acceptChangeSet: vi.fn(),
     rollbackChangeSet: vi.fn(),
-    submitTurn: vi.fn(),
+    submitTurn: mockSubmitTurn,
     executePlan: vi.fn(),
     stopGeneration: vi.fn(),
+    createConversation: mockCreateConversation,
+    selectConversation: mockSelectConversation,
     answerQuestion: vi.fn(),
     dismissAskUserQuestion: vi.fn(),
     setConversationMode: vi.fn(),
@@ -119,7 +137,16 @@ vi.mock('../MessageList', () => ({
 }))
 
 vi.mock('../InputArea', () => ({
-  InputArea: () => <div>Input Area</div>
+  InputArea: (props: Record<string, any>) => (
+    <button
+      data-testid="mock-send-button"
+      onClick={() => {
+        void props.onSend('hello world', undefined, false, undefined, 'code')
+      }}
+    >
+      Input Area
+    </button>
+  )
 }))
 
 vi.mock('../AskUserQuestionPanel', () => ({
@@ -140,10 +167,45 @@ vi.mock('../../icons/ToolIcons', () => ({
 
 import { ChatView } from '../ChatView'
 
-describe('ChatView empty state', () => {
-  it('shows direct-start copy for configured empty conversations', () => {
-    mockAiConfigured = true
+function createRenderer() {
+  const container = document.createElement('div')
+  document.body.appendChild(container)
+  const root = createRoot(container)
 
+  return {
+    container,
+    async render(element: JSX.Element) {
+      await act(async () => {
+        root.render(element)
+      })
+    },
+    async unmount() {
+      await act(async () => {
+        root.unmount()
+      })
+      container.remove()
+    }
+  }
+}
+
+async function userClick(element: Element) {
+  await act(async () => {
+    element.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+    element.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+    element.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+  })
+}
+
+describe('ChatView empty state', () => {
+  beforeEach(() => {
+    mockAiConfigured = true
+    mockCurrentConversationId = 'conv-1'
+    mockCreateConversation.mockClear()
+    mockSelectConversation.mockClear()
+    mockSubmitTurn.mockClear()
+  })
+
+  it('shows direct-start copy for configured empty conversations', () => {
     const html = renderToStaticMarkup(<ChatView />)
 
     expect(html).toContain('直接开始')
@@ -162,5 +224,37 @@ describe('ChatView empty state', () => {
     expect(html).toContain('去设置模型')
     expect(html).not.toContain('Input Area')
     expect(html).not.toContain('Complete model setup before chatting')
+  })
+
+  it('shows conversation-initializing state when no active conversation', () => {
+    mockCurrentConversationId = null
+
+    const html = renderToStaticMarkup(<ChatView />)
+    expect(html).toContain('正在准备新会话...')
+    expect(html).not.toContain('直接开始')
+  })
+
+  it('auto-creates a conversation before submit when current conversation is missing', async () => {
+    mockCurrentConversationId = null
+    const renderer = createRenderer()
+    await renderer.render(<ChatView />)
+
+    const sendButton = renderer.container.querySelector('[data-testid="mock-send-button"]')
+    expect(sendButton).not.toBeNull()
+    await userClick(sendButton as Element)
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(mockCreateConversation).toHaveBeenCalledTimes(1)
+    expect(mockCreateConversation).toHaveBeenCalledWith('space-1')
+    expect(mockSelectConversation).toHaveBeenCalledWith('conv-new')
+    expect(mockSubmitTurn).toHaveBeenCalledWith(expect.objectContaining({
+      spaceId: 'space-1',
+      conversationId: 'conv-new',
+      content: 'hello world'
+    }))
+
+    await renderer.unmount()
   })
 })

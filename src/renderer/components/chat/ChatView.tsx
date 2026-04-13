@@ -178,6 +178,8 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
     submitTurn,
     executePlan,
     stopGeneration,
+    createConversation,
+    selectConversation,
     answerQuestion,
     dismissAskUserQuestion,
     setConversationMode,
@@ -203,6 +205,8 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
     submitTurn: state.submitTurn,
     executePlan: state.executePlan,
     stopGeneration: state.stopGeneration,
+    createConversation: state.createConversation,
+    selectConversation: state.selectConversation,
     answerQuestion: state.answerQuestion,
     dismissAskUserQuestion: state.dismissAskUserQuestion,
     setConversationMode: state.setConversationMode,
@@ -254,9 +258,15 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
   const [mockStreamingContent, setMockStreamingContent] = useState<string>('')
   const [mockUserTimestamp, setMockUserTimestamp] = useState<string | null>(null)
   const [mockAiTimestamp, setMockAiTimestamp] = useState<string | null>(null)
+  const ensureConversationInFlightRef = useRef<Promise<string | null> | null>(null)
+  const latestCurrentSpaceIdRef = useRef<string | null>(currentSpaceId)
   const activeSearchMessageRef = useRef<HTMLElement | null>(null)
   const activeSearchContentRef = useRef<Element | null>(null)
   const searchHighlightTimeoutRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    latestCurrentSpaceIdRef.current = currentSpaceId
+  }, [currentSpaceId])
 
   // Clear mock state when onboarding completes
   useEffect(() => {
@@ -480,6 +490,33 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
     setMockAnimating(false)
   }, [currentSpace, onboardingHtml, onboardingPrompt, onboardingResponse, setMockAnimating, setMockThinking])
 
+  const ensureActiveConversationForSend = useCallback(async (): Promise<string | null> => {
+    if (!currentSpaceId) return null
+    if (currentConversationId) return currentConversationId
+
+    if (ensureConversationInFlightRef.current) {
+      return ensureConversationInFlightRef.current
+    }
+
+    const targetSpaceId = currentSpaceId
+    const task = (async (): Promise<string | null> => {
+      const createdConversation = await createConversation(targetSpaceId)
+      if (!createdConversation) return null
+      if (latestCurrentSpaceIdRef.current !== targetSpaceId) return null
+      await selectConversation(createdConversation.id)
+      return createdConversation.id
+    })()
+
+    ensureConversationInFlightRef.current = task
+    try {
+      return await task
+    } finally {
+      if (ensureConversationInFlightRef.current === task) {
+        ensureConversationInFlightRef.current = null
+      }
+    }
+  }, [createConversation, currentConversationId, currentSpaceId, selectConversation])
+
   // Handle send (with optional images for multi-modal messages, optional thinking mode, optional file contexts, optional plan mode)
   const handleSend = async (content: string, images?: ImageAttachment[], thinkingEnabled?: boolean, fileContexts?: FileContextAttachment[], mode?: ChatMode) => {
     // In onboarding mode, intercept and play mock response
@@ -489,11 +526,14 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
     }
 
     const hasContent = content.trim() || (images && images.length > 0) || (fileContexts && fileContexts.length > 0)
-    if (!hasContent || !currentSpaceId || !currentConversationId) return
+    if (!hasContent || !currentSpaceId) return
+
+    const targetConversationId = currentConversationId || await ensureActiveConversationForSend()
+    if (!targetConversationId) return
 
     await submitTurn({
       spaceId: currentSpaceId,
-      conversationId: currentConversationId,
+      conversationId: targetConversationId,
       content,
       images,
       fileContexts,
@@ -554,6 +594,7 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
   const displayIsThinking = isMockThinking || isThinking
   const displayIsStreaming = isStreaming  // Only real streaming (not mock)
   const hasMessages = displayMessages.length > 0 || Boolean(displayStreamingContent) || displayIsThinking
+  const hasActiveConversation = Boolean(currentConversationId)
   const conversationProfileId = currentConversation?.ai?.profileId || currentConversationMeta?.ai?.profileId
   const aiSetupState = getAiSetupState(appConfig, conversationProfileId)
   const showComposerGate = !aiSetupState.configured && !pendingAskUserQuestion && !failedAskUserQuestion
@@ -604,7 +645,9 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
         >
           {isLoadingConversation ? (
             <LoadingState />
-          ) : !hasMessages && aiSetupState.configured ? (
+          ) : !hasMessages && !hasActiveConversation && Boolean(currentSpaceId) ? (
+            <ConversationInitializingState />
+          ) : !hasMessages && aiSetupState.configured && hasActiveConversation ? (
             <ChatEmptyState isCompact={isCompact} />
           ) : !hasMessages ? (
             <div className="h-full" />
@@ -767,6 +810,16 @@ function LoadingState() {
     <div className="h-full flex flex-col items-center justify-center">
       <div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
       <p className="mt-3 text-sm text-muted-foreground">{t('Loading conversation...')}</p>
+    </div>
+  )
+}
+
+function ConversationInitializingState() {
+  const { t } = useTranslation()
+  return (
+    <div className="h-full flex flex-col items-center justify-center">
+      <div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+      <p className="mt-3 text-sm text-muted-foreground">{t('正在准备新会话...')}</p>
     </div>
   )
 }
