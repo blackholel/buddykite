@@ -455,7 +455,7 @@ export function AskUserQuestionPanel({
     `}
     >
       <div className="space-studio-thread-width">
-        <div className="rounded-2xl border border-border/25 bg-secondary/10 overflow-hidden">
+        <div className="rounded-2xl border border-border/25 bg-secondary/10 overflow-hidden flex flex-col min-h-0 max-h-[60vh]">
           {/* Header with pagination */}
           <div className="flex items-center justify-between px-3 py-2 bg-secondary/20 border-b border-border/20">
             <div className="flex items-center gap-2">
@@ -483,7 +483,7 @@ export function AskUserQuestionPanel({
           </div>
 
           {/* Content */}
-          <div className="p-3">
+          <div className="p-3 min-h-0 overflow-y-auto">
             {/* Failure reason */}
             {shortFailureReason && (
               <p className="mb-2 text-xs text-amber-500/90 whitespace-pre-wrap break-words">
