@@ -193,7 +193,10 @@ export function ChatTabViewer({ tab }: ChatTabViewerProps) {
     handleScroll
   } = useSmartScroll({
     threshold: 100,
-    deps: [conversation?.messages, streamingContent, thoughts, processTrace]
+    deps: [conversation?.messages, streamingContent, thoughts, processTrace],
+    entryKey: conversationId,
+    forceToLatestOnEntry: true,
+    entryScrollBehavior: 'auto'
   })
 
   // Handle send message - directly to target conversation without global context switching

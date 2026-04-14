@@ -15,6 +15,12 @@ interface UseSmartScrollOptions {
   threshold?: number
   /** Dependencies that trigger scroll check (e.g., messages, streaming content) */
   deps?: unknown[]
+  /** Primitive key indicating entry to a new context (e.g., conversationId) */
+  entryKey?: string | null
+  /** Force jump to latest when entryKey changes */
+  forceToLatestOnEntry?: boolean
+  /** Scroll behavior for entry jump */
+  entryScrollBehavior?: ScrollBehavior
 }
 
 interface UseSmartScrollReturn {
@@ -31,7 +37,13 @@ interface UseSmartScrollReturn {
 }
 
 export function useSmartScroll(options: UseSmartScrollOptions = {}): UseSmartScrollReturn {
-  const { threshold = 100, deps = [] } = options
+  const {
+    threshold = 100,
+    deps = [],
+    entryKey = null,
+    forceToLatestOnEntry = false,
+    entryScrollBehavior = 'auto'
+  } = options
 
   const containerRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
@@ -45,6 +57,7 @@ export function useSmartScroll(options: UseSmartScrollOptions = {}): UseSmartScr
 
   // Last scroll position to detect scroll direction
   const lastScrollTop = useRef(0)
+  const lastEntryKey = useRef<string | null>(null)
 
   /**
    * Check if container is scrolled to bottom (within threshold)
@@ -106,6 +119,25 @@ export function useSmartScroll(options: UseSmartScrollOptions = {}): UseSmartScr
     setIsAtBottom(true)
     setShowScrollButton(false)
   }, [])
+
+  /**
+   * Force jump to latest when entering a new conversation/context.
+   */
+  useEffect(() => {
+    if (!forceToLatestOnEntry) {
+      return
+    }
+    if (lastEntryKey.current === entryKey) {
+      return
+    }
+    if (!bottomRef.current) {
+      return
+    }
+    scrollToBottom(entryScrollBehavior)
+    lastEntryKey.current = entryKey
+    setIsAtBottom(true)
+    setShowScrollButton(false)
+  }, [entryKey, entryScrollBehavior, forceToLatestOnEntry, scrollToBottom, deps])
 
   /**
    * Auto-scroll when dependencies change, but only if user is at bottom

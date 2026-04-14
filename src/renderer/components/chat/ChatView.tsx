@@ -433,7 +433,10 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
     handleScroll
   } = useSmartScroll({
     threshold: 100,
-    deps: [currentConversation?.messages, streamingContent, thoughts, mockStreamingContent]
+    deps: [currentConversation?.messages, streamingContent, thoughts, mockStreamingContent],
+    entryKey: currentConversationId,
+    forceToLatestOnEntry: true,
+    entryScrollBehavior: 'auto'
   })
 
   const onboardingPrompt = getOnboardingPrompt(t)
