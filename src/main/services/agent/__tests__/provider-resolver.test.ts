@@ -25,6 +25,7 @@ describe('provider-resolver', () => {
 
   beforeEach(() => {
     vi.unstubAllEnvs()
+    vi.unstubAllGlobals()
     vi.stubEnv('PROVIDER_OPENAI_CODEX_ENABLED', '1')
     vi.stubEnv('PROVIDER_OPENAI_CODEX_EXPERIMENT', '1')
     _testResetOpenAICodexTokenRefreshService()
@@ -280,6 +281,201 @@ describe('provider-resolver', () => {
     )
   })
 
+  it('openai-codex oauth 模式同账号多条凭据时优先命中最新授权', async () => {
+    const authPath = join(getKiteDir(), 'auth.json')
+    if (!existsSync(getKiteDir())) {
+      mkdirSync(getKiteDir(), { recursive: true })
+    }
+    writeFileSync(
+      authPath,
+      JSON.stringify(
+        {
+          credentials: [
+            {
+              id: 'cred-old-expired',
+              tenantId: 'tenant-001',
+              providerId: 'openai-codex',
+              authMethod: 'oauth_browser',
+              accountId: 'acct-001',
+              accessToken: 'token-old-expired',
+              refreshToken: 'refresh-old-expired',
+              expiresAt: Date.now() - 60_000
+            },
+            {
+              id: 'cred-new-latest',
+              tenantId: 'tenant-001',
+              providerId: 'openai-codex',
+              authMethod: 'oauth_browser',
+              accountId: 'acct-001',
+              accessToken: 'token-new-latest',
+              refreshToken: 'refresh-new-latest',
+              expiresAt: Date.now() + 3600_000
+            }
+          ]
+        },
+        null,
+        2
+      ),
+      'utf-8'
+    )
+
+    const refreshFetch = vi.fn(async () => {
+      throw new Error('refresh should not be called')
+    })
+    vi.stubGlobal('fetch', refreshFetch as unknown as typeof fetch)
+
+    await resolveProvider({
+      id: 'openai-codex-profile',
+      name: 'OpenAI Codex',
+      vendor: 'openai',
+      protocol: 'openai_compat',
+      apiUrl: 'https://chatgpt.com/backend-api/codex/responses',
+      apiKey: 'oauth-access-token-fallback',
+      openAICodexAuthMode: 'oauth_device',
+      openAICodexTenantId: 'tenant-001',
+      openAICodexAccountId: 'acct-001',
+      defaultModel: 'gpt-5-codex',
+      modelCatalog: ['gpt-5-codex'],
+      enabled: true
+    }, 'gpt-5-codex')
+
+    expect(refreshFetch).not.toHaveBeenCalled()
+    expect(encodeBackendConfig).toHaveBeenCalledWith(
+      expect.objectContaining({
+        key: 'token-new-latest',
+        headers: {
+          'ChatGPT-Account-Id': 'acct-001'
+        }
+      })
+    )
+  })
+
+  it('openai-codex oauth 未指定 accountId 时命中最近授权账号', async () => {
+    const authPath = join(getKiteDir(), 'auth.json')
+    if (!existsSync(getKiteDir())) {
+      mkdirSync(getKiteDir(), { recursive: true })
+    }
+    writeFileSync(
+      authPath,
+      JSON.stringify(
+        {
+          credentials: [
+            {
+              id: 'cred-account-a',
+              tenantId: 'tenant-001',
+              providerId: 'openai-codex',
+              authMethod: 'oauth_browser',
+              accountId: 'acct-a',
+              accessToken: 'token-account-a',
+              refreshToken: 'refresh-account-a',
+              expiresAt: Date.now() + 3600_000
+            },
+            {
+              id: 'cred-account-b-latest',
+              tenantId: 'tenant-001',
+              providerId: 'openai-codex',
+              authMethod: 'oauth_browser',
+              accountId: 'acct-b',
+              accessToken: 'token-account-b-latest',
+              refreshToken: 'refresh-account-b-latest',
+              expiresAt: Date.now() + 7200_000
+            }
+          ]
+        },
+        null,
+        2
+      ),
+      'utf-8'
+    )
+
+    await resolveProvider({
+      id: 'openai-codex-profile',
+      name: 'OpenAI Codex',
+      vendor: 'openai',
+      protocol: 'openai_compat',
+      apiUrl: 'https://chatgpt.com/backend-api/codex/responses',
+      apiKey: 'oauth-token-without-claims',
+      openAICodexAuthMode: 'oauth_browser',
+      openAICodexTenantId: 'tenant-001',
+      defaultModel: 'gpt-5-codex',
+      modelCatalog: ['gpt-5-codex'],
+      enabled: true
+    }, 'gpt-5-codex')
+
+    expect(encodeBackendConfig).toHaveBeenCalledWith(
+      expect.objectContaining({
+        key: 'token-account-b-latest',
+        headers: {
+          'ChatGPT-Account-Id': 'acct-b'
+        }
+      })
+    )
+  })
+
+  it('openai-codex token refresh 失败时保留对象错误详情', async () => {
+    const authPath = join(getKiteDir(), 'auth.json')
+    if (!existsSync(getKiteDir())) {
+      mkdirSync(getKiteDir(), { recursive: true })
+    }
+    writeFileSync(
+      authPath,
+      JSON.stringify(
+        {
+          credentials: [
+            {
+              id: 'cred-refresh-object-error',
+              tenantId: 'tenant-001',
+              providerId: 'openai-codex',
+              authMethod: 'oauth_browser',
+              accountId: 'acct-001',
+              accessToken: 'expired-token',
+              refreshToken: 'refresh-token',
+              expiresAt: Date.now() - 10_000
+            }
+          ]
+        },
+        null,
+        2
+      ),
+      'utf-8'
+    )
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(
+        JSON.stringify({
+          error: {
+            code: 'invalid_token',
+            message: 'refresh token expired'
+          }
+        }),
+        {
+          status: 401,
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        }
+      )) as unknown as typeof fetch
+    )
+
+    await expect(
+      resolveProvider({
+        id: 'openai-codex-profile',
+        name: 'OpenAI Codex',
+        vendor: 'openai',
+        protocol: 'openai_compat',
+        apiUrl: 'https://chatgpt.com/backend-api/codex/responses',
+        apiKey: 'oauth-token-fallback',
+        openAICodexAuthMode: 'oauth_browser',
+        openAICodexTenantId: 'tenant-001',
+        openAICodexAccountId: 'acct-001',
+        defaultModel: 'gpt-5-codex',
+        modelCatalog: ['gpt-5-codex'],
+        enabled: true
+      }, 'gpt-5-codex')
+    ).rejects.toThrow('Token refresh failed: {"code":"invalid_token","message":"refresh token expired"}')
+  })
+
   it('openai-codex oauth 模式命中熔断时，直接阻断请求', async () => {
     vi.stubEnv('CODEX_KILL_SWITCH', '1')
 
@@ -351,6 +547,32 @@ describe('provider-resolver', () => {
 
   it('profile 配置 accountId 优先级高于 env 与 jwt 推断', async () => {
     vi.stubEnv('KITE_OPENAI_CODEX_ACCOUNT_ID', 'acct-from-env')
+    const authPath = join(getKiteDir(), 'auth.json')
+    if (!existsSync(getKiteDir())) {
+      mkdirSync(getKiteDir(), { recursive: true })
+    }
+    writeFileSync(
+      authPath,
+      JSON.stringify(
+        {
+          credentials: [
+            {
+              id: 'cred-priority-1',
+              tenantId: 'tenant-priority',
+              providerId: 'openai-codex',
+              authMethod: 'oauth_browser',
+              accountId: 'acct-from-profile',
+              accessToken: 'token-from-store-priority',
+              refreshToken: 'refresh-from-store-priority',
+              expiresAt: Date.now() + 3600_000
+            }
+          ]
+        },
+        null,
+        2
+      ),
+      'utf-8'
+    )
     const fakeJwt =
       'eyJhbGciOiJub25lIn0.' +
       'eyJjaGF0Z3B0X2FjY291bnRfaWQiOiJhY2N0LWZyb20tand0In0.' +
@@ -382,6 +604,32 @@ describe('provider-resolver', () => {
 
   it('router 初始化失败时应透传错误（并行链路错误传播）', async () => {
     vi.mocked(ensureOpenAICompatRouter).mockRejectedValueOnce(new Error('router init failed'))
+    const authPath = join(getKiteDir(), 'auth.json')
+    if (!existsSync(getKiteDir())) {
+      mkdirSync(getKiteDir(), { recursive: true })
+    }
+    writeFileSync(
+      authPath,
+      JSON.stringify(
+        {
+          credentials: [
+            {
+              id: 'cred-router-fail',
+              tenantId: 'tenant-router-fail',
+              providerId: 'openai-codex',
+              authMethod: 'oauth_browser',
+              accountId: 'acct-router-fail',
+              accessToken: 'token-router-fail',
+              refreshToken: 'refresh-router-fail',
+              expiresAt: Date.now() + 3600_000
+            }
+          ]
+        },
+        null,
+        2
+      ),
+      'utf-8'
+    )
 
     await expect(
       resolveProvider({

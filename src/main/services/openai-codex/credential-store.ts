@@ -19,6 +19,39 @@ function toCompositeKey(
   return `${tenantId}:${providerId}:${accountId || 'default'}`
 }
 
+function compactCredentials(credentials: OpenAICodexCredential[]): {
+  credentials: OpenAICodexCredential[]
+  changed: boolean
+} {
+  const seen = new Set<string>()
+  const nextReversed: OpenAICodexCredential[] = []
+  let changed = false
+
+  for (let i = credentials.length - 1; i >= 0; i -= 1) {
+    const credential = credentials[i]
+    const compositeKey = toCompositeKey(
+      credential.tenantId,
+      credential.providerId,
+      credential.accountId || undefined
+    )
+    if (seen.has(compositeKey)) {
+      changed = true
+      continue
+    }
+    seen.add(compositeKey)
+    nextReversed.push(credential)
+  }
+
+  if (!changed) {
+    return { credentials, changed: false }
+  }
+
+  return {
+    credentials: nextReversed.reverse(),
+    changed: true
+  }
+}
+
 function pickLatestActiveCredential(
   credentials: OpenAICodexCredential[]
 ): OpenAICodexCredential | null {
@@ -65,9 +98,22 @@ export class InMemoryOpenAICodexCredentialStore implements OpenAICodexCredential
   }
 
   async upsert(credential: OpenAICodexCredential): Promise<void> {
+    const nextCompositeKey = toCompositeKey(credential.tenantId, credential.providerId, credential.accountId || undefined)
+    const existing = this.byId.get(credential.id)
+    if (existing) {
+      const prevCompositeKey = toCompositeKey(existing.tenantId, existing.providerId, existing.accountId || undefined)
+      if (prevCompositeKey !== nextCompositeKey && this.byCompositeKey.get(prevCompositeKey) === credential.id) {
+        this.byCompositeKey.delete(prevCompositeKey)
+      }
+    }
+
+    const prevCredentialId = this.byCompositeKey.get(nextCompositeKey)
+    if (prevCredentialId && prevCredentialId !== credential.id) {
+      this.byId.delete(prevCredentialId)
+    }
+
     this.byId.set(credential.id, credential)
-    const compositeKey = toCompositeKey(credential.tenantId, credential.providerId, credential.accountId)
-    this.byCompositeKey.set(compositeKey, credential.id)
+    this.byCompositeKey.set(nextCompositeKey, credential.id)
   }
 
   async markRevoked(credentialId: string, _reason: string): Promise<void> {
@@ -140,7 +186,16 @@ export class FileOpenAICodexCredentialStore implements OpenAICodexCredentialStor
   private ensureLoaded(): CredentialStoreSnapshot {
     const state = this.getState()
     if (!state.snapshot) {
-      state.snapshot = readSnapshot(this.filePath)
+      const loaded = readSnapshot(this.filePath)
+      const compacted = compactCredentials(loaded.credentials)
+      state.snapshot = {
+        credentials: compacted.credentials
+      }
+      if (compacted.changed) {
+        void this.enqueuePersistSnapshot().catch((error) => {
+          console.warn('[OpenAICodex][CredentialStore] Failed to persist compacted snapshot', error)
+        })
+      }
     }
     return state.snapshot
   }
@@ -162,14 +217,13 @@ export class FileOpenAICodexCredentialStore implements OpenAICodexCredentialStor
     accountId?: string
   ): Promise<OpenAICodexCredential | null> {
     const snapshot = this.ensureLoaded()
-    const foundExact = snapshot.credentials.find(credential => {
-      if (credential.tenantId !== tenantId) return false
-      if (credential.providerId !== providerId) return false
-      if ((credential.accountId || undefined) !== (accountId || undefined)) return false
-      return isActive(credential)
-    })
-    if (foundExact) {
-      return foundExact
+    for (let i = snapshot.credentials.length - 1; i >= 0; i -= 1) {
+      const credential = snapshot.credentials[i]
+      if (credential.tenantId !== tenantId) continue
+      if (credential.providerId !== providerId) continue
+      if ((credential.accountId || undefined) !== (accountId || undefined)) continue
+      if (!isActive(credential)) continue
+      return credential
     }
 
     if (accountId) {
@@ -189,7 +243,16 @@ export class FileOpenAICodexCredentialStore implements OpenAICodexCredentialStor
 
   async upsert(credential: OpenAICodexCredential): Promise<void> {
     const snapshot = this.ensureLoaded()
-    const next = snapshot.credentials.filter(existing => existing.id !== credential.id)
+    const compositeKey = toCompositeKey(credential.tenantId, credential.providerId, credential.accountId || undefined)
+    const next = snapshot.credentials.filter(existing => {
+      if (existing.id === credential.id) return false
+      const existingCompositeKey = toCompositeKey(
+        existing.tenantId,
+        existing.providerId,
+        existing.accountId || undefined
+      )
+      return existingCompositeKey !== compositeKey
+    })
     next.push(credential)
     snapshot.credentials = next
     await this.enqueuePersistSnapshot()

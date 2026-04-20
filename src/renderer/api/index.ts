@@ -162,6 +162,7 @@ export const api = {
     accountId?: string
     fallbackAccessToken?: string
     authMode?: 'api_key' | 'oauth_browser' | 'oauth_device'
+    modelId?: string
   }): Promise<ApiResponse> => {
     if (isElectron()) {
       return window.kite.validateOpenAICodexSession(input)

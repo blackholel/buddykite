@@ -69,6 +69,7 @@ export interface KiteAPI {
     accountId?: string
     fallbackAccessToken?: string
     authMode?: 'api_key' | 'oauth_browser' | 'oauth_device'
+    modelId?: string
   }) => Promise<IpcResponse>
 
   // Space

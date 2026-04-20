@@ -282,7 +282,7 @@ export async function resolveProvider(
     const inferredAccountId = useOpenAICodexExperiment
       ? (extractAccountIdFromClaims(decodeJwtPayload(resolved.apiKey)) || '')
       : ''
-    const requestedAccountId = profileAccountId || envAccountId || inferredAccountId
+    const requestedAccountId = profileAccountId || envAccountId
     const tenantId = useOpenAICodexExperiment
       ? (
           (resolved.openAICodexTenantId || '').trim() ||
@@ -305,7 +305,7 @@ export async function resolveProvider(
           tenantId,
           accountId: requestedAccountId || undefined,
           refreshSkewSec,
-          fallbackAccessToken: resolved.apiKey
+          requireCredential: true
         })
       : Promise.resolve({
           accessToken: resolved.apiKey,

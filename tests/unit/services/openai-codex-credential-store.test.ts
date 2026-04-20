@@ -9,6 +9,16 @@ import {
   InMemoryOpenAICodexCredentialStore
 } from '../../../src/main/services/openai-codex/credential-store'
 
+async function waitUntil(predicate: () => boolean, timeoutMs = 2000): Promise<void> {
+  const startedAt = Date.now()
+  while (!predicate()) {
+    if (Date.now() - startedAt > timeoutMs) {
+      throw new Error('waitUntil timeout')
+    }
+    await new Promise(resolve => setTimeout(resolve, 20))
+  }
+}
+
 describe('openai-codex.credential-store', () => {
   it('upsert 后可按 tenant/provider/account 读取 active credential', async () => {
     const store = new InMemoryOpenAICodexCredentialStore()
@@ -68,6 +78,40 @@ describe('openai-codex.credential-store', () => {
     const credential = await storeB.getActive('tenant-z', 'openai-codex', 'acct-z')
     expect(credential?.id).toBe('cred-file-1')
     expect(credential?.accessToken).toBe('token-z')
+  })
+
+  it('同账号重复授权时 file store 仅保留最新一条', async () => {
+    const filePath = join(getTestDir(), '.kite', 'auth-replace.json')
+    const store = new FileOpenAICodexCredentialStore(filePath)
+
+    await store.upsert({
+      id: 'cred-replace-old',
+      tenantId: 'tenant-r',
+      providerId: 'openai-codex',
+      authMethod: 'oauth_browser',
+      accountId: 'acct-r',
+      accessToken: 'token-r-old',
+      refreshToken: 'refresh-r-old',
+      expiresAt: Date.now() + 60_000
+    })
+    await store.upsert({
+      id: 'cred-replace-new',
+      tenantId: 'tenant-r',
+      providerId: 'openai-codex',
+      authMethod: 'oauth_browser',
+      accountId: 'acct-r',
+      accessToken: 'token-r-new',
+      refreshToken: 'refresh-r-new',
+      expiresAt: Date.now() + 120_000
+    })
+
+    const credential = await store.getActive('tenant-r', 'openai-codex', 'acct-r')
+    expect(credential?.id).toBe('cred-replace-new')
+    expect(credential?.accessToken).toBe('token-r-new')
+
+    const snapshot = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as { credentials: Array<{ id: string }> }
+    expect(snapshot.credentials).toHaveLength(1)
+    expect(snapshot.credentials[0].id).toBe('cred-replace-new')
   })
 
   it('未提供 accountId 时，回退读取最近 active credential', async () => {
@@ -170,5 +214,54 @@ describe('openai-codex.credential-store', () => {
     const after = await storeB.getActive('tenant-shared', 'openai-codex', 'acct-shared')
     expect(after?.id).toBe('cred-shared')
     expect(after?.accessToken).toBe('token-shared')
+  })
+
+  it('file store 首次加载历史脏数据时会自动压缩为每账号仅一条最新记录', async () => {
+    const filePath = join(getTestDir(), '.kite', 'auth-compact.json')
+    fs.mkdirSync(dirname(filePath), { recursive: true })
+    fs.writeFileSync(
+      filePath,
+      JSON.stringify({
+        credentials: [
+          {
+            id: 'cred-old',
+            tenantId: 'tenant-compact',
+            providerId: 'openai-codex',
+            authMethod: 'oauth_browser',
+            accountId: 'acct-1',
+            accessToken: 'token-old'
+          },
+          {
+            id: 'cred-other',
+            tenantId: 'tenant-compact',
+            providerId: 'openai-codex',
+            authMethod: 'oauth_browser',
+            accountId: 'acct-2',
+            accessToken: 'token-other'
+          },
+          {
+            id: 'cred-latest',
+            tenantId: 'tenant-compact',
+            providerId: 'openai-codex',
+            authMethod: 'oauth_browser',
+            accountId: 'acct-1',
+            accessToken: 'token-latest'
+          }
+        ]
+      }),
+      'utf-8'
+    )
+
+    const store = new FileOpenAICodexCredentialStore(filePath)
+    const credential = await store.getActive('tenant-compact', 'openai-codex', 'acct-1')
+    expect(credential?.id).toBe('cred-latest')
+
+    await waitUntil(() => {
+      const compacted = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as { credentials: Array<{ id: string }> }
+      return compacted.credentials.length === 2
+    })
+
+    const compacted = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as { credentials: Array<{ id: string }> }
+    expect(compacted.credentials.map(item => item.id)).toEqual(['cred-other', 'cred-latest'])
   })
 })

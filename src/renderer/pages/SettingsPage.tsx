@@ -1532,6 +1532,22 @@ export function SettingsPage() {
     } satisfies ApiValidationResult
   }
 
+  const resolveOpenAICodexValidationMessage = (errorCode?: string, fallback?: string): string => {
+    if (errorCode === 'session_not_found') {
+      return 'ChatGPT 授权不存在或已失效，请重新连接账号。'
+    }
+    if (errorCode === 'refresh_error') {
+      return 'ChatGPT 授权刷新失败，请重新连接账号。'
+    }
+    if (errorCode === 'model_not_allowed') {
+      return '当前账号无权使用该模型，请切换模型或账号后重试。'
+    }
+    if (errorCode === 'oauth_exchange_error') {
+      return fallback || t('ChatGPT authorization check failed.')
+    }
+    return fallback || t('ChatGPT authorization check failed.')
+  }
+
   const handleValidateConnection = async () => {
     if (!selectedProfile) return
 
@@ -1553,18 +1569,22 @@ export function SettingsPage() {
           tenantId: openAICodexTenantId.trim() || OPENAI_CODEX_DEFAULT_TENANT_ID,
           accountId: openAICodexAccountId.trim() || undefined,
           fallbackAccessToken: selectedProfile.apiKey.trim(),
-          authMode: openAICodexAuthMode
+          authMode: openAICodexAuthMode,
+          modelId: selectedProfile.defaultModel.trim() || 'gpt-5-codex'
         })
         if (!response.success) {
+          const message = resolveOpenAICodexValidationMessage(response.errorCode, response.error)
           setValidationResult({
             valid: false,
-            message: response.error || t('ChatGPT authorization check failed.'),
+            message,
             availableModels: [],
             manualModelInputRequired: false
           })
           return
         }
         const data = asObjectRecord(response.data)
+        const modelProbe = asObjectRecord(data?.modelProbe)
+        const modelProbeMessage = asStringValue(modelProbe?.message)
         const validatedAccountId = asStringValue(data?.accountId)
         if (!validatedAccountId) {
           setValidationResult({
@@ -1583,8 +1603,8 @@ export function SettingsPage() {
 
         setValidationResult({
           valid: true,
-          message: t('ChatGPT authorization is ready. You can save this account now.'),
-          connectionSummary: t('ChatGPT authorization is ready. You can save this account now.'),
+          message: modelProbeMessage || t('ChatGPT authorization is ready. You can save this account now.'),
+          connectionSummary: modelProbeMessage || t('ChatGPT authorization is ready. You can save this account now.'),
           availableModels: selectedCatalog.length > 0 ? selectedCatalog : ['gpt-5-codex'],
           manualModelInputRequired: false,
           resolvedModel: selectedProfile.defaultModel || 'gpt-5-codex'

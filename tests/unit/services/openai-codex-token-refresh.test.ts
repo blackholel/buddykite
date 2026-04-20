@@ -122,6 +122,37 @@ describe('openai-codex.token-refresh', () => {
     expect(credential).toBeNull()
   })
 
+  it('refresh 错误为对象时应返回可读错误文本', async () => {
+    const store = new InMemoryOpenAICodexCredentialStore()
+    await store.upsert({
+      id: 'cred-object-error',
+      tenantId: 'tenant-a',
+      providerId: 'openai-codex',
+      authMethod: 'oauth_browser',
+      accountId: 'acct-object',
+      accessToken: 'token-old',
+      refreshToken: 'refresh-object',
+      expiresAt: Date.now() - 1_000
+    })
+
+    const fetchImpl = vi.fn(async () =>
+      createFetchResponse(401, {
+        error: {
+          code: 'invalid_token',
+          message: 'refresh token expired'
+        }
+      })
+    )
+    const service = new OpenAICodexTokenRefreshService({
+      credentialStore: store,
+      fetchImpl: fetchImpl as unknown as typeof fetch
+    })
+
+    await expect(
+      service.ensureValidAccessToken({ tenantId: 'tenant-a', accountId: 'acct-object' })
+    ).rejects.toThrow('Token refresh failed: {"code":"invalid_token","message":"refresh token expired"}')
+  })
+
   it('无 credential 时可回退到 fallbackAccessToken', async () => {
     const store = new InMemoryOpenAICodexCredentialStore()
     const service = new OpenAICodexTokenRefreshService({

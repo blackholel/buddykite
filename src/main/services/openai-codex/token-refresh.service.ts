@@ -46,6 +46,63 @@ async function parseJsonSafely(response: Response): Promise<Record<string, unkno
   return JSON.parse(raw) as Record<string, unknown>
 }
 
+function asNonEmptyString(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const normalized = value.trim()
+  return normalized || undefined
+}
+
+function stringifyErrorDetail(value: unknown): string | undefined {
+  const direct = asNonEmptyString(value)
+  if (direct) {
+    return direct
+  }
+
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return `${value}`
+  }
+
+  if (!value || typeof value !== 'object') {
+    return undefined
+  }
+
+  try {
+    return JSON.stringify(value)
+  } catch {
+    return undefined
+  }
+}
+
+function extractErrorCode(errorValue: unknown): string {
+  if (typeof errorValue === 'string') {
+    return errorValue.trim().toLowerCase()
+  }
+  if (!errorValue || typeof errorValue !== 'object') {
+    return ''
+  }
+
+  const record = errorValue as Record<string, unknown>
+  const code = asNonEmptyString(record.code)
+    || asNonEmptyString(record.error)
+    || asNonEmptyString(record.type)
+  return (code || '').toLowerCase()
+}
+
+function formatOAuthError(payload: Record<string, unknown>, status: number): string {
+  const errorText = stringifyErrorDetail(payload.error)
+  if (errorText) {
+    return errorText
+  }
+
+  const fallback = asNonEmptyString(payload.error_description)
+    || asNonEmptyString(payload.message)
+  if (fallback) {
+    return fallback
+  }
+
+  return `${status}`
+}
+
 function resolveSkewMs(explicit: number | undefined, defaultSec: number): number {
   const sec = explicit && explicit > 0 ? explicit : defaultSec
   return sec * 1000
@@ -191,7 +248,7 @@ export class OpenAICodexTokenRefreshService {
 
     const payload = await parseJsonSafely(response)
     if (!response.ok) {
-      const errorCode = `${payload.error || ''}`.toLowerCase()
+      const errorCode = extractErrorCode(payload.error)
       if (errorCode === 'invalid_grant') {
         await this.credentialStore.markRevoked(credential.id, 'invalid_grant')
         recordOpenAICodexTelemetry({
@@ -207,7 +264,7 @@ export class OpenAICodexTokenRefreshService {
           accountId: credential.accountId
         })
       }
-      throw new Error(`Token refresh failed: ${payload.error || response.status}`)
+      throw new Error(`Token refresh failed: ${formatOAuthError(payload, response.status)}`)
     }
 
     const accessToken = `${payload.access_token || ''}`.trim()
