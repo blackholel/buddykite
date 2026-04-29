@@ -62,4 +62,28 @@ describe('MarkdownRenderer enhanced rendering', () => {
     expect(html).toContain('data-md-file-chip="true"')
     expect(html).toContain('index.ts')
   })
+
+  it('Mermaid 代码块默认进入渲染容器路径', () => {
+    const html = renderToStaticMarkup(
+      React.createElement(MarkdownRenderer, {
+        content: '```mermaid\ngraph TD\nA-->B\n```'
+      })
+    )
+
+    expect(html).toContain('Rendering Mermaid diagram...')
+    expect(html).toContain('>mermaid<')
+  })
+
+  it('流式延迟时 Mermaid 保持源码显示', () => {
+    const html = renderToStaticMarkup(
+      React.createElement(MarkdownRenderer, {
+        content: '```mermaid\ngraph TD\nA-->B\n```',
+        deferMermaidRender: true
+      })
+    )
+
+    expect(html).toContain('class="language-mermaid text-sm font-mono leading-relaxed"')
+    expect(html).toContain('graph TD')
+    expect(html).not.toContain('Rendering Mermaid diagram...')
+  })
 })

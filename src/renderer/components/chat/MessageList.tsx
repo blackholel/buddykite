@@ -93,6 +93,31 @@ interface MessageListProps {
 const SHOW_WIDGET_OPEN_TOKEN_RE = /```(?:show-widget|show_widget)\b/gi
 const FENCE_CLOSE_LINE_RE = /(?:^|\n)\s*```(?:\s|$)/g
 
+function shouldDeferMermaidWhileStreaming(markdown: string, isStreaming: boolean): boolean {
+  if (!isStreaming) return false
+  if (!markdown) return false
+
+  const lines = markdown.split('\n')
+  let inMermaidFence = false
+
+  for (const rawLine of lines) {
+    const line = rawLine.trimStart()
+    if (!line.startsWith('```')) continue
+
+    const fenceMeta = line.slice(3).trim().toLowerCase()
+    if (!inMermaidFence) {
+      if (fenceMeta.startsWith('mermaid')) {
+        inMermaidFence = true
+      }
+      continue
+    }
+
+    inMermaidFence = false
+  }
+
+  return inMermaidFence
+}
+
 function extractThoughtsFromProcessTrace(processTrace?: ProcessTraceNode[]): Thought[] {
   if (!processTrace || processTrace.length === 0) {
     return []
@@ -559,6 +584,7 @@ function StreamingBubble({
                         key={`history:${i}:${segment.key}`}
                         content={segment.content}
                         workDir={workDir}
+                        deferMermaidRender={shouldDeferMermaidWhileStreaming(segment.content, isStreaming)}
                         className="space-studio-assistant-markdown"
                       />
                     )
@@ -595,6 +621,7 @@ function StreamingBubble({
                       key={`current:${segment.key}`}
                       content={segment.content}
                       workDir={workDir}
+                      deferMermaidRender={shouldDeferMermaidWhileStreaming(segment.content, isStreaming)}
                       className="space-studio-assistant-markdown"
                     />
                   )

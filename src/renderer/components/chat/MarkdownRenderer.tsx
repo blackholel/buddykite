@@ -9,7 +9,7 @@
  * - Link handling through app APIs
  */
 
-import { memo, useCallback, useMemo, useRef, useState, type ReactNode } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
@@ -27,6 +27,7 @@ interface MarkdownRendererProps {
   className?: string
   workDir?: string
   basePath?: string
+  deferMermaidRender?: boolean
 }
 
 interface MarkdownImageProps {
@@ -39,6 +40,7 @@ interface CodeBlockProps extends React.HTMLAttributes<HTMLElement> {
   children?: React.ReactNode
   workDir?: string
   basePath?: string
+  deferMermaidRender?: boolean
   onOpenFilePath?: (filePath: string) => void
 }
 
@@ -76,6 +78,30 @@ const REHYPE_PLUGINS: any[] = [
   [rehypeSanitize, SANITIZE_SCHEMA],
   [rehypeHighlight, { hljs }]
 ]
+
+const MAX_MERMAID_TEXT_SIZE = 50_000
+const MAX_MERMAID_EDGES = 500
+
+let mermaidModulePromise: Promise<any> | null = null
+
+function loadMermaidModule(): Promise<any> {
+  if (!mermaidModulePromise) {
+    mermaidModulePromise = import('mermaid').then(mod => mod.default)
+  }
+  return mermaidModulePromise
+}
+
+function countMermaidEdges(source: string): number {
+  const matches = source.match(/-->|==>|-.->|<-->|===|---/g)
+  return matches?.length || 0
+}
+
+function resolveThemeColor(tokenName: string, fallback: string): string {
+  if (typeof window === 'undefined') return fallback
+  const raw = getComputedStyle(document.documentElement).getPropertyValue(tokenName).trim()
+  if (!raw) return fallback
+  return `hsl(${raw})`
+}
 
 function isHttpUrl(value: string): boolean {
   return /^https?:\/\//i.test(value)
@@ -271,7 +297,129 @@ function MarkdownImage({ src, alt, basePath }: MarkdownImageProps) {
   )
 }
 
-function CodeBlock({ children, className, workDir, basePath, onOpenFilePath, ...props }: CodeBlockProps) {
+function MermaidBlock({ source, deferRender }: { source: string; deferRender: boolean }) {
+  const { t } = useTranslation()
+  const [svg, setSvg] = useState('')
+  const [renderError, setRenderError] = useState<string | null>(null)
+  const [isDark, setIsDark] = useState(false)
+  const diagramIdRef = useRef(`mermaid-${Math.random().toString(36).slice(2)}`)
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+    const root = document.documentElement
+    const syncTheme = () => setIsDark(root.classList.contains('dark'))
+    syncTheme()
+
+    const observer = new MutationObserver(syncTheme)
+    observer.observe(root, { attributes: true, attributeFilter: ['class'] })
+    return () => observer.disconnect()
+  }, [])
+
+  useEffect(() => {
+    if (deferRender) {
+      setSvg('')
+      setRenderError(null)
+      return
+    }
+
+    const normalized = source.trim()
+    if (!normalized) {
+      setSvg('')
+      setRenderError(null)
+      return
+    }
+
+    if (normalized.length > MAX_MERMAID_TEXT_SIZE || countMermaidEdges(normalized) > MAX_MERMAID_EDGES) {
+      setSvg('')
+      setRenderError('too_complex')
+      return
+    }
+
+    let cancelled = false
+
+    const render = async () => {
+      try {
+        const mermaid = await loadMermaidModule()
+        if (cancelled) return
+
+        mermaid.initialize({
+          startOnLoad: false,
+          securityLevel: 'strict',
+          maxTextSize: MAX_MERMAID_TEXT_SIZE,
+          maxEdges: MAX_MERMAID_EDGES,
+          theme: 'base',
+          themeVariables: {
+            darkMode: isDark,
+            background: resolveThemeColor('--background', isDark ? '#111827' : '#ffffff'),
+            primaryColor: resolveThemeColor('--card', isDark ? '#1f2937' : '#ffffff'),
+            primaryTextColor: resolveThemeColor('--foreground', isDark ? '#f9fafb' : '#111827'),
+            lineColor: resolveThemeColor('--foreground', isDark ? '#d1d5db' : '#374151')
+          },
+          flowchart: {
+            htmlLabels: false,
+            useMaxWidth: true
+          }
+        })
+
+        const renderId = `${diagramIdRef.current}-${Date.now()}`
+        const { svg: renderedSvg } = await mermaid.render(renderId, normalized)
+        if (cancelled) return
+        setSvg(renderedSvg)
+        setRenderError(null)
+      } catch (error) {
+        if (cancelled) return
+        console.warn('[MarkdownRenderer] Mermaid render failed:', error)
+        setSvg('')
+        setRenderError('invalid_mermaid')
+      }
+    }
+
+    void render()
+
+    return () => {
+      cancelled = true
+    }
+  }, [source, deferRender, isDark])
+
+  if (deferRender) {
+    return (
+      <pre className="max-w-full p-4 overflow-x-auto overscroll-x-contain">
+        <code className="language-mermaid text-sm font-mono leading-relaxed">{source}</code>
+      </pre>
+    )
+  }
+
+  if (renderError) {
+    return (
+      <div className="my-3 rounded-xl border border-border/60 bg-muted/30 px-4 py-3">
+        <div className="mb-2 text-xs text-muted-foreground">
+          {renderError === 'too_complex' ? t('Mermaid diagram too complex, showing source.') : t('Mermaid render failed, showing source.')}
+        </div>
+        <pre className="max-w-full overflow-x-auto overscroll-x-contain">
+          <code className="language-mermaid text-sm font-mono leading-relaxed">{source}</code>
+        </pre>
+      </div>
+    )
+  }
+
+  if (!svg) {
+    return (
+      <div className="my-3 rounded-xl border border-border/60 bg-muted/20 px-4 py-3 text-xs text-muted-foreground">
+        {t('Rendering Mermaid diagram...')}
+      </div>
+    )
+  }
+
+  return (
+    <div
+      data-mermaid-rendered="true"
+      className="my-3 rounded-xl border border-border/60 bg-card/60 p-3 overflow-x-auto"
+      dangerouslySetInnerHTML={{ __html: svg }}
+    />
+  )
+}
+
+function CodeBlock({ children, className, workDir, basePath, deferMermaidRender = false, onOpenFilePath, ...props }: CodeBlockProps) {
   const { t } = useTranslation()
   const [copied, setCopied] = useState(false)
   const codeRef = useRef<HTMLElement>(null)
@@ -298,11 +446,11 @@ function CodeBlock({ children, className, workDir, basePath, onOpenFilePath, ...
   }, [workDir, rawContent, language])
 
   const handleCopy = useCallback(async () => {
-    const text = codeRef.current?.textContent || ''
+    const text = rawContent || codeRef.current?.textContent || ''
     await navigator.clipboard.writeText(text.replace(/\n$/, ''))
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
-  }, [])
+  }, [rawContent])
 
   if (!className) {
     if (inlineFileInfo) {
@@ -335,6 +483,39 @@ function CodeBlock({ children, className, workDir, basePath, onOpenFilePath, ...
 
   if (resourceSuggestion && workDir) {
     return <ResourceSuggestionCard suggestion={resourceSuggestion} workDir={workDir} />
+  }
+
+  if (language.toLowerCase() === 'mermaid') {
+    return (
+      <div className="group relative my-3 rounded-xl overflow-hidden border border-border/50 bg-secondary/35">
+        <div className="flex items-center justify-between px-4 py-2 bg-secondary/55 border-b border-border/40">
+          <span className="text-[11px] text-muted-foreground/90 font-mono uppercase tracking-wide">
+            mermaid
+          </span>
+          <button
+            onClick={handleCopy}
+            className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground/70
+              hover:text-foreground hover:bg-background/50 rounded-md transition-colors"
+            title={t('Copy code')}
+          >
+            {copied ? (
+              <>
+                <Check size={14} className="text-green-500" />
+                <span className="text-green-500">{t('Copied')}</span>
+              </>
+            ) : (
+              <>
+                <Copy size={14} />
+                <span>{t('Copy')}</span>
+              </>
+            )}
+          </button>
+        </div>
+        <div>
+          <MermaidBlock source={rawContent} deferRender={deferMermaidRender} />
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -375,9 +556,10 @@ function CodeBlock({ children, className, workDir, basePath, onOpenFilePath, ...
 function createComponents(options: {
   workDir?: string
   basePath?: string
+  deferMermaidRender?: boolean
   onOpenFilePath: (filePath: string) => void
 }) {
-  const { workDir, onOpenFilePath } = options
+  const { workDir, onOpenFilePath, deferMermaidRender = false } = options
   const effectiveBasePath = options.basePath || workDir
 
   return {
@@ -386,6 +568,7 @@ function createComponents(options: {
         {...props}
         workDir={workDir}
         basePath={effectiveBasePath}
+        deferMermaidRender={deferMermaidRender}
         onOpenFilePath={onOpenFilePath}
       />
     ),
@@ -508,7 +691,8 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
   content,
   className = '',
   workDir,
-  basePath
+  basePath,
+  deferMermaidRender = false
 }: MarkdownRendererProps) {
   const effectiveBasePath = basePath || workDir
 
@@ -521,8 +705,13 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
   }, [])
 
   const components = useMemo(
-    () => createComponents({ workDir, basePath: effectiveBasePath, onOpenFilePath: handleOpenFilePath }),
-    [effectiveBasePath, handleOpenFilePath, workDir]
+    () => createComponents({
+      workDir,
+      basePath: effectiveBasePath,
+      deferMermaidRender,
+      onOpenFilePath: handleOpenFilePath
+    }),
+    [deferMermaidRender, effectiveBasePath, handleOpenFilePath, workDir]
   )
 
   const processedContent = useMemo(() => wrapBareFilePaths(content), [content])
