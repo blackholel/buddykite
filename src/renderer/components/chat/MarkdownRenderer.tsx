@@ -28,6 +28,7 @@ interface MarkdownRendererProps {
   workDir?: string
   basePath?: string
   deferMermaidRender?: boolean
+  headingIdPrefix?: string
 }
 
 interface MarkdownImageProps {
@@ -67,7 +68,8 @@ const SANITIZE_SCHEMA: any = {
     ...(defaultSchema.attributes || {}),
     '*': [
       ...((((defaultSchema.attributes as Record<string, unknown>) || {})['*'] as Array<string | RegExp>) || []),
-      'className'
+      'className',
+      'id'
     ]
   }
 }
@@ -188,6 +190,33 @@ function extractText(node: ReactNode): string {
     return extractText((node as any).props.children)
   }
   return ''
+}
+
+function slugifyHeadingText(value: string): string {
+  const normalized = value
+    .toLowerCase()
+    .trim()
+    .replace(/[`~!@#$%^&*()+=[\]{}|\\:;"'<>,.?/]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '')
+
+  return normalized || 'section'
+}
+
+function createHeadingIdResolver(prefix?: string): ((headingText: string) => string | undefined) {
+  if (!prefix) {
+    return () => undefined
+  }
+
+  const slugCounts = new Map<string, number>()
+  return (headingText: string) => {
+    const slug = slugifyHeadingText(headingText)
+    const nextCount = (slugCounts.get(slug) || 0) + 1
+    slugCounts.set(slug, nextCount)
+    if (nextCount === 1) return `${prefix}-${slug}`
+    return `${prefix}-${slug}-${nextCount}`
+  }
 }
 
 function getFileName(filePath: string): string {
@@ -557,10 +586,12 @@ function createComponents(options: {
   workDir?: string
   basePath?: string
   deferMermaidRender?: boolean
+  headingIdPrefix?: string
   onOpenFilePath: (filePath: string) => void
 }) {
-  const { workDir, onOpenFilePath, deferMermaidRender = false } = options
+  const { workDir, onOpenFilePath, deferMermaidRender = false, headingIdPrefix } = options
   const effectiveBasePath = options.basePath || workDir
+  const resolveHeadingId = createHeadingIdResolver(headingIdPrefix)
 
   return {
     code: (props: CodeBlockProps) => (
@@ -578,13 +609,19 @@ function createComponents(options: {
     ),
 
     h1: ({ children }: { children?: React.ReactNode }) => (
-      <h1 className="text-xl font-semibold mt-6 mb-3 first:mt-0">{children}</h1>
+      <h1 id={resolveHeadingId(extractText(children))} className="text-xl font-semibold mt-6 mb-3 first:mt-0">
+        {children}
+      </h1>
     ),
     h2: ({ children }: { children?: React.ReactNode }) => (
-      <h2 className="text-lg font-semibold mt-5 mb-2 first:mt-0">{children}</h2>
+      <h2 id={resolveHeadingId(extractText(children))} className="text-lg font-semibold mt-5 mb-2 first:mt-0">
+        {children}
+      </h2>
     ),
     h3: ({ children }: { children?: React.ReactNode }) => (
-      <h3 className="text-base font-semibold mt-4 mb-2 first:mt-0">{children}</h3>
+      <h3 id={resolveHeadingId(extractText(children))} className="text-base font-semibold mt-4 mb-2 first:mt-0">
+        {children}
+      </h3>
     ),
 
     ul: ({ children }: { children?: React.ReactNode }) => (
@@ -692,7 +729,8 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
   className = '',
   workDir,
   basePath,
-  deferMermaidRender = false
+  deferMermaidRender = false,
+  headingIdPrefix
 }: MarkdownRendererProps) {
   const effectiveBasePath = basePath || workDir
 
@@ -704,15 +742,13 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
     }
   }, [])
 
-  const components = useMemo(
-    () => createComponents({
-      workDir,
-      basePath: effectiveBasePath,
-      deferMermaidRender,
-      onOpenFilePath: handleOpenFilePath
-    }),
-    [deferMermaidRender, effectiveBasePath, handleOpenFilePath, workDir]
-  )
+  const components = createComponents({
+    workDir,
+    basePath: effectiveBasePath,
+    deferMermaidRender,
+    headingIdPrefix,
+    onOpenFilePath: handleOpenFilePath
+  })
 
   const processedContent = useMemo(() => wrapBareFilePaths(content), [content])
 

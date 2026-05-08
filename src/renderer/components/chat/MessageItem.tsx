@@ -192,6 +192,7 @@ export const MessageItem = memo(function MessageItem({
                         key={segment.key}
                         content={segment.content}
                         workDir={workDir}
+                        headingIdPrefix={`msg-${message.id}-${segment.key}`}
                         className="space-studio-assistant-markdown"
                       />
                     )
@@ -218,6 +219,7 @@ export const MessageItem = memo(function MessageItem({
               <MarkdownRenderer
                 content={message.content}
                 workDir={workDir}
+                headingIdPrefix={`msg-${message.id}`}
                 className="space-studio-assistant-markdown"
               />
             )
@@ -265,6 +267,7 @@ export const MessageItem = memo(function MessageItem({
     return (
       <div
         data-message-id={message.id}
+        data-message-role={message.role}
         style={{ contentVisibility: 'auto', containIntrinsicSize: '180px' }}
       >
         {bubble}
@@ -277,6 +280,7 @@ export const MessageItem = memo(function MessageItem({
     <div
       className={`flex ${isUser ? 'justify-end' : 'justify-start'} animate-fade-in`}
       data-message-id={message.id}
+      data-message-role={message.role}
       style={{ contentVisibility: 'auto', containIntrinsicSize: '180px' }}
     >
       {bubble}

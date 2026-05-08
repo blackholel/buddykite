@@ -17,6 +17,7 @@ out
 # E2E test results
 tests/e2e/results/
 .claude/
+.superpowers/
 
 # Test files
 tests/

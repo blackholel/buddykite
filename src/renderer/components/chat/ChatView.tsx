@@ -18,6 +18,7 @@ import { useOnboardingStore } from '../../stores/onboarding.store'
 import { useCanvasLifecycle } from '../../hooks/useCanvasLifecycle'
 import { useSmartScroll } from '../../hooks/useSmartScroll'
 import { MessageList } from './MessageList'
+import { ChatNavigationRails } from './ChatNavigationRails'
 import { InputArea } from './InputArea'
 import { AskUserQuestionPanel } from './AskUserQuestionPanel'
 import { ScrollToBottomButton } from './ScrollToBottomButton'
@@ -258,6 +259,15 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
   const [mockStreamingContent, setMockStreamingContent] = useState<string>('')
   const [mockUserTimestamp, setMockUserTimestamp] = useState<string | null>(null)
   const [mockAiTimestamp, setMockAiTimestamp] = useState<string | null>(null)
+  const [railVisibility, setRailVisibility] = useState<{
+    showLeftRail: boolean
+    showRightRail: boolean
+    leftRailMode: 'hidden' | 'rail' | 'chip'
+  }>({
+    showLeftRail: false,
+    showRightRail: false,
+    leftRailMode: 'hidden'
+  })
   const ensureConversationInFlightRef = useRef<Promise<string | null> | null>(null)
   const latestCurrentSpaceIdRef = useRef<string | null>(currentSpaceId)
   const activeSearchMessageRef = useRef<HTMLElement | null>(null)
@@ -626,6 +636,19 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
     } as CSSProperties
   }, [appConfig?.appearance?.chatLayout])
 
+  const messageScrollPaddingStyle = useMemo(() => {
+    const basePadding = isCompact ? 12 : 16
+    const leftRailSafePadding = railVisibility.showLeftRail
+      ? (railVisibility.leftRailMode === 'rail' ? 30 : 24)
+      : 0
+    const rightRailSafePadding = railVisibility.showRightRail ? 38 : 0
+
+    return {
+      paddingLeft: `${basePadding + leftRailSafePadding}px`,
+      paddingRight: `${basePadding + rightRailSafePadding}px`
+    } as CSSProperties
+  }, [isCompact, railVisibility.leftRailMode, railVisibility.showLeftRail, railVisibility.showRightRail])
+
   return (
     <div
       className={`
@@ -643,8 +666,8 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
           className={`
             space-studio-message-scroll h-full overflow-y-auto overflow-x-hidden py-7
             transition-[padding] duration-300 ease-out
-            ${isCompact ? 'px-3' : 'px-4'}
           `}
+          style={messageScrollPaddingStyle}
         >
           {isLoadingConversation ? (
             <LoadingState />
@@ -681,6 +704,17 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
             </>
           )}
         </div>
+
+        {hasMessages && (
+          <ChatNavigationRails
+            containerRef={containerRef}
+            messages={displayMessages}
+            isGenerating={displayIsGenerating}
+            activeRunId={activeRunId}
+            isCompact={isCompact}
+            onVisibilityChange={setRailVisibility}
+          />
+        )}
 
         {/* Scroll to bottom button - positioned outside scroll container */}
         <ScrollToBottomButton
