@@ -39,6 +39,40 @@ interface CanvasTabsProps {
   onNewTab?: () => void
 }
 
+function splitFrontmatterBody(content: string): string {
+  const normalized = content.replace(/\r\n/g, '\n')
+  if (!normalized.startsWith('---\n')) return normalized
+  const endIndex = normalized.indexOf('\n---\n', 4)
+  if (endIndex < 0) return normalized
+  return normalized.slice(endIndex + 5)
+}
+
+function stripHeadingInlineMarkdown(value: string): string {
+  return value
+    .replace(/\[\[[^|\]]+\|([^\]]+)\]\]/g, '$1')
+    .replace(/\[\[([^\]]+)\]\]/g, '$1')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/[*_`~]/g, '')
+    .trim()
+}
+
+function extractMarkdownH1Title(content: string): string | null {
+  const body = splitFrontmatterBody(content)
+  for (const line of body.split('\n')) {
+    const trimmed = line.trim()
+    if (!trimmed) continue
+    if (!trimmed.startsWith('# ')) return null
+    const headingTitle = stripHeadingInlineMarkdown(trimmed.slice(2))
+    return headingTitle || null
+  }
+  return null
+}
+
+function getDisplayTabTitle(tab: TabState): string {
+  if (tab.type !== 'markdown' || !tab.content) return tab.title
+  return extractMarkdownH1Title(tab.content) || tab.title
+}
+
 export function CanvasTabs({
   tabs,
   activeTabId,
@@ -252,14 +286,14 @@ export function CanvasTabs({
   }, [])
 
   // Handle right-click - show native Electron menu
-  const handleContextMenu = useCallback((e: React.MouseEvent, tab: TabState, index: number) => {
+  const handleContextMenu = useCallback((e: React.MouseEvent, tab: TabState, tabTitle: string, index: number) => {
     e.preventDefault()
 
     // Show native Electron context menu
     api.showCanvasTabContextMenu({
       tabId: tab.id,
       tabIndex: index,
-      tabTitle: tab.title,
+      tabTitle,
       tabPath: tab.path,
       tabCount: tabs.length,
       hasTabsToRight: index < tabs.length - 1
@@ -277,27 +311,31 @@ export function CanvasTabs({
         role="tablist"
         aria-label={t('Opened content')}
       >
-        {tabs.map((tab, index) => (
-          <TabItem
-            key={tab.id}
-            ref={(el) => setTabRef(tab.id, el)}
-            tab={tab}
-            index={index}
-            isActive={tab.id === activeTabId}
-            isDragging={draggedIndex === index}
-            isDropTarget={dropTargetIndex === index}
-            isClosing={closingTabIds.has(tab.id)}
-            isNew={newTabIds.has(tab.id)}
-            onClick={() => onTabClick(tab.id)}
-            onClose={() => handleTabClose(tab.id)}
-            onContextMenu={(e) => handleContextMenu(e, tab, index)}
-            onDragStart={(e) => handleDragStart(e, index)}
-            onDragOver={(e) => handleDragOver(e, index)}
-            onDragLeave={handleDragLeave}
-            onDrop={(e) => handleDrop(e, index)}
-            onDragEnd={handleDragEnd}
-          />
-        ))}
+        {tabs.map((tab, index) => {
+          const displayTitle = getDisplayTabTitle(tab)
+          return (
+            <TabItem
+              key={tab.id}
+              ref={(el) => setTabRef(tab.id, el)}
+              tab={tab}
+              displayTitle={displayTitle}
+              index={index}
+              isActive={tab.id === activeTabId}
+              isDragging={draggedIndex === index}
+              isDropTarget={dropTargetIndex === index}
+              isClosing={closingTabIds.has(tab.id)}
+              isNew={newTabIds.has(tab.id)}
+              onClick={() => onTabClick(tab.id)}
+              onClose={() => handleTabClose(tab.id)}
+              onContextMenu={(e) => handleContextMenu(e, tab, displayTitle, index)}
+              onDragStart={(e) => handleDragStart(e, index)}
+              onDragOver={(e) => handleDragOver(e, index)}
+              onDragLeave={handleDragLeave}
+              onDrop={(e) => handleDrop(e, index)}
+              onDragEnd={handleDragEnd}
+            />
+          )
+        })}
         {/* New tab button - inside tab list, follows tabs */}
         {onNewTab && (
           <button
@@ -315,6 +353,7 @@ export function CanvasTabs({
 
 interface TabItemProps {
   tab: TabState
+  displayTitle: string
   index: number
   isActive: boolean
   isDragging: boolean
@@ -333,6 +372,7 @@ interface TabItemProps {
 
 const TabItem = forwardRef<HTMLDivElement, TabItemProps>(function TabItem({
   tab,
+  displayTitle,
   index,
   isActive,
   isDragging,
@@ -411,8 +451,8 @@ const TabItem = forwardRef<HTMLDivElement, TabItemProps>(function TabItem({
       </div>
 
       {/* Title */}
-      <span className="canvas-tab-title" title={tab.title}>
-        {tab.title}
+      <span className="canvas-tab-title" title={displayTitle}>
+        {displayTitle}
       </span>
 
       {/* Dirty indicator (unsaved changes) */}
