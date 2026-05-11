@@ -316,6 +316,8 @@ export function ChatTabViewer({ tab }: ChatTabViewerProps) {
                 textBlockVersion={textBlockVersion}
                 toolStatusById={toolStatusById}
                 availableToolsSnapshot={availableToolsSnapshot}
+                spaceId={spaceId ?? null}
+                workDir={resolvedWorkDir}
                 onOpenPlanInCanvas={handleOpenPlanInCanvas}
                 onExecutePlan={handleExecutePlan}
               />

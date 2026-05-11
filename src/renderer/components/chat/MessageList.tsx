@@ -83,6 +83,7 @@ interface MessageListProps {
   error?: string | null  // Error message to display when generation fails
   isCompact?: boolean  // Compact mode when Canvas is open
   textBlockVersion?: number  // Increments on each new text block (for StreamingBubble reset)
+  spaceId?: string | null
   workDir?: string  // For skill suggestion card creation
   onOpenPlanInCanvas?: (planContent: string) => void
   onExecutePlan?: (planContent: string) => void  // Callback when "Execute Plan" button is clicked
@@ -673,6 +674,7 @@ export function MessageList({
   error = null,
   isCompact = false,
   textBlockVersion = 0,
+  spaceId = null,
   workDir,
   onOpenPlanInCanvas,
   onExecutePlan,
@@ -729,6 +731,19 @@ export function MessageList({
       map.set(message.id, previousCost)
       if (message.role === 'assistant' && message.tokenUsage?.totalCostUsd) {
         previousCost = message.tokenUsage.totalCostUsd
+      }
+    }
+    return map
+  }, [mainMessages])
+
+  const previousUserMessageByAssistantId = useMemo(() => {
+    const map = new Map<string, Message | undefined>()
+    let latestUserMessage: Message | undefined
+    for (const message of mainMessages) {
+      if (message.role === 'assistant') {
+        map.set(message.id, latestUserMessage)
+      } else if (message.role === 'user') {
+        latestUserMessage = message
       }
     }
     return map
@@ -982,6 +997,9 @@ export function MessageList({
       {/* Render completed messages - thoughts shown above assistant messages */}
       {mainMessages.map((message) => {
         const previousCost = previousCostByMessageId.get(message.id) ?? 0
+        const previousUserMessage = message.role === 'assistant'
+          ? previousUserMessageByAssistantId.get(message.id)
+          : undefined
         const messageProcessThoughts = getMessageThoughtsForDisplay(message)
         // Show collapsed thoughts ABOVE assistant messages, in same container for consistent width
         if (message.role === 'assistant' && messageProcessThoughts.length > 0) {
@@ -1039,9 +1057,11 @@ export function MessageList({
                 {/* Then the message itself (without embedded thoughts) */}
                 <MessageItem
                   message={message}
+                  previousUserMessage={previousUserMessage}
                   previousCost={previousCost}
                   hideThoughts
                   isInContainer
+                  spaceId={spaceId}
                   workDir={workDir}
                   resourceDisplayLookups={resourceDisplayLookups}
                   onOpenPlanInCanvas={onOpenPlanInCanvas}
@@ -1055,7 +1075,9 @@ export function MessageList({
           <MessageItem
             key={message.id}
             message={message}
+            previousUserMessage={previousUserMessage}
             previousCost={previousCost}
+            spaceId={spaceId}
             workDir={workDir}
             resourceDisplayLookups={resourceDisplayLookups}
             onOpenPlanInCanvas={onOpenPlanInCanvas}

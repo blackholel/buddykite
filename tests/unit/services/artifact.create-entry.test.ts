@@ -29,6 +29,25 @@ describe('artifact service createArtifactEntry', () => {
     expect(fs.existsSync(path.join(space.path, '.env.local'))).toBe(true)
   })
 
+  it('创建文件时会递归创建 parentPath', async () => {
+    const space = await createSpace({
+      name: 'Artifact Entry Nested Parent',
+      icon: 'folder'
+    })
+    const widgetsDir = path.join(space.path, 'widgets')
+
+    const result = await createArtifactEntry({
+      type: 'file',
+      parentPath: widgetsDir,
+      name: 'widget-export.md',
+      content: '# Widget'
+    })
+
+    expect(result.success).toBe(true)
+    expect(fs.existsSync(widgetsDir)).toBe(true)
+    expect(fs.readFileSync(path.join(widgetsDir, 'widget-export.md'), 'utf-8')).toBe('# Widget')
+  })
+
   it('可以创建文件夹', async () => {
     const space = await createSpace({
       name: 'Artifact Entry Folder',

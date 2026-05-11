@@ -792,6 +792,29 @@ export const api = {
     }
   },
 
+  generateMarkdownExportTitle: async <T = unknown>(params: {
+    userPrompt?: string
+    assistantText: string
+    widgetTitles?: string[]
+    fallbackTitle?: string
+  }): Promise<ApiResponse<T>> => {
+    if (!isElectron()) {
+      return { success: false, error: 'Generate export title is only supported in desktop mode' }
+    }
+
+    try {
+      if (typeof window.kite.generateMarkdownExportTitle === 'function') {
+        return window.kite.generateMarkdownExportTitle(params)
+      }
+      return { success: false, error: 'Generate export title is not available' }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to generate export title'
+      }
+    }
+  },
+
   // Rename a file or folder
   renameArtifact: async (oldPath: string, newName: string): Promise<ApiResponse> => {
     if (isElectron()) {

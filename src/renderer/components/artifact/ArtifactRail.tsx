@@ -190,6 +190,18 @@ export function ArtifactRail({
     loadArtifacts()
   }, [loadArtifacts])
 
+  // Refresh when external actions modify artifacts (e.g., widget markdown export)
+  useEffect(() => {
+    const handleRefresh = (event: Event) => {
+      const detail = (event as CustomEvent<{ spaceId?: string }>).detail
+      if (detail?.spaceId && detail.spaceId !== spaceId) return
+      loadArtifacts()
+    }
+
+    window.addEventListener('artifacts:refresh', handleRefresh)
+    return () => window.removeEventListener('artifacts:refresh', handleRefresh)
+  }, [spaceId, loadArtifacts])
+
   // Refresh artifacts when generation completes
   useEffect(() => {
     if (!isGenerating) {

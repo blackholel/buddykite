@@ -16,6 +16,7 @@ import {
   moveArtifact,
   copyArtifact
 } from '../services/artifact.service'
+import { generateMarkdownExportTitle } from '../services/markdown-export-title.service'
 
 // Register all artifact handlers
 export function registerArtifactHandlers(): void {
@@ -138,6 +139,24 @@ export function registerArtifactHandlers(): void {
     }
   )
 
+  ipcMain.handle(
+    'artifact:generate-export-title',
+    async (_event, params: {
+      userPrompt?: string
+      assistantText: string
+      widgetTitles?: string[]
+      fallbackTitle?: string
+    }) => {
+      try {
+        const result = await generateMarkdownExportTitle(params)
+        return { success: true, data: result }
+      } catch (error) {
+        console.error('[IPC] artifact:generate-export-title error:', error)
+        return { success: false, error: (error as Error).message }
+      }
+    }
+  )
+
   // Rename a file or folder
   ipcMain.handle('artifact:rename', async (_event, oldPath: string, newName: string) => {
     try {
@@ -198,6 +217,7 @@ export function unregisterArtifactHandlers(): void {
   ipcMain.removeHandler('artifact:create-folder')
   ipcMain.removeHandler('artifact:create-file')
   ipcMain.removeHandler('artifact:create-entry')
+  ipcMain.removeHandler('artifact:generate-export-title')
   ipcMain.removeHandler('artifact:rename')
   ipcMain.removeHandler('artifact:delete')
   ipcMain.removeHandler('artifact:move')

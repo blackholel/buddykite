@@ -14,8 +14,11 @@ import {
   Copy,
   Check,
   Bot,
-  Zap
+  Zap,
+  FilePlus2,
+  FileText
 } from 'lucide-react'
+import { join } from 'path-browserify'
 import { MarkdownRenderer } from './MarkdownRenderer'
 import { MessageImages } from './ImageAttachmentPreview'
 import { PlanCard } from './PlanCard'
@@ -24,20 +27,33 @@ import { WidgetErrorBoundary } from './WidgetErrorBoundary'
 import { FileIcon } from '../icons/ToolIcons'
 import type { Message } from '../../types'
 import { useTranslation } from '../../i18n'
+import { api } from '../../api'
+import { useCanvasStore } from '../../stores/canvas.store'
 import {
   parseComposerMessageForDisplay,
   type ComposerResourceDisplayLookups
 } from '../../utils/composer-resource-chip'
 import { parseAllShowWidgets } from '../../lib/widget-sanitizer'
+import {
+  buildWidgetMarkdownExport,
+  buildWidgetMarkdownFileName
+} from '../../lib/widget-markdown-export'
+import {
+  buildMessageMarkdownExport,
+  buildMessageMarkdownFallbackTitle,
+  buildMessageMarkdownFileName
+} from '../../lib/message-markdown-export'
 export { parseAllShowWidgets, computePartialWidgetKey } from '../../lib/widget-sanitizer'
 
 interface MessageItemProps {
   message: Message
+  previousUserMessage?: Message
   previousCost?: number  // Previous message's cumulative cost
   hideThoughts?: boolean
   isInContainer?: boolean
   isWorking?: boolean  // True when AI is still generating (not yet complete)
   isWaitingMore?: boolean  // True when content paused (e.g., during tool call), show "..." animation
+  spaceId?: string | null
   workDir?: string  // For skill suggestion card creation
   resourceDisplayLookups?: ComposerResourceDisplayLookups
   onOpenPlanInCanvas?: (planContent: string) => void
@@ -51,10 +67,12 @@ const EMPTY_RESOURCE_DISPLAY_LOOKUPS: ComposerResourceDisplayLookups = {
 
 export const MessageItem = memo(function MessageItem({
   message,
+  previousUserMessage,
   previousCost = 0,
   isInContainer = false,
   isWorking = false,
   isWaitingMore = false,
+  spaceId = null,
   workDir,
   resourceDisplayLookups,
   onOpenPlanInCanvas,
@@ -63,7 +81,10 @@ export const MessageItem = memo(function MessageItem({
   const isUser = message.role === 'user'
   const isStreaming = (message as any).isStreaming
   const [copied, setCopied] = useState(false)
+  const [savingWidgetKey, setSavingWidgetKey] = useState<string | null>(null)
+  const [savingMessage, setSavingMessage] = useState(false)
   const { t } = useTranslation()
+  const openFile = useCanvasStore(state => state.openFile)
   const userFileContexts = isUser ? (message.fileContexts || []) : []
   const parsedUserMessage = useMemo(() => {
     if (!isUser || !message.content) return null
@@ -80,6 +101,23 @@ export const MessageItem = memo(function MessageItem({
     () => parsedAssistantSegments.some((segment) => segment.type === 'widget'),
     [parsedAssistantSegments]
   )
+  const widgetTitles = useMemo(() => {
+    return parsedAssistantSegments
+      .filter((segment): segment is Extract<(typeof parsedAssistantSegments)[number], { type: 'widget' }> => segment.type === 'widget')
+      .map((segment) => segment.title)
+      .filter((title): title is string => Boolean(title?.trim()))
+  }, [parsedAssistantSegments])
+  const assistantTextForTitle = useMemo(() => {
+    const textSegments = parsedAssistantSegments
+      .filter((segment): segment is Extract<(typeof parsedAssistantSegments)[number], { type: 'text' }> => segment.type === 'text')
+      .map((segment) => segment.content.trim())
+      .filter(Boolean)
+
+    if (textSegments.length > 0) return textSegments.join('\n\n')
+    return hasWidgetSegments ? '' : message.content
+  }, [hasWidgetSegments, message.content, parsedAssistantSegments])
+  const canSaveWidget = !isStreaming && Boolean(spaceId && workDir)
+  const canSaveMessage = !isUser && !message.isPlan && !isStreaming && Boolean(spaceId && workDir && message.content.trim())
 
   // Handle copying message content to clipboard
   const handleCopyMessage = useCallback(async () => {
@@ -92,6 +130,101 @@ export const MessageItem = memo(function MessageItem({
       console.error('Failed to copy message:', err)
     }
   }, [message.content])
+
+  const handleSaveWidget = useCallback(async (segment: Extract<(typeof parsedAssistantSegments)[number], { type: 'widget' }>) => {
+    if (!spaceId || !workDir) return
+
+    const name = buildWidgetMarkdownFileName({
+      messageId: message.id,
+      segmentKey: segment.key
+    })
+    const parentPath = join(workDir, 'widgets')
+    const content = buildWidgetMarkdownExport({
+      title: segment.title,
+      widgetCode: segment.widgetCode
+    })
+
+    setSavingWidgetKey(segment.key)
+    try {
+      const result = await api.createArtifactEntry<{ path: string }>({
+        type: 'file',
+        parentPath,
+        name,
+        content
+      })
+      if (!result.success || !result.data?.path) {
+        throw new Error(result.error || 'Failed to save widget')
+      }
+      window.dispatchEvent(new CustomEvent('artifacts:refresh', { detail: { spaceId } }))
+      await openFile(spaceId, result.data.path, name)
+    } catch (error) {
+      console.error('[MessageItem] Failed to save widget markdown:', error)
+      window.alert(t('Failed to create file'))
+    } finally {
+      setSavingWidgetKey(null)
+    }
+  }, [message.id, openFile, spaceId, t, workDir])
+
+  const handleSaveMessage = useCallback(async () => {
+    if (!spaceId || !workDir || !message.content.trim()) return
+
+    const fallbackTitle = buildMessageMarkdownFallbackTitle({
+      assistantContent: message.content,
+      widgetTitles
+    })
+
+    setSavingMessage(true)
+    try {
+      const titleResponse = await api.generateMarkdownExportTitle<{
+        title: string
+        source: 'ai' | 'fallback'
+        error?: string
+      }>({
+        userPrompt: previousUserMessage?.content,
+        assistantText: assistantTextForTitle,
+        widgetTitles,
+        fallbackTitle
+      })
+      const title = titleResponse.success && titleResponse.data?.title
+        ? titleResponse.data.title
+        : fallbackTitle
+      const name = buildMessageMarkdownFileName({
+        title,
+        messageId: message.id
+      })
+      const content = buildMessageMarkdownExport({
+        title,
+        userMessage: previousUserMessage,
+        assistantMessage: message
+      })
+
+      const result = await api.createArtifactEntry<{ path: string }>({
+        type: 'file',
+        parentPath: join(workDir, 'exports'),
+        name,
+        content
+      })
+      if (!result.success || !result.data?.path) {
+        throw new Error(result.error || 'Failed to save message')
+      }
+      window.dispatchEvent(new CustomEvent('artifacts:refresh', { detail: { spaceId } }))
+      await openFile(spaceId, result.data.path, name)
+    } catch (error) {
+      console.error('[MessageItem] Failed to save message markdown:', error)
+      window.alert(t('Failed to create file'))
+    } finally {
+      setSavingMessage(false)
+    }
+  }, [
+    assistantTextForTitle,
+    message,
+    openFile,
+    previousUserMessage,
+    spaceId,
+    t,
+    widgetTitles,
+    workDir
+  ])
 
   // Message bubble content
   const widthClass = isUser
@@ -199,18 +332,36 @@ export const MessageItem = memo(function MessageItem({
                   }
 
                   return (
-                    <WidgetErrorBoundary
-                      key={segment.key}
-                      fallbackTitle={t('Widget failed to render')}
-                      fallbackDetail={t('Widget render error')}
-                    >
-                      <WidgetRenderer
-                        widgetKey={segment.key}
-                        title={segment.title}
-                        widgetCode={segment.widgetCode}
-                        isPartial={false}
-                      />
-                    </WidgetErrorBoundary>
+                    <div key={segment.key} className="group/widget-save relative">
+                      {canSaveWidget && (
+                        <button
+                          type="button"
+                          onClick={() => handleSaveWidget(segment)}
+                          disabled={savingWidgetKey === segment.key}
+                          className="absolute right-2 top-2 z-10 inline-flex h-7 w-7 items-center justify-center rounded-md border border-border/50 bg-background/75 text-muted-foreground opacity-0 shadow-sm backdrop-blur-sm transition hover:bg-background hover:text-foreground group-hover/widget-save:opacity-100 disabled:opacity-50"
+                          title={t('Save chart as Markdown')}
+                          aria-label={t('Save chart as Markdown')}
+                          data-testid="save-widget-markdown"
+                        >
+                          {savingWidgetKey === segment.key ? (
+                            <Check size={14} className="text-kite-success" />
+                          ) : (
+                            <FilePlus2 size={14} />
+                          )}
+                        </button>
+                      )}
+                      <WidgetErrorBoundary
+                        fallbackTitle={t('Widget failed to render')}
+                        fallbackDetail={t('Widget render error')}
+                      >
+                        <WidgetRenderer
+                          widgetKey={segment.key}
+                          title={segment.title}
+                          widgetCode={segment.widgetCode}
+                          isPartial={false}
+                        />
+                      </WidgetErrorBoundary>
+                    </div>
                   )
                 })}
               </div>
@@ -256,6 +407,28 @@ export const MessageItem = memo(function MessageItem({
               </>
             )}
           </button>
+          {canSaveMessage && (
+            <button
+              onClick={handleSaveMessage}
+              disabled={savingMessage}
+              className="space-studio-assistant-footer-action"
+              title={t('Save reply as Markdown')}
+              aria-label={t('Save reply as Markdown')}
+              data-testid="save-message-markdown"
+            >
+              {savingMessage ? (
+                <>
+                  <Check size={13} className="text-kite-success" />
+                  <span className="text-kite-success">{t('Saving')}</span>
+                </>
+              ) : (
+                <>
+                  <FileText size={13} />
+                  <span>{t('Save reply')}</span>
+                </>
+              )}
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -289,11 +462,13 @@ export const MessageItem = memo(function MessageItem({
 }, (prev, next) => {
   return (
     prev.message === next.message &&
+    prev.previousUserMessage === next.previousUserMessage &&
     prev.previousCost === next.previousCost &&
     prev.hideThoughts === next.hideThoughts &&
     prev.isInContainer === next.isInContainer &&
     prev.isWorking === next.isWorking &&
     prev.isWaitingMore === next.isWaitingMore &&
+    prev.spaceId === next.spaceId &&
     prev.workDir === next.workDir &&
     prev.resourceDisplayLookups === next.resourceDisplayLookups &&
     prev.onOpenPlanInCanvas === next.onOpenPlanInCanvas &&

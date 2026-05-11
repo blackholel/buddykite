@@ -696,6 +696,7 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
                 textBlockVersion={textBlockVersion}
                 toolStatusById={toolStatusById}
                 availableToolsSnapshot={availableToolsSnapshot}
+                spaceId={currentSpaceId}
                 workDir={resolvedConversationWorkDir}
                 onOpenPlanInCanvas={handleOpenPlanInCanvas}
                 onExecutePlan={handleExecutePlan}

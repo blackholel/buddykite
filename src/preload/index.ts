@@ -231,6 +231,12 @@ export interface KiteAPI {
     name: string
     content?: string
   }) => Promise<IpcResponse>
+  generateMarkdownExportTitle: (params: {
+    userPrompt?: string
+    assistantText: string
+    widgetTitles?: string[]
+    fallbackTitle?: string
+  }) => Promise<IpcResponse>
   renameArtifact: (oldPath: string, newName: string) => Promise<IpcResponse>
   deleteArtifact: (filePath: string) => Promise<IpcResponse>
   moveArtifact: (sourcePath: string, targetDir: string) => Promise<IpcResponse>
@@ -574,6 +580,7 @@ const api: KiteAPI = {
   createFolder: (folderPath) => ipcRenderer.invoke('artifact:create-folder', folderPath),
   createFile: (filePath, content) => ipcRenderer.invoke('artifact:create-file', filePath, content),
   createArtifactEntry: (params) => ipcRenderer.invoke('artifact:create-entry', params),
+  generateMarkdownExportTitle: (params) => ipcRenderer.invoke('artifact:generate-export-title', params),
   renameArtifact: (oldPath, newName) => ipcRenderer.invoke('artifact:rename', oldPath, newName),
   deleteArtifact: (filePath) => ipcRenderer.invoke('artifact:delete', filePath),
   moveArtifact: (sourcePath, targetDir) => ipcRenderer.invoke('artifact:move', sourcePath, targetDir),

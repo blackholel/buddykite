@@ -21,6 +21,9 @@ import { useTranslation } from '../../i18n'
 import { hljs } from '../../lib/highlight-loader'
 import { api } from '../../api'
 import { ResourceSuggestionCard, parseResourceSuggestion } from '../skills/SkillSuggestionCard'
+import { parseAllShowWidgets } from '../../lib/widget-sanitizer'
+import { WidgetErrorBoundary } from './WidgetErrorBoundary'
+import { WidgetRenderer } from './WidgetRenderer'
 
 interface MarkdownRendererProps {
   content: string
@@ -724,7 +727,7 @@ function createComponents(options: {
   }
 }
 
-export const MarkdownRenderer = memo(function MarkdownRenderer({
+function MarkdownContent({
   content,
   className = '',
   workDir,
@@ -779,6 +782,67 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
       >
         {processedContent}
       </ReactMarkdown>
+    </div>
+  )
+}
+
+export const MarkdownRenderer = memo(function MarkdownRenderer({
+  content,
+  className = '',
+  workDir,
+  basePath,
+  deferMermaidRender = false,
+  headingIdPrefix
+}: MarkdownRendererProps) {
+  const { t } = useTranslation()
+  const showWidgetSegments = useMemo(() => parseAllShowWidgets(content), [content])
+  const hasShowWidgets = showWidgetSegments.some((segment) => segment.type === 'widget')
+
+  if (!hasShowWidgets) {
+    return (
+      <MarkdownContent
+        content={content}
+        className={className}
+        workDir={workDir}
+        basePath={basePath}
+        deferMermaidRender={deferMermaidRender}
+        headingIdPrefix={headingIdPrefix}
+      />
+    )
+  }
+
+  return (
+    <div className={`markdown-content min-w-0 space-y-3 ${className}`}>
+      {showWidgetSegments.map((segment) => {
+        if (segment.type === 'text') {
+          if (!segment.content) return null
+          return (
+            <MarkdownContent
+              key={segment.key}
+              content={segment.content}
+              workDir={workDir}
+              basePath={basePath}
+              deferMermaidRender={deferMermaidRender}
+              headingIdPrefix={headingIdPrefix ? `${headingIdPrefix}-${segment.key}` : undefined}
+            />
+          )
+        }
+
+        return (
+          <WidgetErrorBoundary
+            key={segment.key}
+            fallbackTitle={t('Widget failed to render')}
+            fallbackDetail={t('Widget render error')}
+          >
+            <WidgetRenderer
+              widgetKey={segment.key}
+              title={segment.title}
+              widgetCode={segment.widgetCode}
+              isPartial={false}
+            />
+          </WidgetErrorBoundary>
+        )
+      })}
     </div>
   )
 })
