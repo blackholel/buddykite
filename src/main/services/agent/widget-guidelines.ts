@@ -12,6 +12,7 @@ Widget payload MUST be wrapped in this fence format exactly:
 Do not use other fence tags for widget payload.
 Do not create standalone html files or open external browser pages for visualization.
 If the user asks to render now, output the widget fence directly in the same response instead of asking for confirmation first.
+Multiple show-widget fences are allowed when the response needs staged explanation, mixed text-and-chart output, multiple charts, or independent visual blocks.
 `
 
 const WIDGET_GUIDELINES_TEXT = `# CodePilot Widget Guidelines
@@ -20,7 +21,9 @@ Use this guideline when you need structured UI/widget rendering in chat.
 
 ## 1) Required output contract
 - Widget payload MUST be a valid JSON object.
-- Widget payload MUST appear in exactly one fenced block with language tag: show-widget.
+- Each widget payload MUST appear in its own fenced block with language tag: show-widget.
+- Multiple show-widget fences are allowed in the same response when the user asks for staged explanation, mixed text-and-chart output, multiple charts, or independent visual blocks.
+- Prefer one show-widget fence when a single visual block can clearly answer the request.
 - Do not wrap widget JSON with markdown code tags other than show-widget.
 - Put explanation text outside the fence (before or after), never inside JSON fields unless needed as content.
 
@@ -71,10 +74,30 @@ Example B:
 }
 \`\`\`
 
+Example C:
+First, the conversion trend shows steady growth.
+
+\`\`\`show-widget
+{
+  "title": "Conversion Trend",
+  "widget_code": "<svg width=\\"100%\\" height=\\"160\\" viewBox=\\"0 0 500 160\\" xmlns=\\"http://www.w3.org/2000/svg\\"><polyline fill=\\"none\\" stroke=\\"#2563eb\\" stroke-width=\\"3\\" points=\\"20,130 140,110 260,82 380,66 480,42\\"/></svg>"
+}
+\`\`\`
+
+The second view isolates current status by channel.
+
+\`\`\`show-widget
+{
+  "title": "Channel Mix",
+  "widget_code": "<div style=\\"font-family:sans-serif;padding:12px;border:1px solid #ddd;border-radius:10px\\"><div>Email 42%</div><div>Organic 35%</div><div>Paid 23%</div></div>"
+}
+\`\`\`
+
 ## 6) Common mistakes to avoid
 - Invalid JSON syntax.
 - Using \`json\` fence instead of \`show-widget\`.
 - Returning multiple widget fences when one merged payload is enough.
+- Splitting a single widget payload across multiple fences.
 - Missing required key: widget_code.
 `
 

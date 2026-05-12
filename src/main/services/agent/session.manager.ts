@@ -36,7 +36,7 @@ import type {
   SessionAcquireResult,
   ResumeErrorCode
 } from './types'
-import { getPermissionModeForChatMode, isChatMode } from './types'
+import { getPermissionModeForChatMode, isChatMode, WIDGET_PROMPT_POLICY_VERSION } from './types'
 import { getEnabledPluginMcpHash, getEnabledPluginMcpList } from '../plugin-mcp.service'
 import { getResourceIndexHash } from '../resource-index.service'
 import { normalizeLocale, type LocaleCode } from '../../../shared/i18n/locale'
@@ -632,6 +632,7 @@ function getSessionRebuildReasons(existing: SessionConfig, next: SessionConfig):
   if ((existing.resourceRuntimePolicy || '') !== (next.resourceRuntimePolicy || '')) reasons.push('resourceRuntimePolicy')
   if ((existing.slashRuntimeMode || 'native') !== (next.slashRuntimeMode || 'native')) reasons.push('slashRuntimeMode')
   if ((existing.resourceIndexHash || '') !== (next.resourceIndexHash || '')) reasons.push('resourceIndexHash')
+  if ((existing.promptPolicyVersion || '') !== (next.promptPolicyVersion || '')) reasons.push('promptPolicyVersion')
   if ((existing.hasCanUseTool || false) !== (next.hasCanUseTool || false)) reasons.push('hasCanUseTool')
   return reasons
 }
@@ -650,6 +651,7 @@ function buildSessionConfigSignature(config: SessionConfig): string {
     resourceRuntimePolicy: config.resourceRuntimePolicy || '',
     slashRuntimeMode: config.slashRuntimeMode || 'native',
     resourceIndexHash: config.resourceIndexHash || '',
+    promptPolicyVersion: config.promptPolicyVersion || '',
     hasCanUseTool: config.hasCanUseTool || false
   })
 }
@@ -809,7 +811,8 @@ export async function getOrCreateV2Session(
       skillsLazyLoad: false,
       resourceRuntimePolicy: 'app-single-source',
       slashRuntimeMode: 'native',
-      enabledPluginMcpsHash: ''
+      enabledPluginMcpsHash: '',
+      promptPolicyVersion: WIDGET_PROMPT_POLICY_VERSION
     }
   })
 
@@ -823,7 +826,7 @@ export async function acquireSessionWithResumeFallback(params: {
   sdkOptions: Record<string, any>
   sessionConfig?: SessionConfig
   persistedSessionId?: string
-  persistedSessionScope?: { spaceId?: string; workDir?: string } | undefined
+  persistedSessionScope?: { spaceId?: string; workDir?: string; promptPolicyVersion?: string } | undefined
   resolvedWorkDir: string
   historyMessageCount: number
 }): Promise<SessionAcquireResult> {
@@ -845,10 +848,15 @@ export async function acquireSessionWithResumeFallback(params: {
       typeof persistedSessionScope?.spaceId === 'string' ? persistedSessionScope.spaceId.trim() : ''
     const scopeWorkDir =
       typeof persistedSessionScope?.workDir === 'string' ? persistedSessionScope.workDir.trim() : ''
+    const scopePromptPolicyVersion =
+      typeof persistedSessionScope?.promptPolicyVersion === 'string'
+        ? persistedSessionScope.promptPolicyVersion.trim()
+        : ''
     const scopeMatches =
       scopeSpaceId === spaceId &&
       scopeWorkDir.length > 0 &&
-      normalizePathForCompare(scopeWorkDir) === normalizePathForCompare(resolvedWorkDir)
+      normalizePathForCompare(scopeWorkDir) === normalizePathForCompare(resolvedWorkDir) &&
+      scopePromptPolicyVersion === WIDGET_PROMPT_POLICY_VERSION
     const hasSessionId = Boolean(persistedSessionId)
 
     const logBase = {
@@ -870,6 +878,8 @@ export async function acquireSessionWithResumeFallback(params: {
         bootstrapTokenEstimate: 0,
         scopeSpaceId: scopeSpaceId || null,
         scopeWorkDir: scopeWorkDir || null,
+        scopePromptPolicyVersion: scopePromptPolicyVersion || null,
+        expectedPromptPolicyVersion: WIDGET_PROMPT_POLICY_VERSION,
         resolvedWorkDir
       })
       try {
@@ -1141,6 +1151,7 @@ export async function ensureSessionWarm(
         resourceRuntimePolicy,
         slashRuntimeMode,
         resourceIndexHash: getResourceIndexHash(workDir),
+        promptPolicyVersion: WIDGET_PROMPT_POLICY_VERSION,
         hasCanUseTool: true // Session has canUseTool callback
       }
     })

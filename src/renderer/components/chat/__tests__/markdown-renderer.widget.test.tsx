@@ -45,6 +45,36 @@ describe('MarkdownRenderer show-widget rendering', () => {
     expect(html).not.toContain('language-show-widget')
   })
 
+  it('Markdown 中多个 show-widget 围栏按顺序渲染，并保留穿插文本', () => {
+    const content = [
+      'summary before',
+      '',
+      '```show-widget',
+      '{"title":"Chart A","widget_code":"<div>a</div>"}',
+      '```',
+      '',
+      'middle explanation',
+      '',
+      '```show-widget',
+      '{"title":"Chart B","widget_code":"<div>b</div>"}',
+      '```',
+      '',
+      'summary after'
+    ].join('\n')
+
+    const html = renderToStaticMarkup(<MarkdownRenderer content={content} />)
+
+    expect(html.match(/data-testid="widget-renderer"/g)).toHaveLength(2)
+    expect(html).toContain('summary before')
+    expect(html).toContain('data-title="Chart A"')
+    expect(html).toContain('&lt;div&gt;a&lt;/div&gt;')
+    expect(html).toContain('middle explanation')
+    expect(html).toContain('data-title="Chart B"')
+    expect(html).toContain('&lt;div&gt;b&lt;/div&gt;')
+    expect(html).toContain('summary after')
+    expect(html).not.toContain('language-show-widget')
+  })
+
   it('普通 HTML 与普通代码块仍按原 Markdown 行为渲染', () => {
     const html = renderToStaticMarkup(
       <MarkdownRenderer

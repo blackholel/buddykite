@@ -36,6 +36,7 @@ export interface FileContextAttachment {
 // ============================================
 
 export const CHAT_MODES = ['code', 'plan'] as const
+export const WIDGET_PROMPT_POLICY_VERSION = 'widget-multi-fence-v1'
 export type ChatMode = (typeof CHAT_MODES)[number]
 
 export function isChatMode(value: unknown): value is ChatMode {
@@ -355,6 +356,7 @@ export interface SessionConfig {
   resourceRuntimePolicy?: import('../../../shared/types/claude-code').ClaudeCodeResourceRuntimePolicy
   slashRuntimeMode?: import('../../../shared/types/claude-code').ClaudeCodeSlashRuntimeMode
   resourceIndexHash?: string
+  promptPolicyVersion?: string
   hasCanUseTool?: boolean // Track if session has canUseTool callback
 }
 

@@ -127,6 +127,7 @@ interface Conversation extends ConversationMeta {
   sessionScope?: {
     spaceId: string
     workDir: string
+    promptPolicyVersion?: string
     recordedAt: string
   }
 }
@@ -174,6 +175,7 @@ function normalizeConversation(conversation: Conversation): Conversation {
       sessionScope?: {
         spaceId?: unknown
         workDir?: unknown
+        promptPolicyVersion?: unknown
         recordedAt?: unknown
       }
     }).sessionScope
@@ -184,6 +186,9 @@ function normalizeConversation(conversation: Conversation): Conversation {
     return {
       spaceId,
       workDir,
+      ...(typeof raw.promptPolicyVersion === 'string' && raw.promptPolicyVersion.trim().length > 0
+        ? { promptPolicyVersion: raw.promptPolicyVersion.trim() }
+        : {}),
       recordedAt:
         typeof raw.recordedAt === 'string' && raw.recordedAt.trim().length > 0
           ? raw.recordedAt
@@ -677,7 +682,7 @@ export function saveSessionId(
   spaceId: string,
   conversationId: string,
   sessionId: string,
-  scope?: { spaceId?: string; workDir?: string; recordedAt?: string }
+  scope?: { spaceId?: string; workDir?: string; promptPolicyVersion?: string; recordedAt?: string }
 ): void {
   const conversation = getConversation(spaceId, conversationId)
 
@@ -694,6 +699,9 @@ export function saveSessionId(
             ? scope.spaceId.trim()
             : spaceId,
         workDir: scopedWorkDir,
+        ...(typeof scope?.promptPolicyVersion === 'string' && scope.promptPolicyVersion.trim().length > 0
+          ? { promptPolicyVersion: scope.promptPolicyVersion.trim() }
+          : {}),
         recordedAt:
           typeof scope?.recordedAt === 'string' && scope.recordedAt.trim().length > 0
             ? scope.recordedAt

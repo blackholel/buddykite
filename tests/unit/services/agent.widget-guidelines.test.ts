@@ -22,6 +22,9 @@ describe('widget-guidelines', () => {
     expect(WIDGET_SYSTEM_PROMPT).toContain('show-widget')
     expect(WIDGET_SYSTEM_PROMPT).toContain('codepilot_load_widget_guidelines')
     expect(WIDGET_SYSTEM_PROMPT).toContain('Do not use other fence tags')
+    expect(WIDGET_SYSTEM_PROMPT).not.toContain('exactly one show-widget')
+    expect(WIDGET_SYSTEM_PROMPT).not.toContain('exactly one fenced block')
+    expect(WIDGET_SYSTEM_PROMPT).toContain('Multiple show-widget fences are allowed')
   })
 
   it('createWidgetMcpServer 挂载 codepilot-widget 与 guidelines 工具', () => {
@@ -49,5 +52,9 @@ describe('widget-guidelines', () => {
     expect(text).toContain('Required output contract')
     expect(text).toContain('show-widget')
     expect(text).toContain('"widget_code"')
+    expect(text).not.toContain('exactly one fenced block')
+    expect(text).not.toContain('exactly one show-widget')
+    expect(text).toContain('Multiple show-widget fences are allowed')
+    expect(text).toContain('independent visual blocks')
   })
 })

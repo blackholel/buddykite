@@ -103,7 +103,8 @@ import {
   ASK_USER_QUESTION_ERROR_CODES,
   AskUserQuestionError,
   getPermissionModeForChatMode,
-  normalizeChatMode
+  normalizeChatMode,
+  WIDGET_PROMPT_POLICY_VERSION
 } from './types'
 import { normalizeLocale, type LocaleCode } from '../../../shared/i18n/locale'
 import { buildSessionKey } from '../../../shared/session-key'
@@ -2045,6 +2046,7 @@ export async function sendMessage(
       resourceIndexHash: getResourceIndexHash(workDir),
       resourceRuntimePolicy,
       slashRuntimeMode,
+      promptPolicyVersion: WIDGET_PROMPT_POLICY_VERSION,
       hasCanUseTool: true // Session has canUseTool callback
     }
 
@@ -2360,9 +2362,10 @@ Proceed with explicit default assumptions and continue with a concrete plan/outp
       ? `<widget-output-policy>
 The user is requesting visualization rendering in current chat.
 Render directly now, do not ask for additional confirmation.
-If you output a widget, you MUST use exactly one show-widget fenced block.
-The fenced JSON MUST use keys: "title" (optional) and "widget_code" (required HTML string).
-The fenced payload MUST be strict JSON parseable by JSON.parse (double quotes only, no trailing comma, no comments).
+If one visual block is enough, prefer one show-widget fenced block.
+Multiple show-widget fenced blocks are allowed when the user explicitly asks for staged explanation, mixed text-and-chart output, multiple charts, or independent visual blocks.
+Each show-widget fence MUST contain one complete standalone JSON object with keys: "title" (optional) and "widget_code" (required HTML string).
+Each fenced payload MUST be strict JSON parseable by JSON.parse (double quotes only, no trailing comma, no comments).
 Do not use single-quoted JSON keys/values.
 Do not use backslash line-continuation in widget_code (e.g. "\\\n").
 Do NOT output raw JS snippets like "const option = ..." or "return { type: 'chart', ... }" outside show-widget fence.
@@ -3135,7 +3138,8 @@ If the user asks about this project/codebase, inspect files in current workspace
     if (capturedSessionId) {
       saveSessionId(spaceId, conversationId, capturedSessionId, {
         spaceId,
-        workDir
+        workDir,
+        promptPolicyVersion: WIDGET_PROMPT_POLICY_VERSION
       })
       console.log(`[Agent][${conversationId}] Session ID saved:`, capturedSessionId)
     }
