@@ -66,10 +66,11 @@ interface PendingChangeSet {
 
 const pendingChangeSets = new Map<string, PendingChangeSet>()
 
-function computeStatsFromFileSnapshot(file: Pick<ChangeFile, 'beforeContent' | 'afterContent' | 'afterExists'>): { added: number; removed: number } {
+function computeStatsFromFileSnapshot(file: Pick<ChangeFile, 'relativePath' | 'beforeContent' | 'afterContent' | 'afterExists'>): { added: number; removed: number } {
   return calculateLineDiffStats(
     file.beforeContent || '',
-    file.afterExists ? file.afterContent || '' : ''
+    file.afterExists ? file.afterContent || '' : '',
+    { filePath: file.relativePath }
   )
 }
 
@@ -253,6 +254,7 @@ export function finalizeChangeSet(
     }
 
     const stats = computeStatsFromFileSnapshot({
+      relativePath: pendingFile.relativePath,
       beforeContent: pendingFile.beforeContent,
       afterContent: afterExists ? afterContent : undefined,
       afterExists

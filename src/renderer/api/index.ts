@@ -403,6 +403,84 @@ export const api = {
     )
   },
 
+  // ===== Version Control =====
+  getVersionStatus: async (spaceId: string): Promise<ApiResponse> => {
+    if (isElectron()) {
+      return window.kite.getVersionStatus(spaceId)
+    }
+    return {
+      success: false,
+      error: '版本管理目前仅支持桌面端本地工作区',
+      errorCode: 'VERSION_CONTROL_DESKTOP_ONLY'
+    }
+  },
+
+  initVersionControl: async (spaceId: string): Promise<ApiResponse> => {
+    if (isElectron()) {
+      return window.kite.initVersionControl(spaceId)
+    }
+    return {
+      success: false,
+      error: '版本管理目前仅支持桌面端本地工作区',
+      errorCode: 'VERSION_CONTROL_DESKTOP_ONLY'
+    }
+  },
+
+  createVersion: async (spaceId: string, message: string): Promise<ApiResponse> => {
+    if (isElectron()) {
+      return window.kite.createVersion(spaceId, message)
+    }
+    return {
+      success: false,
+      error: '版本管理目前仅支持桌面端本地工作区',
+      errorCode: 'VERSION_CONTROL_DESKTOP_ONLY'
+    }
+  },
+
+  listVersions: async (spaceId: string, limit?: number): Promise<ApiResponse> => {
+    if (isElectron()) {
+      return window.kite.listVersions(spaceId, limit)
+    }
+    return {
+      success: false,
+      error: '版本管理目前仅支持桌面端本地工作区',
+      errorCode: 'VERSION_CONTROL_DESKTOP_ONLY'
+    }
+  },
+
+  getVersionDiff: async (spaceId: string, options?: { versionId?: string }): Promise<ApiResponse> => {
+    if (isElectron()) {
+      return window.kite.getVersionDiff(spaceId, options)
+    }
+    return {
+      success: false,
+      error: '版本管理目前仅支持桌面端本地工作区',
+      errorCode: 'VERSION_CONTROL_DESKTOP_ONLY'
+    }
+  },
+
+  restoreVersionFile: async (spaceId: string, filePath: string, versionId: string): Promise<ApiResponse> => {
+    if (isElectron()) {
+      return window.kite.restoreVersionFile(spaceId, filePath, versionId)
+    }
+    return {
+      success: false,
+      error: '版本管理目前仅支持桌面端本地工作区',
+      errorCode: 'VERSION_CONTROL_DESKTOP_ONLY'
+    }
+  },
+
+  discardVersionFile: async (spaceId: string, filePath: string): Promise<ApiResponse> => {
+    if (isElectron()) {
+      return window.kite.discardVersionFile(spaceId, filePath)
+    }
+    return {
+      success: false,
+      error: '版本管理目前仅支持桌面端本地工作区',
+      errorCode: 'VERSION_CONTROL_DESKTOP_ONLY'
+    }
+  },
+
   // ===== Agent =====
   sendMessage: async (request: {
     spaceId: string

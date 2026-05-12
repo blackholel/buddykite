@@ -27,6 +27,7 @@ import type { TabState } from '../../../services/canvas-lifecycle'
 import type { ChatMode, ConversationAiConfig, FileContextAttachment, ImageAttachment, ToolCall } from '../../../types'
 import { useTranslation } from '../../../i18n'
 import { getAiSetupState } from '../../../../shared/types/ai-profile'
+import { saveWorkspaceVersion } from '../../../utils/workspace-version'
 
 interface ChatTabViewerProps {
   tab: TabState
@@ -35,7 +36,7 @@ interface ChatTabViewerProps {
 export function ChatTabViewer({ tab }: ChatTabViewerProps) {
   const { t } = useTranslation()
   const { conversationId, spaceId, workDir: tabWorkDir } = tab
-  const { openPlan } = useCanvasLifecycle()
+  const { openPlan, getDirtyFileTabs, saveDirtyFileTabs } = useCanvasLifecycle()
   const { appConfig, setView } = useAppStore(state => ({
     appConfig: state.config,
     setView: state.setView
@@ -257,6 +258,14 @@ export function ChatTabViewer({ tab }: ChatTabViewerProps) {
     await executePlan(spaceId, conversationId, planContent)
   }, [conversationId, executePlan, isGenerating, spaceId])
 
+  const handleSaveWorkspaceVersion = useCallback(async (targetSpaceId: string): Promise<'saved' | 'empty'> => {
+    return saveWorkspaceVersion({
+      spaceId: targetSpaceId,
+      getDirtyFileTabs,
+      saveDirtyFileTabs,
+    })
+  }, [getDirtyFileTabs, saveDirtyFileTabs])
+
   // Loading state
   if (!conversation && isLoadingConversation) {
     return (
@@ -356,6 +365,7 @@ export function ChatTabViewer({ tab }: ChatTabViewerProps) {
             filePath,
             force
           })}
+          onSaveWorkspaceVersion={() => handleSaveWorkspaceVersion(activeChangeSet.spaceId)}
         />
       )}
       {pendingAskUserQuestion && conversationId && (

@@ -38,6 +38,7 @@ const loadCsvViewer = () => import('./viewers/CsvViewer')
 const loadTextViewer = () => import('./viewers/TextViewer')
 const loadPlanEditor = () => import('./viewers/PlanEditor')
 const loadTemplateLibraryViewer = () => import('./viewers/TemplateLibraryViewer')
+const loadVersionControlPanel = () => import('./viewers/VersionControlPanel')
 
 const LazyCodeEditor = lazy(async () => ({ default: (await loadCodeEditor()).CodeEditor }))
 const LazyMarkdownViewer = lazy(async () => ({ default: (await loadMarkdownViewer()).MarkdownViewer }))
@@ -50,6 +51,9 @@ const LazyPlanEditor = lazy(async () => ({ default: (await loadPlanEditor()).Pla
 const LazyTemplateLibraryViewer = lazy(async () => ({
   default: (await loadTemplateLibraryViewer()).TemplateLibraryViewer
 }))
+const LazyVersionControlPanel = lazy(async () => ({
+  default: (await loadVersionControlPanel()).VersionControlPanel
+}))
 
 const preloadedViewerTypes = new Set<ContentType>()
 const viewerPreloaders: Partial<Record<ContentType, () => Promise<unknown>>> = {
@@ -61,7 +65,8 @@ const viewerPreloaders: Partial<Record<ContentType, () => Promise<unknown>>> = {
   csv: loadCsvViewer,
   text: loadTextViewer,
   plan: loadPlanEditor,
-  'template-library': loadTemplateLibraryViewer
+  'template-library': loadTemplateLibraryViewer,
+  'version-control': loadVersionControlPanel
 }
 
 function preloadViewer(type: ContentType): void {
@@ -331,6 +336,13 @@ function TabContent({ tab, onScrollChange, onContentChange, onSave }: TabContent
       return (
         <Suspense fallback={viewerFallback}>
           <LazyTemplateLibraryViewer tab={tab} />
+        </Suspense>
+      )
+
+    case 'version-control':
+      return (
+        <Suspense fallback={viewerFallback}>
+          <LazyVersionControlPanel tab={tab} />
         </Suspense>
       )
 

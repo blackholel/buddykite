@@ -132,6 +132,7 @@ export function UnifiedPage() {
     isOpen: isCanvasOpen,
     setOpen: setCanvasOpen,
     openChat,
+    openVersionControl,
     switchSpaceSession,
     closeSpaceSession,
     closeConversationTabs
@@ -362,6 +363,28 @@ export function UnifiedPage() {
   const handleExpandSpace = useCallback(async (spaceId: string) => {
     await ensureSpaceConversationsLoaded(spaceId)
   }, [ensureSpaceConversationsLoaded])
+
+  const handleOpenVersionControl = useCallback(async (spaceId: string) => {
+    setRightPanelMode('artifacts')
+    await navigateToSpaceContext({
+      targetSpaceId: spaceId,
+      currentSpaceId,
+      spaces,
+      kiteSpace,
+      setSpaceStoreCurrentSpace,
+      setChatCurrentSpace,
+      loadConversations
+    })
+    await openVersionControl(spaceId)
+  }, [
+    currentSpaceId,
+    kiteSpace,
+    loadConversations,
+    openVersionControl,
+    setChatCurrentSpace,
+    setSpaceStoreCurrentSpace,
+    spaces
+  ])
 
   const handleSelectConversation = useCallback(async (spaceId: string, conversationId: string) => {
     const ticket = ++conversationSelectTicketRef.current
@@ -628,6 +651,7 @@ export function UnifiedPage() {
           onDeleteConversation={handleDeleteConversation}
           onOpenSkills={() => handleOpenResourceLibrary('skill')}
           onOpenAgents={() => handleOpenResourceLibrary('agent')}
+          onOpenVersionControl={handleOpenVersionControl}
           skillsOpen={rightPanelMode === 'skills'}
           agentsOpen={rightPanelMode === 'agents'}
           isCollapsed={sidebarCollapsed}

@@ -120,6 +120,15 @@ export interface KiteAPI {
   acceptChangeSet: (params: { spaceId: string; conversationId: string; changeSetId: string; filePath?: string }) => Promise<IpcResponse>
   rollbackChangeSet: (params: { spaceId: string; conversationId: string; changeSetId: string; filePath?: string; force?: boolean }) => Promise<IpcResponse>
 
+  // Version Control
+  getVersionStatus: (spaceId: string) => Promise<IpcResponse>
+  initVersionControl: (spaceId: string) => Promise<IpcResponse>
+  createVersion: (spaceId: string, message: string) => Promise<IpcResponse>
+  listVersions: (spaceId: string, limit?: number) => Promise<IpcResponse>
+  getVersionDiff: (spaceId: string, options?: { versionId?: string }) => Promise<IpcResponse>
+  restoreVersionFile: (spaceId: string, filePath: string, versionId: string) => Promise<IpcResponse>
+  discardVersionFile: (spaceId: string, filePath: string) => Promise<IpcResponse>
+
   // Agent
   sendMessage: (request: {
     spaceId: string
@@ -530,6 +539,17 @@ const api: KiteAPI = {
     ipcRenderer.invoke('change-set:list', spaceId, conversationId),
   acceptChangeSet: (params) => ipcRenderer.invoke('change-set:accept', params),
   rollbackChangeSet: (params) => ipcRenderer.invoke('change-set:rollback', params),
+
+  // Version Control
+  getVersionStatus: (spaceId) => ipcRenderer.invoke('version:get-status', spaceId),
+  initVersionControl: (spaceId) => ipcRenderer.invoke('version:init', spaceId),
+  createVersion: (spaceId, message) => ipcRenderer.invoke('version:create', spaceId, message),
+  listVersions: (spaceId, limit) => ipcRenderer.invoke('version:list', spaceId, limit),
+  getVersionDiff: (spaceId, options) => ipcRenderer.invoke('version:get-diff', spaceId, options),
+  restoreVersionFile: (spaceId, filePath, versionId) =>
+    ipcRenderer.invoke('version:restore-file', spaceId, filePath, versionId),
+  discardVersionFile: (spaceId, filePath) =>
+    ipcRenderer.invoke('version:discard-file', spaceId, filePath),
 
   // Agent
   sendMessage: (request) => ipcRenderer.invoke('agent:send-message', request),

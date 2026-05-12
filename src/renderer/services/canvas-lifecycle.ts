@@ -25,6 +25,7 @@ export type ContentType =
   | 'terminal'
   | 'chat'
   | 'template-library'
+  | 'version-control'
 
 export interface TabState {
   id: string
@@ -60,6 +61,15 @@ export interface CloseConversationTabsResult {
   removedActiveTab: boolean
   nextActiveTabId: string | null
   nextActiveChatConversationId: string | null
+}
+
+export interface SaveDirtyFileTabsResult {
+  saved: string[]
+  failed: Array<{
+    id: string
+    title: string
+    path?: string
+  }>
 }
 
 // Callback types
@@ -821,6 +831,51 @@ class CanvasLifecycle {
   }
 
   /**
+   * Open version management for a Space in a dedicated Canvas tab.
+   */
+  async openVersionControl(spaceId: string): Promise<string> {
+    await this.switchSpaceSession(spaceId)
+    const session = this.getOrCreateSession(spaceId)
+
+    const existing = session.tabs.find(
+      (tab) => tab.type === 'version-control' && tab.spaceId === spaceId
+    )
+
+    if (existing) {
+      existing.title = '版本管理'
+      existing.isLoading = false
+      existing.error = undefined
+      this.setOpen(true)
+      this.notifyTabsChange()
+      await this.switchTab(existing.id)
+      return existing.id
+    }
+
+    this.enforceMaxTabs(session)
+
+    const tabId = generateTabId()
+    const tab: TabState = {
+      id: tabId,
+      type: 'version-control',
+      title: '版本管理',
+      spaceId,
+      isDirty: false,
+      isLoading: false,
+      lastActiveAt: Date.now(),
+    }
+
+    session.tabs.push(tab)
+    session.activeTabId = tabId
+    this.activeTabId = tabId
+    this.setOpen(true)
+    this.notifyTabsChange()
+
+    await this.switchTab(tabId)
+
+    return tabId
+  }
+
+  /**
    * Close a tab
    */
   async closeTab(tabId: string): Promise<void> {
@@ -992,6 +1047,39 @@ class CanvasLifecycle {
     } catch {
       return false
     }
+  }
+
+  getDirtyFileTabs(spaceId: string): TabState[] {
+    const session = this.spaceSessions.get(spaceId)
+    if (!session) return []
+    return session.tabs.filter((tab) => tab.isDirty && Boolean(tab.path) && tab.content !== undefined)
+  }
+
+  async saveDirtyFileTabs(spaceId: string): Promise<SaveDirtyFileTabsResult> {
+    const dirtyTabs = this.getDirtyFileTabs(spaceId)
+    const result: SaveDirtyFileTabsResult = { saved: [], failed: [] }
+
+    for (const tab of dirtyTabs) {
+      if (!tab.path || tab.content === undefined) continue
+
+      try {
+        const response = await api.writeArtifactContent(tab.path, tab.content)
+        if (response.success) {
+          tab.isDirty = false
+          result.saved.push(tab.id)
+        } else {
+          result.failed.push({ id: tab.id, title: tab.title, path: tab.path })
+        }
+      } catch {
+        result.failed.push({ id: tab.id, title: tab.title, path: tab.path })
+      }
+    }
+
+    if (dirtyTabs.length > 0) {
+      this.notifyTabsChange()
+    }
+
+    return result
   }
 
   /**

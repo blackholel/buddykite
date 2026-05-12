@@ -26,6 +26,7 @@ import { registerRemoteHandlers } from '../ipc/remote'
 import { initializeSearchHandlers, cleanupSearchHandlers } from '../ipc/search'
 import { registerPerfHandlers } from '../ipc/perf'
 import { registerGitBashHandlers, initializeGitBashOnStartup } from '../ipc/git-bash'
+import { registerVersionControlHandlers } from '../ipc/version-control'
 import { initSkillAgentWatchers, cleanupSkillAgentWatchers } from '../services/skills-agents-watch.service'
 
 function resolveSuperpowersPatchScriptPath(): string | null {
@@ -112,6 +113,9 @@ export function initializeExtendedServices(mainWindow: BrowserWindow): void {
 
   // GitBash: Windows Git Bash detection and setup
   registerGitBashHandlers(mainWindow)
+
+  // Version Control: local workspace version history, checked lazily on access
+  registerVersionControlHandlers()
 
   // Skills/Agents: Watch for changes and notify renderer
   initSkillAgentWatchers(mainWindow)

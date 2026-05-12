@@ -96,6 +96,11 @@ export function useCanvasLifecycle() {
     []
   )
 
+  const openVersionControl = useCallback(
+    (spaceId: string) => canvasLifecycle.openVersionControl(spaceId),
+    []
+  )
+
   const closeTab = useCallback(
     (tabId: string) => canvasLifecycle.closeTab(tabId),
     []
@@ -143,6 +148,16 @@ export function useCanvasLifecycle() {
 
   const saveFile = useCallback(
     (tabId: string) => canvasLifecycle.saveFile(tabId),
+    []
+  )
+
+  const getDirtyFileTabs = useCallback(
+    (spaceId: string) => canvasLifecycle.getDirtyFileTabs(spaceId),
+    []
+  )
+
+  const saveDirtyFileTabs = useCallback(
+    (spaceId: string) => canvasLifecycle.saveDirtyFileTabs(spaceId),
     []
   )
 
@@ -198,6 +213,7 @@ export function useCanvasLifecycle() {
     openPlan,
     openChat,
     openTemplateLibrary,
+    openVersionControl,
     closeTab,
     closeAllTabs,
     switchTab,
@@ -210,6 +226,8 @@ export function useCanvasLifecycle() {
     refreshTab,
     updateTabContent,
     saveFile,
+    getDirtyFileTabs,
+    saveDirtyFileTabs,
     saveScrollPosition,
 
     // Layout Actions

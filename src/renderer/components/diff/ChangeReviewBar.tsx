@@ -7,7 +7,7 @@
  * 3. Inline diff preview per file + full diff modal
  */
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   CheckCircle2,
   CornerDownLeft,
@@ -17,7 +17,8 @@ import {
   FileText,
   FileX,
   ExternalLink,
-  Maximize2
+  Maximize2,
+  Save
 } from 'lucide-react'
 import { DiffModal } from './DiffModal'
 import { DiffContent } from './DiffContent'
@@ -31,6 +32,7 @@ interface ChangeReviewBarProps {
   onAcceptAll: () => Promise<ChangeSet | null>
   onAcceptFile: (filePath: string) => Promise<ChangeSet | null>
   onRollbackFile: (filePath?: string, force?: boolean) => Promise<{ changeSet: ChangeSet | null; conflicts: string[] }>
+  onSaveWorkspaceVersion?: () => Promise<'saved' | 'empty'>
   isCompact?: boolean
 }
 
@@ -65,6 +67,7 @@ export function ChangeReviewBar({
   onAcceptAll,
   onAcceptFile,
   onRollbackFile,
+  onSaveWorkspaceVersion,
   isCompact = false
 }: ChangeReviewBarProps) {
   const { t } = useTranslation()
@@ -75,9 +78,16 @@ export function ChangeReviewBar({
     file: null,
     index: 0
   })
+  const [versionSaveState, setVersionSaveState] = useState<'idle' | 'saving' | 'saved' | 'empty' | 'error'>('idle')
+  const [versionSaveError, setVersionSaveError] = useState<string | null>(null)
 
   const files = changeSet.files
   const allFiles = useMemo(() => files.map(mapToFileChange), [files])
+
+  useEffect(() => {
+    setVersionSaveState('idle')
+    setVersionSaveError(null)
+  }, [changeSet.id])
 
   const handleOpenModal = (file: ChangeFile) => {
     const mapped = mapToFileChange(file)
@@ -112,6 +122,19 @@ export function ChangeReviewBar({
     }
   }
 
+  const handleSaveWorkspaceVersion = async () => {
+    if (!onSaveWorkspaceVersion || versionSaveState === 'saving') return
+    setVersionSaveState('saving')
+    setVersionSaveError(null)
+    try {
+      const result = await onSaveWorkspaceVersion()
+      setVersionSaveState(result)
+    } catch (error) {
+      setVersionSaveState('error')
+      setVersionSaveError((error as Error).message)
+    }
+  }
+
   return (
     <>
       <div className={`mb-2 ${isCompact ? 'px-3' : 'px-4'}`}>
@@ -135,6 +158,31 @@ export function ChangeReviewBar({
               </button>
 
               <div className="flex items-center gap-2">
+                {onSaveWorkspaceVersion && (
+                  <button
+                    onClick={handleSaveWorkspaceVersion}
+                    disabled={versionSaveState === 'saving' || versionSaveState === 'saved'}
+                    className={`flex items-center gap-1 rounded-md px-2 py-1 text-[11px] transition-colors ${
+                      versionSaveState === 'saved'
+                        ? 'text-emerald-400/80 cursor-default'
+                        : versionSaveState === 'error'
+                          ? 'text-destructive hover:bg-destructive/10'
+                          : 'text-sky-400/90 hover:text-sky-300 hover:bg-sky-500/10 disabled:opacity-60'
+                    }`}
+                    title={versionSaveError || t('保存当前工作区为版本')}
+                  >
+                    {versionSaveState === 'saving' ? (
+                      <span className="h-3 w-3 rounded-full border border-current border-t-transparent animate-spin" />
+                    ) : (
+                      <Save size={12} />
+                    )}
+                    {versionSaveState === 'saved'
+                      ? t('已保存为版本')
+                      : versionSaveState === 'empty'
+                        ? t('没有新更改')
+                        : t('保存为版本')}
+                  </button>
+                )}
                 <button
                   onClick={onAcceptAll}
                   className="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-emerald-400/90 hover:text-emerald-300 hover:bg-emerald-500/10 transition-colors"

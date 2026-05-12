@@ -179,7 +179,7 @@ export function DiffContent({
   // Calculate stats
   const stats = useMemo(() => {
     if (providedStats) return providedStats
-    return calculateLineDiffStats(effectiveOldString, effectiveNewString)
+    return calculateLineDiffStats(effectiveOldString, effectiveNewString, { compareEmbeddedWidgetCode: true })
   }, [providedStats, effectiveOldString, effectiveNewString])
 
   return (

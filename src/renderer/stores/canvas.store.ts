@@ -50,6 +50,7 @@ interface CanvasState {
   openPlan: (content: string, title: string, spaceId: string, conversationId: string, workDir?: string) => Promise<string>
   openChat: (spaceId: string, conversationId: string, title: string, workDir?: string) => Promise<void>
   openTemplateLibrary: (title: string, initialTab: TemplateLibraryTab, workDir?: string) => Promise<string>
+  openVersionControl: (spaceId: string) => Promise<string>
   closeTab: (tabId: string) => void
   closeAllTabs: () => void
   switchTab: (tabId: string) => void
@@ -145,6 +146,10 @@ export const useCanvasStore = create<CanvasState>((set, get) => {
 
     openTemplateLibrary: async (title: string, initialTab: TemplateLibraryTab, workDir?: string) => {
       return await canvasLifecycle.openTemplateLibrary(title, initialTab, workDir)
+    },
+
+    openVersionControl: async (spaceId: string) => {
+      return await canvasLifecycle.openVersionControl(spaceId)
     },
 
     closeTab: (tabId: string) => {

@@ -4,6 +4,7 @@ import {
   ChevronDown,
   ChevronRight,
   FolderPlus,
+  History,
   Loader2,
   MoreHorizontal,
   PanelLeftClose,
@@ -35,6 +36,7 @@ interface UnifiedSidebarProps {
   onDeleteConversation: (spaceId: string, conversationId: string) => Promise<void>
   onOpenSkills: () => void
   onOpenAgents: () => void
+  onOpenVersionControl?: (spaceId: string) => void | Promise<void>
   skillsOpen: boolean
   agentsOpen: boolean
   isCollapsed: boolean
@@ -85,6 +87,7 @@ export function UnifiedSidebar({
   onDeleteConversation,
   onOpenSkills,
   onOpenAgents,
+  onOpenVersionControl,
   skillsOpen,
   agentsOpen,
   isCollapsed,
@@ -534,6 +537,18 @@ export function UnifiedSidebar({
                             <Plus className="w-3.5 h-3.5" />
                             <span>{t('新建会话')}</span>
                           </button>
+                          {onOpenVersionControl && (
+                            <button
+                              onClick={() => {
+                                setSpaceActionMenuSpaceId(null)
+                                void onOpenVersionControl(space.id)
+                              }}
+                              className="w-full flex items-center gap-2 rounded-md px-2 py-1.5 text-xs text-left hover:bg-secondary/80"
+                            >
+                              <History className="w-3.5 h-3.5" />
+                              <span>{t('版本管理')}</span>
+                            </button>
+                          )}
                           <button
                             onClick={() => {
                               setSpaceActionMenuSpaceId(null)

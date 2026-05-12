@@ -22,8 +22,8 @@ export function getFileName(path: string): string {
  * Calculate line diff statistics
  * Uses a real line-based diff instead of heuristic estimation.
  */
-export function calculateDiffStats(oldStr: string, newStr: string): { added: number; removed: number } {
-  return calculateLineDiffStats(oldStr || '', newStr || '')
+export function calculateDiffStats(oldStr: string, newStr: string, filePath?: string): { added: number; removed: number } {
+  return calculateLineDiffStats(oldStr || '', newStr || '', { filePath })
 }
 
 /**
@@ -69,7 +69,7 @@ export function extractFileChanges(thoughts: Thought[]): FileChanges {
           writes.splice(existingIndex, 1)
         }
 
-        const lineCount = calculateLineDiffStats('', content || '').added
+        const lineCount = calculateLineDiffStats('', content || '', { filePath }).added
         writes.push({
           id: thought.id,
           file: filePath,
@@ -90,7 +90,7 @@ export function extractFileChanges(thoughts: Thought[]): FileChanges {
       const newString = input.new_string as string | undefined
 
       if (filePath && (oldString !== undefined || newString !== undefined)) {
-        const stats = calculateDiffStats(oldString || '', newString || '')
+        const stats = calculateDiffStats(oldString || '', newString || '', filePath)
 
         // Check if this file was already edited
         const existingIndex = edits.findIndex(e => e.file === filePath)

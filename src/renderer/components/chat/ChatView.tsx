@@ -34,6 +34,7 @@ import { api } from '../../api'
 import type { ChatMode, FileContextAttachment, ImageAttachment, ToolCall } from '../../types'
 import { useTranslation } from '../../i18n'
 import { getAiSetupState } from '../../../shared/types/ai-profile'
+import { saveWorkspaceVersion } from '../../utils/workspace-version'
 
 interface ChatViewProps {
   isCompact?: boolean
@@ -218,7 +219,7 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
     clearConversationQueue: state.clearConversationQueue,
     clearQueueError: state.clearQueueError
   }), shallow)
-  const { openPlan } = useCanvasLifecycle()
+  const { openPlan, getDirtyFileTabs, saveDirtyFileTabs } = useCanvasLifecycle()
   const { appConfig, setView } = useAppStore((state) => ({
     appConfig: state.config,
     setView: state.setView
@@ -578,6 +579,14 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
     await openPlan(planContent, t('Plan'), currentSpaceId, currentConversationId, resolvedConversationWorkDir)
   }
 
+  const handleSaveWorkspaceVersion = useCallback(async (spaceId: string): Promise<'saved' | 'empty'> => {
+    return saveWorkspaceVersion({
+      spaceId,
+      getDirtyFileTabs,
+      saveDirtyFileTabs,
+    })
+  }, [getDirtyFileTabs, saveDirtyFileTabs])
+
   const handleExecutePlan = useCallback(async (planContent: string) => {
     if (!currentSpaceId || !currentConversationId || isGenerating) {
       return
@@ -747,6 +756,7 @@ export function ChatView({ isCompact = false }: ChatViewProps) {
             filePath,
             force
           })}
+          onSaveWorkspaceVersion={() => handleSaveWorkspaceVersion(activeChangeSet.spaceId)}
         />
       )}
       {pendingAskUserQuestion && currentConversationId && (

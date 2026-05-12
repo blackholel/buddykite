@@ -28,4 +28,33 @@ describe('diff utils stats accuracy', () => {
     expect(changes.totalAdded).toBe(1)
     expect(changes.writes[0].stats).toEqual({ added: 1, removed: 0 })
   })
+
+  it('counts widget markdown writes by embedded widget code', () => {
+    const widgetMarkdown = [
+      '# Widget',
+      '',
+      '```show-widget',
+      JSON.stringify({
+        title: 'Widget',
+        widget_code: '<div><section><h1>标题</h1><p>正文</p></section><style>.card{color:red;display:flex;}</style></div>'
+      }),
+      '```',
+      ''
+    ].join('\n')
+
+    const changes = extractFileChanges([
+      {
+        id: 'tool-write-widget',
+        type: 'tool_use',
+        toolName: 'Write',
+        toolInput: {
+          file_path: 'widgets/widget.md',
+          content: widgetMarkdown
+        }
+      } as any
+    ])
+
+    expect(changes.totalAdded).toBe(11)
+    expect(changes.writes[0].stats).toEqual({ added: 11, removed: 0 })
+  })
 })
