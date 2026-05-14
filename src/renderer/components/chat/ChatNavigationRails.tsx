@@ -21,6 +21,7 @@ interface MarkdownHeading {
   id: string
   level: 1 | 2 | 3
   text: string
+  preview: string
 }
 
 interface AssistantHeadingEntry {
@@ -108,6 +109,39 @@ function getAnchorY(container: HTMLDivElement): number {
 function resolveTurnSummary(turn: ChatTurn): string {
   if (!turn.userText.trim()) return '...'
   return turn.userText
+}
+
+function normalizePreviewText(value: string): string {
+  return value.replace(/\s+/g, ' ').trim()
+}
+
+function resolveHeadingPreview(headingElement: HTMLElement, level: 1 | 2 | 3): string {
+  const parts: string[] = []
+  let current = headingElement.nextElementSibling
+
+  while (current) {
+    if (current instanceof HTMLElement) {
+      const tagName = current.tagName.toLowerCase()
+      const nextHeadingLevel = /^h[1-3]$/.test(tagName) ? Number(tagName.slice(1)) : null
+
+      if (nextHeadingLevel && nextHeadingLevel <= level) {
+        break
+      }
+
+      const text = normalizePreviewText(current.textContent || '')
+      if (text) {
+        parts.push(text)
+      }
+
+      if (parts.join(' ').length >= 180) {
+        break
+      }
+    }
+
+    current = current.nextElementSibling
+  }
+
+  return parts.join(' ').slice(0, 220)
 }
 
 export function ChatNavigationRails({
@@ -200,7 +234,8 @@ export function ChatNavigationRails({
             return {
               id: headingId,
               level: level as 1 | 2 | 3,
-              text: (element.textContent || '').trim()
+              text: (element.textContent || '').trim(),
+              preview: resolveHeadingPreview(element, level as 1 | 2 | 3)
             }
           })
           .filter(Boolean) as MarkdownHeading[]
@@ -249,7 +284,8 @@ export function ChatNavigationRails({
         prev.every((heading, index) => (
           heading.id === nextHeadings[index]?.id &&
           heading.level === nextHeadings[index]?.level &&
-          heading.text === nextHeadings[index]?.text
+          heading.text === nextHeadings[index]?.text &&
+          heading.preview === nextHeadings[index]?.preview
         ))
       ) {
         return prev
@@ -383,10 +419,10 @@ export function ChatNavigationRails({
   }, [scrollToHeading])
 
   useEffect(() => {
-    if (leftRailMode === 'rail' && showOutlineCard) {
+    if (!showLeftRail && showOutlineCard) {
       setShowOutlineCard(false)
     }
-  }, [leftRailMode, showOutlineCard])
+  }, [showLeftRail, showOutlineCard])
 
   if (!showRightRail && !showLeftRail) {
     return null
@@ -396,8 +432,11 @@ export function ChatNavigationRails({
     <div className="space-chat-nav-overlay" aria-hidden={false}>
       {showLeftRail && (
         <nav
-          className={`space-chat-nav-left ${leftRailMode === 'chip' ? 'is-compact' : ''}`}
+          className={`space-chat-nav-left ${leftRailMode === 'chip' ? 'is-compact' : ''} ${showOutlineCard ? 'is-outline-open' : ''}`}
           aria-label={t('Output outline')}
+          onMouseEnter={() => setShowOutlineCard(true)}
+          onMouseLeave={() => setShowOutlineCard(false)}
+          onFocusCapture={() => setShowOutlineCard(true)}
           onBlurCapture={(event) => {
             const nextTarget = event.relatedTarget as Node | null
             if (!nextTarget || !event.currentTarget.contains(nextTarget)) {
@@ -406,9 +445,10 @@ export function ChatNavigationRails({
           }}
         >
           {leftRailMode === 'rail' ? (
-            <div className="space-chat-nav-bars" role="list">
+            <div className="space-chat-nav-bars" role="list" aria-label={t('Output outline')}>
               {headings.map((heading, index) => {
                 const isActive = activeHeadingId === heading.id
+                const headingText = heading.text || `H${heading.level}`
                 return (
                   <button
                     key={heading.id}
@@ -418,8 +458,8 @@ export function ChatNavigationRails({
                     style={{ marginLeft: `${(heading.level - 1) * 8}px` }}
                     onClick={() => handleHeadingSelect(heading.id)}
                     aria-current={isActive ? 'true' : undefined}
-                    aria-label={t('Jump to heading: {{heading}}', { heading: heading.text || `H${heading.level}` })}
-                    title={heading.text || `H${heading.level}`}
+                    aria-label={t('Jump to heading: {{heading}}', { heading: headingText })}
+                    title={headingText}
                     data-heading-index={index}
                   />
                 )
@@ -428,45 +468,51 @@ export function ChatNavigationRails({
           ) : (
             <button
               type="button"
-              className="space-chat-nav-outline-chip"
-              onClick={() => setShowOutlineCard((prev) => !prev)}
+              className="space-chat-nav-outline-trigger"
+              onClick={() => setShowOutlineCard(true)}
               aria-label={t('Output outline')}
               aria-expanded={showOutlineCard}
-              aria-haspopup="dialog"
+              aria-haspopup="true"
               title={t('Output outline')}
             >
-              <span className="space-chat-nav-outline-chip-icon" aria-hidden="true" />
-              <span className="space-chat-nav-outline-chip-count">{headings.length}</span>
+              <span className="space-chat-nav-outline-trigger-icon" aria-hidden="true" />
+              <span className="space-chat-nav-outline-trigger-count">{headings.length}</span>
             </button>
           )}
 
-          {leftRailMode === 'chip' && showOutlineCard && (
-            <div
-              className={`space-chat-nav-outline-card ${leftRailMode === 'chip' ? 'is-compact' : ''}`}
-              role="tooltip"
-            >
-              <div className="space-chat-nav-card-title">{t('Output outline')}</div>
-              <ul className="space-chat-nav-outline-list">
-                {headings.map((heading) => {
-                  const isActive = activeHeadingId === heading.id
-                  return (
-                    <li key={`outline-${heading.id}`}>
-                      <button
-                        type="button"
-                        className={`space-chat-nav-outline-item ${isActive ? 'is-active' : ''}`}
-                        style={{ marginLeft: `${(heading.level - 1) * 10}px` }}
-                        onClick={() => handleHeadingSelect(heading.id)}
-                        aria-current={isActive ? 'true' : undefined}
-                        title={heading.text || `H${heading.level}`}
-                      >
-                        {heading.text || `H${heading.level}`}
-                      </button>
-                    </li>
-                  )
-                })}
-              </ul>
-            </div>
-          )}
+          <div
+            className={`space-chat-nav-outline-card ${leftRailMode === 'chip' ? 'is-compact' : ''} ${showOutlineCard ? 'is-open' : ''}`}
+            aria-label={t('Output outline')}
+            aria-hidden={!showOutlineCard}
+          >
+            <div className="space-chat-nav-card-title">{t('Output outline')}</div>
+            <ul className="space-chat-nav-outline-list">
+              {headings.map((heading) => {
+                const isActive = activeHeadingId === heading.id
+                const headingText = heading.text || `H${heading.level}`
+                const headingTitle = heading.preview ? `${headingText}\n${heading.preview}` : headingText
+                return (
+                  <li key={`outline-${heading.id}`}>
+                    <button
+                      type="button"
+                      className={`space-chat-nav-outline-item ${isActive ? 'is-active' : ''}`}
+                      style={{ marginLeft: `${(heading.level - 1) * 10}px` }}
+                      onClick={() => handleHeadingSelect(heading.id)}
+                      aria-current={isActive ? 'true' : undefined}
+                      aria-label={t('Jump to heading: {{heading}}', { heading: headingText })}
+                      title={headingTitle}
+                      tabIndex={showOutlineCard ? 0 : -1}
+                    >
+                      <span className="space-chat-nav-outline-item-title">{headingText}</span>
+                      {heading.preview && (
+                        <span className="space-chat-nav-outline-preview">{heading.preview}</span>
+                      )}
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
         </nav>
       )}
 
